@@ -70,20 +70,20 @@ const EquipmentRow = memo(function EquipmentRow({
         </div>
         {parentName && <div className="text-[11px] text-muted-foreground pl-10 truncate">↳ {parentName}</div>}
       </td>
-      {/* Codi equip amb tabulació per jerarquia de components */}
       <td className="p-2 font-mono text-xs">
+        {e.equipCode || <span className="text-muted-foreground italic">—</span>}
+      </td>
+      {/* Nom equip amb tabulació per jerarquia de components */}
+      <td className="p-2 font-medium text-sm">
         <div className="flex items-center gap-1" style={{ paddingLeft: childIndentPx }}>
           {childDepth > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
-          {e.equipCode || <span className="text-muted-foreground italic">—</span>}
+          {e.equipName}
         </div>
         {childDepth > 0 && e.parentEquipCode && (
-          <div className="text-[10px] text-muted-foreground" style={{ paddingLeft: childIndentPx + 16 }}>
+          <div className="text-[10px] text-muted-foreground font-normal" style={{ paddingLeft: childIndentPx + 16 }}>
             ↳ {e.parentEquipCode}
           </div>
         )}
-      </td>
-      <td className="p-2 font-medium text-sm">
-        <div style={{ paddingLeft: childIndentPx }}>{e.equipName}</div>
       </td>
       <td className="p-2">
         {e.needsTable ? <Badge className="bg-emerald-600 hover:bg-emerald-600 text-xs">Sí</Badge> : <Badge variant="secondary" className="text-xs">No</Badge>}
@@ -315,7 +315,7 @@ export function EquipmentsTable() {
 
       <div className="border rounded-md overflow-auto bg-card">
         <table className="w-full text-sm">
-          <thead className="bg-muted/60 sticky top-0">
+          <thead className="sticky top-0 z-10 bg-muted border-b">
             <tr className="text-left">
               <th className="p-2 min-w-[260px] text-xs font-semibold">GuBIMClass</th>
               <th className="p-2 text-xs font-semibold">Codi equip</th>
