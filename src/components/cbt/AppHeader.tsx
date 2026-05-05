@@ -1,6 +1,6 @@
 import { GitBranch, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import logo from "@/assets/Simbol_Web2.gif";
+import logo from "@/assets/Simbol_Web2.png";
 
 interface Props {
   onOpenGubim: () => void;
