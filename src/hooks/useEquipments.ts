@@ -31,6 +31,18 @@ const SEED: Equipment[] = [
   },
   {
     id: uid(),
+    gubimCode: "30.50.10.10",
+    equipCode: "COND",
+    equipName: "Condensador (component refredadora)",
+    needsTable: false,
+    tableCode: "",
+    tableName: "",
+    fieldCols: ["TAG", "FABRICANT", "MODEL"],
+    parentEquipCode: "RNA",
+    createdAt: Date.now(),
+  },
+  {
+    id: uid(),
     gubimCode: "30.50.10.20",
     equipCode: "BMC",
     equipName: "Bomba de calor",
