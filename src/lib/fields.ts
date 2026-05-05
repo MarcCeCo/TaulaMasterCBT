@@ -19,7 +19,6 @@ export type FieldMeta = {
 export function isClassifier(f: FieldMeta): boolean {
   return (
     !f.type &&
-    !f.unit &&
     !f.code &&
     !f.category &&
     !f.group &&

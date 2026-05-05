@@ -122,22 +122,22 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
             <table className="w-full text-sm">
               <thead className="bg-muted/60 sticky top-0 z-10">
                 <tr className="text-left">
-                  <th className="px-4 py-2 font-semibold text-xs text-muted-foreground uppercase tracking-wide w-36">Paràmetre</th>
                   <th className="px-4 py-2 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Nom del paràmetre</th>
                   {/* Columnes Revit (.txt) */}
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide border-l-2 border-[#0099A8]/30">Nom CBT</th>
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Format</th>
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Disciplina</th>
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Instància</th>
+                  <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Agrupació CBT</th>
                   {/* Columnes Rosmiman */}
-                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide border-l-2 border-violet-200">Unitat</th>
-                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Agrupació</th>
-                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Grup</th>
+                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide border-l-2 border-violet-200">Codi</th>
+                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Taula assoc.</th>
+                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Tipus dada</th>
                 </tr>
                 {/* Llegenda de colors */}
                 <tr className="bg-muted/30 border-t border-muted">
-                  <td colSpan={2} />
-                  <td colSpan={4} className="px-4 py-1 border-l-2 border-[#0099A8]/30">
+                  <td colSpan={1} />
+                  <td colSpan={5} className="px-4 py-1 border-l-2 border-[#0099A8]/30">
                     <span className="text-[10px] font-medium text-[#0099A8] flex items-center gap-1">
                       <span className="inline-block w-2 h-2 rounded-full bg-[#0099A8]" />
                       Configuració paràmetre Revit (.txt)
@@ -165,21 +165,17 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
                   const f = row.field!;
                   return (
                     <tr key={f.col} className="border-t hover:bg-muted/30">
-                      <td className="px-4 py-2 font-mono text-xs font-semibold">{f.col}</td>
                       <td className="px-4 py-2">{f.name}</td>
                       {/* Revit */}
                       <td className="px-4 py-2 font-mono text-xs text-[#006E7A] border-l-2 border-[#0099A8]/20">{f.cbt_name ?? "—"}</td>
                       <td className="px-4 py-2 text-xs">{f.type ?? "—"}</td>
                       <td className="px-4 py-2 text-xs">{f.discipline ?? "—"}</td>
-                      <td className="px-4 py-2">
-                        {f.active === "Y"
-                          ? <Badge variant="outline" className="text-[10px] border-emerald-400 text-emerald-700">Sí</Badge>
-                          : <Badge variant="outline" className="text-[10px]">No</Badge>}
-                      </td>
+                      <td className="px-4 py-2 font-mono text-xs">{f.active}</td>
+                      <td className="px-4 py-2 text-xs">{f.group ?? "—"}</td>
                       {/* Rosmiman */}
-                      <td className="px-4 py-2 text-xs text-muted-foreground border-l-2 border-violet-100">{f.unit ?? "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground border-l-2 border-violet-100">{f.code ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.taulaAssoc ?? "—"}</td>
                       <td className="px-4 py-2 text-xs text-muted-foreground">{f.category ?? "—"}</td>
-                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.group ?? "—"}</td>
                     </tr>
                   );
                 })}

@@ -50,7 +50,7 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
       if (cat !== "__all__" && f.category !== cat) return false;
       if (cls !== "__all__" && classifierMap.get(f.col) !== cls) return false;
       if (!t) return true;
-      return f.col.toLowerCase().includes(t) || (f.name ?? "").toLowerCase().includes(t) || (f.cbt_name ?? "").toLowerCase().includes(t);
+      return (f.code ?? "").toLowerCase().includes(t) || (f.name ?? "").toLowerCase().includes(t) || (f.cbt_name ?? "").toLowerCase().includes(t);
     });
   }, [fields, q, grp, cat, cls, classifierMap]);
 
@@ -103,12 +103,11 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
                 <th className="w-10 p-2">
                   <Checkbox checked={allChecked ? true : someChecked ? "indeterminate" : false} onCheckedChange={toggleAll} />
                 </th>
-                <th className="text-left p-2 text-xs font-semibold">Codi</th>
                 <th className="text-left p-2 text-xs font-semibold">Nom</th>
                 <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Format</th>
                 <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Disciplina</th>
-                <th className="text-left p-2 text-xs font-semibold text-violet-600">Unitat</th>
-                <th className="text-left p-2 text-xs font-semibold text-violet-600">Grup</th>
+                <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Agrupació CBT</th>
+                <th className="text-left p-2 text-xs font-semibold text-violet-600">Codi</th>
                 <th className="text-left p-2 text-xs font-semibold">Classificador</th>
               </tr>
             </thead>
@@ -120,17 +119,16 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
                     <td className="p-2" onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={checked} onCheckedChange={() => toggle(f.col)} />
                     </td>
-                    <td className="p-2 font-mono text-xs">{f.col}</td>
                     <td className="p-2">{f.name}</td>
                     <td className="p-2 text-xs text-[#0099A8]">{f.type ?? "—"}</td>
                     <td className="p-2 text-xs text-[#0099A8]">{f.discipline ?? "—"}</td>
-                    <td className="p-2 text-xs text-violet-600">{f.unit ?? "—"}</td>
-                    <td className="p-2 text-xs text-violet-600">{f.group ?? "—"}</td>
+                    <td className="p-2 text-xs text-[#0099A8]">{f.group ?? "—"}</td>
+                    <td className="p-2 font-mono text-xs text-violet-600">{f.code ?? "—"}</td>
                     <td className="p-2 text-xs text-muted-foreground">{classifierMap.get(f.col) ?? "—"}</td>
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">Cap camp</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Cap camp</td></tr>}
             </tbody>
           </table>
         </div>
