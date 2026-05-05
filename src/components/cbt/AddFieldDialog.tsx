@@ -18,6 +18,14 @@ interface Props {
   existsCol: (col: string) => boolean;
 }
 
+// Tipus dada: 0=Text, 1=Numèrica, 2=TaulaAssociada, 3=Data
+const TIPUS_DADA_OPTIONS = [
+  { value: "0", label: "0 – Text" },
+  { value: "1", label: "1 – Numèrica" },
+  { value: "2", label: "2 – Taula Associada" },
+  { value: "3", label: "3 – Data" },
+];
+
 const TYPES = ["Text", "Integer", "Number", "Boolean", "Date", "List"];
 
 function generateCbtName(name: string): string {
@@ -25,7 +33,7 @@ function generateCbtName(name: string): string {
 }
 
 export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editing, onSubmit, existsCol }: Props) {
-  const [code, setCode] = useState("");         // Codi Rosmiman (clau interna)
+  const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [isCls, setIsCls] = useState(false);
   // Revit
@@ -33,11 +41,12 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
   const [discipline, setDiscipline] = useState("");
   const [disciplineCustom, setDisciplineCustom] = useState("");
   const [activeRevit, setActiveRevit] = useState<"Y" | "N">("Y");
-  const [agrupCbt, setAgrupCbt] = useState<string>("");  // group = Agrupació CBT (Revit)
-  const [agrupCbtCustom, setAgrupCbtCustom] = useState("");
+  const [agrupRevit, setAgrupRevit] = useState<string>("");
+  const [agrupRevitCustom, setAgrupRevitCustom] = useState("");
+  const [grupTxt, setGrupTxt] = useState("");
   // Rosmiman
   const [taulaAssoc, setTaulaAssoc] = useState("");
-  const [tipusDada, setTipusDada] = useState("");        // category = Tipus dada
+  const [tipusDada, setTipusDada] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -49,40 +58,46 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
       setType(editing.type ?? "Text");
       setDiscipline(editing.discipline ?? ""); setDisciplineCustom("");
       setActiveRevit(editing.active ?? "Y");
-      setAgrupCbt(editing.group ?? ""); setAgrupCbtCustom("");
+      setAgrupRevit(editing.group ?? ""); setAgrupRevitCustom("");
+      setGrupTxt(editing.unit ?? "");
       setTaulaAssoc(editing.taulaAssoc ?? "");
       setTipusDada(editing.category ?? "");
     } else {
       setCode(""); setName(""); setIsCls(false); setType("Text");
       setDiscipline(""); setDisciplineCustom(""); setActiveRevit("Y");
-      setAgrupCbt(""); setAgrupCbtCustom("");
+      setAgrupRevit(""); setAgrupRevitCustom("");
+      setGrupTxt("");
       setTaulaAssoc(""); setTipusDada("");
     }
   }, [open, editing]);
 
   const cbtPreview = !isCls && name ? generateCbtName(name) : "";
-  const finalAgrupCbt = agrupCbt === "__new__" ? agrupCbtCustom.trim() : agrupCbt;
+  const finalAgrupRevit = agrupRevit === "__new__" ? agrupRevitCustom.trim() : agrupRevit;
   const finalDiscipline = discipline === "__new__" ? disciplineCustom.trim() : discipline;
+  const taulaAssocRequired = tipusDada === "2";
 
   const submit = () => {
     const C = code.trim().toUpperCase();
-    if (!C) return toast.error("El codi és obligatori");
-    if (C.length > 20) return toast.error("El codi no pot superar els 20 caràcters");
-    if (!/^[A-Z0-9_]+$/.test(C)) return toast.error("Codi no vàlid (només lletres, números i _)");
-    if (!editing && existsCol(C)) return toast.error("Aquest codi ja existeix");
+    if (C && C.length > 20) return toast.error("El codi no pot superar els 20 caràcters");
+    if (C && !/^[A-Z0-9_]+$/.test(C)) return toast.error("Codi no vàlid (només lletres, números i _)");
+    if (C && !editing && existsCol(C)) return toast.error("Aquest codi ja existeix");
     if (!name.trim()) return toast.error("El nom és obligatori");
+    if (taulaAssocRequired && !taulaAssoc.trim()) return toast.error("La taula associada és obligatòria quan el tipus dada és 'Taula Associada'");
+
+    // Per als camps sense codi, generem una clau interna basada en el nom
+    const colKey = C || ("CAMP_" + name.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + Date.now().toString().slice(-4));
 
     const f: FieldMeta = isCls
-      ? { col: C, name: name.trim(), cbt_name: null, type: null, unit: null, code: null, category: null, group: null, active: "Y", discipline: null, taulaAssoc: null, order: editing?.order ?? Date.now(), scope: "global" }
+      ? { col: colKey, name: name.trim(), cbt_name: null, type: null, unit: null, code: null, category: null, group: null, active: "Y", discipline: null, taulaAssoc: null, order: editing?.order ?? Date.now(), scope: "global" }
       : {
-          col: C,
+          col: colKey,
           name: name.trim(),
           cbt_name: cbtPreview || null,
           type,
-          unit: null,
-          code: C,
+          unit: grupTxt.trim() || null,
+          code: C || null,
           category: tipusDada.trim() || null,
-          group: finalAgrupCbt || null,
+          group: finalAgrupRevit || null,
           active: activeRevit,
           discipline: finalDiscipline || null,
           taulaAssoc: taulaAssoc.trim() || null,
@@ -98,9 +113,8 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{editing ? "Edita camp" : "Nou camp"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          {/* Codi + Nom — comuns */}
           <div className="space-y-1.5">
-            <Label>Codi *</Label>
+            <Label>Codi <span className="text-muted-foreground text-xs">(opcional, màx 20)</span></Label>
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s/g, ""))}
@@ -115,7 +129,6 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="ex. Potència nominal" />
           </div>
 
-          {/* Toggle classificador */}
           <div className="col-span-2 flex items-center gap-3 p-2 rounded-md bg-muted/40">
             <Switch checked={isCls} onCheckedChange={setIsCls} id="iscls" />
             <Label htmlFor="iscls" className="cursor-pointer">Camp classificador (capçalera de secció)</Label>
@@ -152,16 +165,20 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
                     </Select>
                     {discipline === "__new__" && <Input placeholder="Nova disciplina" value={disciplineCustom} onChange={(e) => setDisciplineCustom(e.target.value)} autoFocus />}
                   </div>
-                  <div className="col-span-2 space-y-1.5">
-                    <Label>Agrupació CBT</Label>
-                    <Select value={agrupCbt} onValueChange={setAgrupCbt}>
+                  <div className="space-y-1.5">
+                    <Label>Agrupació Revit</Label>
+                    <Select value={agrupRevit} onValueChange={setAgrupRevit}>
                       <SelectTrigger><SelectValue placeholder="Selecciona agrupació…" /></SelectTrigger>
                       <SelectContent>
                         {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
                         <SelectItem value="__new__">+ Nova agrupació…</SelectItem>
                       </SelectContent>
                     </Select>
-                    {agrupCbt === "__new__" && <Input placeholder="Nom de la nova agrupació" value={agrupCbtCustom} onChange={(e) => setAgrupCbtCustom(e.target.value)} autoFocus />}
+                    {agrupRevit === "__new__" && <Input placeholder="Nom de la nova agrupació" value={agrupRevitCustom} onChange={(e) => setAgrupRevitCustom(e.target.value)} autoFocus />}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Grup .txt</Label>
+                    <Input value={grupTxt} onChange={(e) => setGrupTxt(e.target.value)} placeholder="ex. Mecànica" />
                   </div>
                   <div className="col-span-2 flex items-center gap-3 p-2 rounded-md bg-[#0099A8]/5">
                     <Switch checked={activeRevit === "Y"} onCheckedChange={(v) => setActiveRevit(v ? "Y" : "N")} id="activerevit" />
@@ -179,11 +196,28 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
                 <div className="grid grid-cols-2 gap-3 pl-5 border-l-2 border-violet-200">
                   <div className="space-y-1.5">
                     <Label>Tipus dada</Label>
-                    <Input value={tipusDada} onChange={(e) => setTipusDada(e.target.value)} placeholder="ex. Alfanumèric, Numèric…" />
+                    <Select value={tipusDada} onValueChange={setTipusDada}>
+                      <SelectTrigger><SelectValue placeholder="Selecciona tipus…" /></SelectTrigger>
+                      <SelectContent>
+                        {TIPUS_DADA_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Taula associada</Label>
-                    <Input value={taulaAssoc} onChange={(e) => setTaulaAssoc(e.target.value)} placeholder="(opcional)" />
+                    <Label>
+                      Taula associada{taulaAssocRequired && <span className="text-destructive ml-1">*</span>}
+                    </Label>
+                    <Input
+                      value={taulaAssoc}
+                      onChange={(e) => setTaulaAssoc(e.target.value)}
+                      placeholder={taulaAssocRequired ? "Obligatori per a Taula Associada" : "(opcional)"}
+                      className={taulaAssocRequired && !taulaAssoc.trim() ? "border-destructive" : ""}
+                    />
+                    {taulaAssocRequired && !taulaAssoc.trim() && (
+                      <p className="text-xs text-destructive">Obligatori quan el tipus dada és Taula Associada</p>
+                    )}
                   </div>
                 </div>
               </div>

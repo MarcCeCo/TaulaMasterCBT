@@ -21,14 +21,33 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
   const result: FieldMeta[] = [];
   let currentClassifier: FieldMeta | null = null;
   let classifierAdded = false;
+  let currentChildren: FieldMeta[] = [];
+
+  const flushChildren = () => {
+    // Ordena: primer els sense codi, després per codi alfabètic
+    currentChildren.sort((a, b) => {
+      const ca = a.code ?? "";
+      const cb = b.code ?? "";
+      if (!ca && cb) return -1;
+      if (ca && !cb) return 1;
+      return ca.localeCompare(cb);
+    });
+    result.push(...currentChildren);
+    currentChildren = [];
+  };
+
   for (const f of fields) {
-    if (isClassifier(f)) { currentClassifier = f; classifierAdded = false; continue; }
+    if (isClassifier(f)) {
+      flushChildren();
+      currentClassifier = f; classifierAdded = false; continue;
+    }
     if (grp !== "__all__" && f.group !== grp) continue;
     if (cls !== "__all__" && currentClassifier?.name !== cls) continue;
     if (t && !((f.code ?? "").toLowerCase().includes(t) || (f.name ?? "").toLowerCase().includes(t) || (f.cbt_name ?? "").toLowerCase().includes(t))) continue;
     if (currentClassifier && !classifierAdded) { result.push(currentClassifier); classifierAdded = true; }
-    result.push(f);
+    currentChildren.push(f);
   }
+  flushChildren();
   return result;
 }
 
@@ -53,7 +72,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       "Tipus dada": f.category ?? "",
       CBT: f.cbt_name ?? "",
       "Format paràmetre": f.type ?? "",
-      "Agrupació CBT": f.group ?? "",
+      "Agrupació Revit": f.group ?? "",
+      "Grup .txt": f.unit ?? "",
       "Instància Revit": f.active,
       Disciplina: f.discipline ?? "",
     }));
@@ -75,22 +95,26 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         const codi = String(r["Codi"] ?? "").trim().toUpperCase();
         const cbt = String(r["CBT"] ?? "").trim();
         const format = String(r["Format paràmetre"] ?? "").trim();
-        const agrupCbt = String(r["Agrupació CBT"] ?? "").trim();
+        const agrupRevit = String(r["Agrupació Revit"] ?? r["Agrupació CBT"] ?? "").trim();
+        const grupTxt = String(r["Grup .txt"] ?? "").trim();
         const instancia = String(r["Instància Revit"] ?? "Y").trim();
         const disciplina = String(r["Disciplina"] ?? "").trim();
         const taulaAssoc = String(r["Taula associada"] ?? "").trim();
         const tipusDada = String(r["Tipus dada"] ?? "").trim();
         // Si només el nom té valor → classificador
-        const isClsRow = nom && !codi && !cbt && !format && !agrupCbt && !disciplina;
+        const isClsRow = nom && !codi && !cbt && !format && !agrupRevit && !disciplina;
         if (isClsRow) {
           const genCol = "CLS_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 10);
           if (exists(genCol)) return null;
           return { col: genCol, name: nom, cbt_name: null, type: null, unit: null, code: null, category: null, group: null, active: "Y" as const, discipline: null, taulaAssoc: null, order: Date.now() + i, scope: "global" };
         }
-        if (!codi || exists(codi)) return null;
+        if (!nom) return null;
+        // Permet camps sense codi (codi pot estar buit)
+        if (codi && exists(codi)) return null;
+        const colKey = codi || ("CAMP_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + (Date.now() + i).toString().slice(-4));
         return {
-          col: codi, name: nom || null, cbt_name: cbt || null, type: format || null, unit: null,
-          code: codi, category: tipusDada || null, group: agrupCbt || null,
+          col: colKey, name: nom || null, cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
+          code: codi || null, category: tipusDada || null, group: agrupRevit || null,
           active: (instancia === "N" ? "N" : "Y") as "Y" | "N",
           discipline: disciplina || null, taulaAssoc: taulaAssoc || null,
           order: Date.now() + i, scope: "global",
@@ -115,7 +139,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <Input placeholder="Cerca per codi, nom o CBT…" value={q} onChange={(e) => setQ(e.target.value)} />
           <Select value={grp} onValueChange={setGrp}>
-            <SelectTrigger><SelectValue placeholder="Agrupació CBT" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Totes les agrupacions</SelectItem>
               {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
@@ -160,7 +184,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
 
         <div className="border rounded-md flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/60 sticky top-0">
+            <thead className="bg-background sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
               <tr className="text-left">
                 <th className="p-2 font-semibold text-xs">Nom</th>
                 {/* Revit */}
@@ -168,7 +192,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Format par.</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Disciplina</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Instància</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació CBT</th>
+                <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació Revit</th>
+                <th className="p-2 font-semibold text-xs text-[#0099A8]">Grup .txt</th>
                 {/* Rosmiman */}
                 <th className="p-2 font-semibold text-xs text-violet-600 border-l-2 border-violet-200">Codi</th>
                 <th className="p-2 font-semibold text-xs text-violet-600">Taula assoc.</th>
@@ -180,7 +205,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
               {filtered.map((f) => {
                 const c = isClassifier(f);
                 return (
-                  <tr key={f.col} className={cn("border-t", c && "bg-accent/30 font-semibold", !c && f.active === "N" && "opacity-50")}>
+                  <tr key={f.col} className={cn("border-t", c && "bg-accent/30 font-semibold")}>
                     <td className="p-2">
                       <div>{f.name}</div>
                       {c && <Badge variant="outline" className="mt-0.5 text-[10px] uppercase tracking-wide">Classificador</Badge>}
@@ -191,6 +216,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                     <td className="p-2 text-xs">{f.discipline ?? "—"}</td>
                     <td className="p-2 text-xs font-mono">{c ? "—" : f.active}</td>
                     <td className="p-2 text-xs">{f.group ?? "—"}</td>
+                    <td className="p-2 text-xs">{f.unit ?? "—"}</td>
                     {/* Rosmiman */}
                     <td className="p-2 font-mono text-xs border-l-2 border-violet-100">{c ? "—" : (f.code ?? "—")}</td>
                     <td className="p-2 text-xs">{f.taulaAssoc ?? "—"}</td>
@@ -223,7 +249,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Cap camp al diccionari. Crea un camp nou o importa un Excel.</td></tr>
+                <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Cap camp al diccionari. Crea un camp nou o importa un Excel.</td></tr>
               )}
             </tbody>
           </table>
