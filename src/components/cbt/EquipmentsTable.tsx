@@ -47,14 +47,18 @@ const EquipmentRow = memo(function EquipmentRow({
         <div className="flex items-center gap-2">
           {isChild && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
           <LevelBadge level={level} />
-          <span className="font-mono text-xs">{e.gubimCode}</span>
+          <TooltipProvider><Tooltip>
+            <TooltipTrigger asChild>
+              <span className="font-mono text-xs cursor-default">{e.gubimCode}</span>
+            </TooltipTrigger>
+            {gubimName && <TooltipContent>{gubimName}</TooltipContent>}
+          </Tooltip></TooltipProvider>
           {!gubimName && (
             <TooltipProvider><Tooltip>
               <TooltipTrigger asChild><AlertTriangle className="h-3.5 w-3.5 text-amber-500" /></TooltipTrigger>
               <TooltipContent>Codi GuBIMClass no trobat</TooltipContent>
             </Tooltip></TooltipProvider>
           )}
-          <span className="truncate text-xs text-muted-foreground">{gubimName}</span>
           {isSharedCode && isFirstInGroup && (
             <TooltipProvider><Tooltip>
               <TooltipTrigger asChild>
