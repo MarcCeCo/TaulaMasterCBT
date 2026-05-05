@@ -51,8 +51,6 @@ function autoAssignParents(list: Equipment[]): Equipment[] {
   return list.map((e) => patches.has(e.id) ? { ...e, parentEquipCode: patches.get(e.id)! } : e);
 }
 
-const KEY = "cbt.equipments.v1";
-
 const SEED: Equipment[] = [
   {
     id: uid(),
