@@ -21,14 +21,33 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
   const result: FieldMeta[] = [];
   let currentClassifier: FieldMeta | null = null;
   let classifierAdded = false;
+  let currentChildren: FieldMeta[] = [];
+
+  const flushChildren = () => {
+    // Ordena: primer els sense codi, després per codi alfabètic
+    currentChildren.sort((a, b) => {
+      const ca = a.code ?? "";
+      const cb = b.code ?? "";
+      if (!ca && cb) return -1;
+      if (ca && !cb) return 1;
+      return ca.localeCompare(cb);
+    });
+    result.push(...currentChildren);
+    currentChildren = [];
+  };
+
   for (const f of fields) {
-    if (isClassifier(f)) { currentClassifier = f; classifierAdded = false; continue; }
+    if (isClassifier(f)) {
+      flushChildren();
+      currentClassifier = f; classifierAdded = false; continue;
+    }
     if (grp !== "__all__" && f.group !== grp) continue;
     if (cls !== "__all__" && currentClassifier?.name !== cls) continue;
     if (t && !((f.code ?? "").toLowerCase().includes(t) || (f.name ?? "").toLowerCase().includes(t) || (f.cbt_name ?? "").toLowerCase().includes(t))) continue;
     if (currentClassifier && !classifierAdded) { result.push(currentClassifier); classifierAdded = true; }
-    result.push(f);
+    currentChildren.push(f);
   }
+  flushChildren();
   return result;
 }
 
@@ -89,9 +108,12 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           if (exists(genCol)) return null;
           return { col: genCol, name: nom, cbt_name: null, type: null, unit: null, code: null, category: null, group: null, active: "Y" as const, discipline: null, taulaAssoc: null, order: Date.now() + i, scope: "global" };
         }
-        if (!codi || exists(codi)) return null;
+        if (!nom) return null;
+        // Permet camps sense codi (codi pot estar buit)
+        if (codi && exists(codi)) return null;
+        const colKey = codi || ("CAMP_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + (Date.now() + i).toString().slice(-4));
         return {
-          col: codi, name: nom || null, cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
+          col: colKey, name: nom || null, cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
           code: codi || null, category: tipusDada || null, group: agrupRevit || null,
           active: (instancia === "N" ? "N" : "Y") as "Y" | "N",
           discipline: disciplina || null, taulaAssoc: taulaAssoc || null,
@@ -162,7 +184,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
 
         <div className="border rounded-md flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/60 sticky top-0">
+            <thead className="bg-background sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
               <tr className="text-left">
                 <th className="p-2 font-semibold text-xs">Nom</th>
                 {/* Revit */}
@@ -183,7 +205,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
               {filtered.map((f) => {
                 const c = isClassifier(f);
                 return (
-                  <tr key={f.col} className={cn("border-t", c && "bg-accent/30 font-semibold", !c && f.active === "N" && "opacity-50")}>
+                  <tr key={f.col} className={cn("border-t", c && "bg-accent/30 font-semibold")}>
                     <td className="p-2">
                       <div>{f.name}</div>
                       {c && <Badge variant="outline" className="mt-0.5 text-[10px] uppercase tracking-wide">Classificador</Badge>}
