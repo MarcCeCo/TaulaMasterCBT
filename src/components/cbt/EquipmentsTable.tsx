@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Download, Eye, Pencil, Plus, Trash2, Upload, Search, ChevronRight } from "lucide-react";
+import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, ChevronRight } from "lucide-react";
 import { Equipment, useEquipments } from "@/hooks/useEquipments";
 import { useGubimClass, codeLevel, parentCode } from "@/hooks/useGubimClass";
 import { useFields } from "@/hooks/useFields";
@@ -16,18 +16,34 @@ import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
+// Colors per als grups de codi compartit (ciclics)
+const GROUP_COLORS = [
+  "border-l-violet-500 bg-violet-50/60 dark:bg-violet-950/30",
+  "border-l-sky-500 bg-sky-50/60 dark:bg-sky-950/30",
+  "border-l-amber-500 bg-amber-50/60 dark:bg-amber-950/30",
+  "border-l-rose-500 bg-rose-50/60 dark:bg-rose-950/30",
+  "border-l-teal-500 bg-teal-50/60 dark:bg-teal-950/30",
+  "border-l-fuchsia-500 bg-fuchsia-50/60 dark:bg-fuchsia-950/30",
+];
+
 const EquipmentRow = memo(function EquipmentRow({
   e, gubimName, parentName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
+  isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth,
 }: {
   e: Equipment; gubimName: string; parentName: string; level: 1|2|3|4;
   onEdit: () => void; onDelete: () => void; onView: () => void;
   fieldCount: number; orphanCols: string[]; isChild: boolean;
+  isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
+  childDepth: number; // 0 = equip mare, 1+ = component fill
 }) {
-  const indent = ["pl-2", "pl-5", "pl-8", "pl-11"][level - 1];
+  const gubimIndent = ["pl-2", "pl-5", "pl-8", "pl-11"][level - 1];
+  // Tabulació addicional per jerarquia d'equips (components)
+  const childIndentPx = childDepth * 20;
   const hasOrphans = orphanCols.length > 0;
+  const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
   return (
-    <tr className={cn("border-t hover:bg-muted/40 cursor-pointer", isChild && "bg-muted/20")} onClick={onView}>
-      <td className={cn("p-2", indent)}>
+    <tr className={cn("border-t hover:bg-muted/40 cursor-pointer", isChild && !isSharedCode && "bg-muted/20", groupClass)} onClick={onView}>
+      <td className={cn("p-2", gubimIndent)}>
         <div className="flex items-center gap-2">
           {isChild && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
           <LevelBadge level={level} />
@@ -39,11 +55,36 @@ const EquipmentRow = memo(function EquipmentRow({
             </Tooltip></TooltipProvider>
           )}
           <span className="truncate text-xs text-muted-foreground">{gubimName}</span>
+          {isSharedCode && isFirstInGroup && (
+            <TooltipProvider><Tooltip>
+              <TooltipTrigger asChild>
+                <Badge className="gap-1 text-[10px] px-1.5 py-0 bg-violet-600 hover:bg-violet-600 text-white border-transparent">
+                  <Layers className="h-2.5 w-2.5" />{groupSize}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{groupSize} equips comparteixen aquest codi GuBIMClass (components d&apos;equip mare)</p>
+              </TooltipContent>
+            </Tooltip></TooltipProvider>
+          )}
         </div>
         {parentName && <div className="text-[11px] text-muted-foreground pl-10 truncate">↳ {parentName}</div>}
       </td>
-      <td className="p-2 font-mono text-xs">{e.equipCode || <span className="text-muted-foreground italic">—</span>}</td>
-      <td className="p-2 font-medium text-sm">{e.equipName}</td>
+      <td className="p-2 font-mono text-xs">
+        {e.equipCode || <span className="text-muted-foreground italic">—</span>}
+      </td>
+      {/* Nom equip amb tabulació per jerarquia de components */}
+      <td className="p-2 font-medium text-sm">
+        <div className="flex items-center gap-1" style={{ paddingLeft: childIndentPx }}>
+          {childDepth > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+          {e.equipName}
+        </div>
+        {childDepth > 0 && e.parentEquipCode && (
+          <div className="text-[10px] text-muted-foreground font-normal" style={{ paddingLeft: childIndentPx + 16 }}>
+            ↳ {e.parentEquipCode}
+          </div>
+        )}
+      </td>
       <td className="p-2">
         {e.needsTable ? <Badge className="bg-emerald-600 hover:bg-emerald-600 text-xs">Sí</Badge> : <Badge variant="secondary" className="text-xs">No</Badge>}
       </td>
@@ -98,21 +139,55 @@ export function EquipmentsTable() {
   const [viewing, setViewing] = useState<Equipment | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Ordena: primer per gubimCode, dins del mateix codi el pare primer, fills després
+  // Construeix la llista ordenada jeràrquicament:
+  // 1. Ordena per gubimCode, després per equipCode
+  // 2. Per cada grup de gubimCode: pares primer (sense parentEquipCode), fills immediatament després del seu pare (recursiu)
   const sorted = useMemo(() => {
-    return [...items].sort((a, b) => {
+    const base = [...items].sort((a, b) => {
       if (a.gubimCode !== b.gubimCode) return a.gubimCode.localeCompare(b.gubimCode);
-      // Dins del mateix gubimCode: sense pare primer, amb pare (fills) després
-      if (!a.parentEquipCode && b.parentEquipCode) return -1;
-      if (a.parentEquipCode && !b.parentEquipCode) return 1;
-      return a.equipName.localeCompare(b.equipName);
+      return a.equipCode.localeCompare(b.equipCode);
     });
+
+    // Construeix un arbre per inserir fills immediatament sota el pare
+    const result: { equip: Equipment; depth: number }[] = [];
+    const byCode = new Map(base.map((e) => [e.equipCode, e]));
+    const added = new Set<string>();
+
+    function insertWithChildren(e: Equipment, depth: number) {
+      if (added.has(e.id)) return;
+      added.add(e.id);
+      result.push({ equip: e, depth });
+      // Fills directes d'aquest equip, ordenats per equipCode
+      const children = base.filter(
+        (c) => c.parentEquipCode === e.equipCode && c.gubimCode === e.gubimCode && !added.has(c.id)
+      );
+      children.forEach((c) => insertWithChildren(c, depth + 1));
+    }
+
+    // Processa per grups de gubimCode, pares primer
+    const byGubim = new Map<string, Equipment[]>();
+    base.forEach((e) => {
+      const list = byGubim.get(e.gubimCode) ?? [];
+      list.push(e);
+      byGubim.set(e.gubimCode, list);
+    });
+
+    byGubim.forEach((group) => {
+      // Pares (sense parentEquipCode o parentEquipCode no trobat dins el grup)
+      const groupCodes = new Set(group.map((e) => e.equipCode));
+      const roots = group.filter((e) => !e.parentEquipCode || !groupCodes.has(e.parentEquipCode));
+      roots.forEach((r) => insertWithChildren(r, 0));
+      // Qualsevol que hagi quedat sense processar (cicles o refs trencades)
+      group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));
+    });
+
+    return result;
   }, [items]);
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return sorted;
-    return sorted.filter((e) =>
+    return sorted.filter(({ equip: e }) =>
       e.equipCode.toLowerCase().includes(t) ||
       e.equipName.toLowerCase().includes(t) ||
       e.gubimCode.includes(t) ||
@@ -194,6 +269,22 @@ export function EquipmentsTable() {
     } catch { toast.error("Error en importar"); }
   };
 
+  // Calcula quins codis gubim es repeteixen i assigna índex de grup
+  const sharedCodeInfo = useMemo(() => {
+    const countByCode = new Map<string, number>();
+    filtered.forEach(({ equip: e }) => countByCode.set(e.gubimCode, (countByCode.get(e.gubimCode) ?? 0) + 1));
+    const colorIdxByCode = new Map<string, number>();
+    let colorIdx = 0;
+    filtered.forEach(({ equip: e }) => {
+      if ((countByCode.get(e.gubimCode) ?? 0) > 1 && !colorIdxByCode.has(e.gubimCode)) {
+        colorIdxByCode.set(e.gubimCode, colorIdx++);
+      }
+    });
+    return { countByCode, colorIdxByCode };
+  }, [filtered]);
+
+  const seenGroupCodes = new Set<string>();
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -224,7 +315,7 @@ export function EquipmentsTable() {
 
       <div className="border rounded-md overflow-auto bg-card">
         <table className="w-full text-sm">
-          <thead className="bg-muted/60 sticky top-0">
+          <thead className="sticky top-0 z-10 bg-muted border-b">
             <tr className="text-left">
               <th className="p-2 min-w-[260px] text-xs font-semibold">GuBIMClass</th>
               <th className="p-2 text-xs font-semibold">Codi equip</th>
@@ -237,13 +328,18 @@ export function EquipmentsTable() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((e) => {
+            {filtered.map(({ equip: e, depth }) => {
               const node = nodeMap.get(e.gubimCode);
               const lvl = (node ? codeLevel(node.code) : 1) as 1|2|3|4;
               const pc = node ? parentCode(node.code) : null;
               const parent = pc ? nodeMap.get(pc) : null;
               const orphanCols = e.fieldCols.filter((c) => !fieldMap.has(c));
               const isChild = !!e.parentEquipCode;
+              const groupSize = sharedCodeInfo.countByCode.get(e.gubimCode) ?? 1;
+              const isSharedCode = groupSize > 1;
+              const groupColorIdx = sharedCodeInfo.colorIdxByCode.get(e.gubimCode) ?? 0;
+              const isFirstInGroup = isSharedCode && !seenGroupCodes.has(e.gubimCode);
+              if (isSharedCode) seenGroupCodes.add(e.gubimCode);
               return (
                 <EquipmentRow
                   key={e.id} e={e}
@@ -251,6 +347,11 @@ export function EquipmentsTable() {
                   parentName={parent ? `${parent.code} · ${parent.name}` : ""}
                   level={lvl} fieldCount={e.fieldCols.length}
                   orphanCols={orphanCols} isChild={isChild}
+                  isSharedCode={isSharedCode}
+                  groupColorIdx={groupColorIdx}
+                  isFirstInGroup={isFirstInGroup}
+                  groupSize={groupSize}
+                  childDepth={depth}
                   onView={() => { setViewing(e); setDetailOpen(true); }}
                   onEdit={(ev?: any) => { if(ev) ev.stopPropagation?.(); setEditing(e); setFormOpen(true); }}
                   onDelete={() => { remove(e.id); toast.success("Equip esborrat"); }}
@@ -276,6 +377,20 @@ export function EquipmentsTable() {
         equipment={viewing} nodeMap={nodeMap} fieldMap={fieldMap} fields={fields}
         onEdit={() => { setDetailOpen(false); setEditing(viewing); setFormOpen(true); }}
       />
+
+      {/* Llegenda: codis compartits */}
+      {Array.from(sharedCodeInfo.colorIdxByCode.entries()).length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground pt-1">
+          <Layers className="h-3.5 w-3.5 shrink-0" />
+          <span className="font-medium">Codis GuBIMClass compartits (components d&apos;equip mare):</span>
+          {Array.from(sharedCodeInfo.colorIdxByCode.entries()).map(([code, idx]) => (
+            <span key={code} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border-l-4 ${GROUP_COLORS[idx % GROUP_COLORS.length]}`}>
+              <span className="font-mono">{code}</span>
+              <span className="text-muted-foreground">({sharedCodeInfo.countByCode.get(code)} equips)</span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

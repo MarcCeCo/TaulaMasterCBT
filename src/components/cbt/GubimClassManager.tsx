@@ -5,7 +5,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Download, Pencil, Trash2, Upload, Search, X } from "lucide-react";
+import { ChevronRight, Download, Pencil, Trash2, Upload, Search, X } from "lucide-react";
 import { GubimNode, codeLevel, isValidCode, parentCode, useGubimClass } from "@/hooks/useGubimClass";
 import { LevelBadge } from "./LevelBadge";
 import { uid } from "@/lib/storage";
@@ -166,7 +166,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
 
         <div className="border rounded-md flex-1 overflow-auto">
           <table className="w-full text-sm">
-            <thead className="bg-muted/60 sticky top-0">
+            <thead className="sticky top-0 z-10 bg-muted border-b">
               <tr className="text-left">
                 <th className="p-2 text-xs font-semibold">Codi</th>
                 <th className="p-2 text-xs font-semibold">Nom</th>
@@ -176,17 +176,31 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((n) => {
-                const lvl = codeLevel(n.code);
-                const indent = ["pl-2", "pl-6", "pl-10", "pl-14"][lvl - 1];
-                const pc = parentCode(n.code);
-                const parent = pc ? nodeMap.get(pc) : null;
-                const hasC = hasChildren(n.code);
-                const isEditing = editing?.id === n.id;
-                return (
-                  <tr key={n.id} className={cn("border-t hover:bg-muted/30", isEditing && "bg-accent/40")}>
-                    <td className={cn("p-2 font-mono text-xs", indent)}>{n.code}</td>
-                    <td className="p-2">{n.name}</td>
+              {(() => {
+                // Detecta codis de nivell 4 repetits
+                const lvl4Codes = filtered.map((n) => n.code).filter((c) => codeLevel(c) === 4);
+                const repeatedLvl4 = new Set(lvl4Codes.filter((c, i) => lvl4Codes.indexOf(c) !== i));
+                const seenLvl4 = new Set<string>();
+                return filtered.map((n) => {
+                  const lvl = codeLevel(n.code);
+                  const indent = ["pl-2", "pl-6", "pl-10", "pl-14"][lvl - 1];
+                  const pc = parentCode(n.code);
+                  const parent = pc ? nodeMap.get(pc) : null;
+                  const hasC = hasChildren(n.code);
+                  const isEditing = editing?.id === n.id;
+                  // Tabulació extra al nom: només per codis de nivell 4 repetits (components)
+                  const isRepeatedLvl4 = lvl === 4 && repeatedLvl4.has(n.code);
+                  const isComponent = isRepeatedLvl4 && seenLvl4.has(n.code);
+                  if (isRepeatedLvl4) seenLvl4.add(n.code);
+                  return (
+                    <tr key={n.id} className={cn("border-t hover:bg-muted/30", isEditing && "bg-accent/40")}>
+                      <td className={cn("p-2 font-mono text-xs", indent)}>{n.code}</td>
+                      <td className="p-2">
+                        <div className={cn("flex items-center gap-1", isComponent && "pl-5")}>
+                          {isComponent && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+                          {n.name}
+                        </div>
+                      </td>
                     <td className="p-2"><LevelBadge level={lvl} /></td>
                     <td className="p-2 text-xs text-muted-foreground">{parent ? `${parent.code} · ${parent.name}` : "—"}</td>
                     <td className="p-2">
@@ -227,7 +241,8 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                     </td>
                   </tr>
                 );
-              })}
+                });
+              })()}
               {filtered.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Cap node</td></tr>}
             </tbody>
           </table>
