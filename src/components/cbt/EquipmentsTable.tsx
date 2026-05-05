@@ -28,19 +28,22 @@ const GROUP_COLORS = [
 
 const EquipmentRow = memo(function EquipmentRow({
   e, gubimName, parentName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
-  isSharedCode, groupColorIdx, isFirstInGroup, groupSize,
+  isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth,
 }: {
   e: Equipment; gubimName: string; parentName: string; level: 1|2|3|4;
   onEdit: () => void; onDelete: () => void; onView: () => void;
   fieldCount: number; orphanCols: string[]; isChild: boolean;
   isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
+  childDepth: number; // 0 = equip mare, 1+ = component fill
 }) {
-  const indent = ["pl-2", "pl-5", "pl-8", "pl-11"][level - 1];
+  const gubimIndent = ["pl-2", "pl-5", "pl-8", "pl-11"][level - 1];
+  // Tabulació addicional per jerarquia d'equips (components)
+  const childIndentPx = childDepth * 20;
   const hasOrphans = orphanCols.length > 0;
   const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
   return (
     <tr className={cn("border-t hover:bg-muted/40 cursor-pointer", isChild && !isSharedCode && "bg-muted/20", groupClass)} onClick={onView}>
-      <td className={cn("p-2", indent)}>
+      <td className={cn("p-2", gubimIndent)}>
         <div className="flex items-center gap-2">
           {isChild && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
           <LevelBadge level={level} />
@@ -67,8 +70,21 @@ const EquipmentRow = memo(function EquipmentRow({
         </div>
         {parentName && <div className="text-[11px] text-muted-foreground pl-10 truncate">↳ {parentName}</div>}
       </td>
-      <td className="p-2 font-mono text-xs">{e.equipCode || <span className="text-muted-foreground italic">—</span>}</td>
-      <td className="p-2 font-medium text-sm">{e.equipName}</td>
+      {/* Codi equip amb tabulació per jerarquia de components */}
+      <td className="p-2 font-mono text-xs">
+        <div className="flex items-center gap-1" style={{ paddingLeft: childIndentPx }}>
+          {childDepth > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+          {e.equipCode || <span className="text-muted-foreground italic">—</span>}
+        </div>
+        {childDepth > 0 && e.parentEquipCode && (
+          <div className="text-[10px] text-muted-foreground" style={{ paddingLeft: childIndentPx + 16 }}>
+            ↳ {e.parentEquipCode}
+          </div>
+        )}
+      </td>
+      <td className="p-2 font-medium text-sm">
+        <div style={{ paddingLeft: childIndentPx }}>{e.equipName}</div>
+      </td>
       <td className="p-2">
         {e.needsTable ? <Badge className="bg-emerald-600 hover:bg-emerald-600 text-xs">Sí</Badge> : <Badge variant="secondary" className="text-xs">No</Badge>}
       </td>
@@ -123,21 +139,55 @@ export function EquipmentsTable() {
   const [viewing, setViewing] = useState<Equipment | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Ordena: primer per gubimCode, dins del mateix codi el pare primer, fills després
+  // Construeix la llista ordenada jeràrquicament:
+  // 1. Ordena per gubimCode, després per equipCode
+  // 2. Per cada grup de gubimCode: pares primer (sense parentEquipCode), fills immediatament després del seu pare (recursiu)
   const sorted = useMemo(() => {
-    return [...items].sort((a, b) => {
+    const base = [...items].sort((a, b) => {
       if (a.gubimCode !== b.gubimCode) return a.gubimCode.localeCompare(b.gubimCode);
-      // Dins del mateix gubimCode: sense pare primer, amb pare (fills) després
-      if (!a.parentEquipCode && b.parentEquipCode) return -1;
-      if (a.parentEquipCode && !b.parentEquipCode) return 1;
-      return a.equipName.localeCompare(b.equipName);
+      return a.equipCode.localeCompare(b.equipCode);
     });
+
+    // Construeix un arbre per inserir fills immediatament sota el pare
+    const result: { equip: Equipment; depth: number }[] = [];
+    const byCode = new Map(base.map((e) => [e.equipCode, e]));
+    const added = new Set<string>();
+
+    function insertWithChildren(e: Equipment, depth: number) {
+      if (added.has(e.id)) return;
+      added.add(e.id);
+      result.push({ equip: e, depth });
+      // Fills directes d'aquest equip, ordenats per equipCode
+      const children = base.filter(
+        (c) => c.parentEquipCode === e.equipCode && c.gubimCode === e.gubimCode && !added.has(c.id)
+      );
+      children.forEach((c) => insertWithChildren(c, depth + 1));
+    }
+
+    // Processa per grups de gubimCode, pares primer
+    const byGubim = new Map<string, Equipment[]>();
+    base.forEach((e) => {
+      const list = byGubim.get(e.gubimCode) ?? [];
+      list.push(e);
+      byGubim.set(e.gubimCode, list);
+    });
+
+    byGubim.forEach((group) => {
+      // Pares (sense parentEquipCode o parentEquipCode no trobat dins el grup)
+      const groupCodes = new Set(group.map((e) => e.equipCode));
+      const roots = group.filter((e) => !e.parentEquipCode || !groupCodes.has(e.parentEquipCode));
+      roots.forEach((r) => insertWithChildren(r, 0));
+      // Qualsevol que hagi quedat sense processar (cicles o refs trencades)
+      group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));
+    });
+
+    return result;
   }, [items]);
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return sorted;
-    return sorted.filter((e) =>
+    return sorted.filter(({ equip: e }) =>
       e.equipCode.toLowerCase().includes(t) ||
       e.equipName.toLowerCase().includes(t) ||
       e.gubimCode.includes(t) ||
@@ -222,10 +272,10 @@ export function EquipmentsTable() {
   // Calcula quins codis gubim es repeteixen i assigna índex de grup
   const sharedCodeInfo = useMemo(() => {
     const countByCode = new Map<string, number>();
-    filtered.forEach((e) => countByCode.set(e.gubimCode, (countByCode.get(e.gubimCode) ?? 0) + 1));
+    filtered.forEach(({ equip: e }) => countByCode.set(e.gubimCode, (countByCode.get(e.gubimCode) ?? 0) + 1));
     const colorIdxByCode = new Map<string, number>();
     let colorIdx = 0;
-    filtered.forEach((e) => {
+    filtered.forEach(({ equip: e }) => {
       if ((countByCode.get(e.gubimCode) ?? 0) > 1 && !colorIdxByCode.has(e.gubimCode)) {
         colorIdxByCode.set(e.gubimCode, colorIdx++);
       }
@@ -278,7 +328,7 @@ export function EquipmentsTable() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((e) => {
+            {filtered.map(({ equip: e, depth }) => {
               const node = nodeMap.get(e.gubimCode);
               const lvl = (node ? codeLevel(node.code) : 1) as 1|2|3|4;
               const pc = node ? parentCode(node.code) : null;
@@ -301,6 +351,7 @@ export function EquipmentsTable() {
                   groupColorIdx={groupColorIdx}
                   isFirstInGroup={isFirstInGroup}
                   groupSize={groupSize}
+                  childDepth={depth}
                   onView={() => { setViewing(e); setDetailOpen(true); }}
                   onEdit={(ev?: any) => { if(ev) ev.stopPropagation?.(); setEditing(e); setFormOpen(true); }}
                   onDelete={() => { remove(e.id); toast.success("Equip esborrat"); }}
