@@ -1,4 +1,7 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { useEffect } from "react";
+
+// Importem el CSS directament — imprescindible per Tailwind v4 en mode SPA
 import "../styles.css";
 
 function NotFoundComponent() {
