@@ -1,18 +1,14 @@
 import { useCallback, useMemo } from "react";
-import { BASE_FIELDS, FieldMeta, sortByClassification } from "@/lib/fields";
+import { FieldMeta, sortByClassification } from "@/lib/fields";
 import { useDebouncedLocalStorage } from "@/lib/storage";
 
-const KEY = "cbt.customFields.v1";
+// Ja no hi ha camps base: tot el diccionari és personalitzat
+const KEY_CUSTOM = "cbt.customFields.v2";
 
 export function useFields() {
-  const [custom, setCustom] = useDebouncedLocalStorage<FieldMeta[]>(KEY, []);
+  const [custom, setCustom] = useDebouncedLocalStorage<FieldMeta[]>(KEY_CUSTOM, []);
 
-  const baseCols = useMemo(() => new Set(BASE_FIELDS.map((f) => f.col)), []);
-
-  const fields = useMemo(() => {
-    const merged = [...BASE_FIELDS, ...custom.filter((c) => !baseCols.has(c.col))];
-    return sortByClassification(merged);
-  }, [custom, baseCols]);
+  const fields = useMemo(() => sortByClassification(custom), [custom]);
 
   const fieldMap = useMemo(() => {
     const m = new Map<string, FieldMeta>();
@@ -21,7 +17,7 @@ export function useFields() {
   }, [fields]);
 
   const exists = useCallback((col: string) => fieldMap.has(col.toUpperCase()), [fieldMap]);
-  const isCustom = useCallback((col: string) => !baseCols.has(col), [baseCols]);
+  const isCustom = useCallback((_col: string) => true, []);
 
   const addField = useCallback(
     (f: FieldMeta) => {
@@ -35,7 +31,7 @@ export function useFields() {
   const addMany = useCallback(
     (arr: FieldMeta[]) => {
       setCustom((prev) => {
-        const seen = new Set([...BASE_FIELDS.map((b) => b.col), ...prev.map((p) => p.col)]);
+        const seen = new Set(prev.map((p) => p.col));
         const toAdd = arr
           .map((f) => ({ ...f, col: f.col.toUpperCase() }))
           .filter((f) => f.col && !seen.has(f.col));
