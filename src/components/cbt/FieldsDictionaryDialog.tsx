@@ -53,7 +53,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       "Tipus dada": f.category ?? "",
       CBT: f.cbt_name ?? "",
       "Format paràmetre": f.type ?? "",
-      "Agrupació CBT": f.group ?? "",
+      "Agrupació Revit": f.group ?? "",
+      "Grup .txt": f.unit ?? "",
       "Instància Revit": f.active,
       Disciplina: f.discipline ?? "",
     }));
@@ -75,13 +76,14 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         const codi = String(r["Codi"] ?? "").trim().toUpperCase();
         const cbt = String(r["CBT"] ?? "").trim();
         const format = String(r["Format paràmetre"] ?? "").trim();
-        const agrupCbt = String(r["Agrupació CBT"] ?? "").trim();
+        const agrupRevit = String(r["Agrupació Revit"] ?? r["Agrupació CBT"] ?? "").trim();
+        const grupTxt = String(r["Grup .txt"] ?? "").trim();
         const instancia = String(r["Instància Revit"] ?? "Y").trim();
         const disciplina = String(r["Disciplina"] ?? "").trim();
         const taulaAssoc = String(r["Taula associada"] ?? "").trim();
         const tipusDada = String(r["Tipus dada"] ?? "").trim();
         // Si només el nom té valor → classificador
-        const isClsRow = nom && !codi && !cbt && !format && !agrupCbt && !disciplina;
+        const isClsRow = nom && !codi && !cbt && !format && !agrupRevit && !disciplina;
         if (isClsRow) {
           const genCol = "CLS_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 10);
           if (exists(genCol)) return null;
@@ -89,8 +91,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         }
         if (!codi || exists(codi)) return null;
         return {
-          col: codi, name: nom || null, cbt_name: cbt || null, type: format || null, unit: null,
-          code: codi, category: tipusDada || null, group: agrupCbt || null,
+          col: codi, name: nom || null, cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
+          code: codi || null, category: tipusDada || null, group: agrupRevit || null,
           active: (instancia === "N" ? "N" : "Y") as "Y" | "N",
           discipline: disciplina || null, taulaAssoc: taulaAssoc || null,
           order: Date.now() + i, scope: "global",
@@ -115,7 +117,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <Input placeholder="Cerca per codi, nom o CBT…" value={q} onChange={(e) => setQ(e.target.value)} />
           <Select value={grp} onValueChange={setGrp}>
-            <SelectTrigger><SelectValue placeholder="Agrupació CBT" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Totes les agrupacions</SelectItem>
               {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
@@ -168,7 +170,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Format par.</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Disciplina</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Instància</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació CBT</th>
+                <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació Revit</th>
+                <th className="p-2 font-semibold text-xs text-[#0099A8]">Grup .txt</th>
                 {/* Rosmiman */}
                 <th className="p-2 font-semibold text-xs text-violet-600 border-l-2 border-violet-200">Codi</th>
                 <th className="p-2 font-semibold text-xs text-violet-600">Taula assoc.</th>
@@ -191,6 +194,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                     <td className="p-2 text-xs">{f.discipline ?? "—"}</td>
                     <td className="p-2 text-xs font-mono">{c ? "—" : f.active}</td>
                     <td className="p-2 text-xs">{f.group ?? "—"}</td>
+                    <td className="p-2 text-xs">{f.unit ?? "—"}</td>
                     {/* Rosmiman */}
                     <td className="p-2 font-mono text-xs border-l-2 border-violet-100">{c ? "—" : (f.code ?? "—")}</td>
                     <td className="p-2 text-xs">{f.taulaAssoc ?? "—"}</td>
@@ -223,7 +227,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                 );
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={10} className="p-8 text-center text-muted-foreground">Cap camp al diccionari. Crea un camp nou o importa un Excel.</td></tr>
+                <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Cap camp al diccionari. Crea un camp nou o importa un Excel.</td></tr>
               )}
             </tbody>
           </table>

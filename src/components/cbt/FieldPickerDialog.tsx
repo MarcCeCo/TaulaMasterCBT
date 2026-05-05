@@ -106,7 +106,8 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
                 <th className="text-left p-2 text-xs font-semibold">Nom</th>
                 <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Format</th>
                 <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Disciplina</th>
-                <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Agrupació CBT</th>
+                <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Agrupació Revit</th>
+                <th className="text-left p-2 text-xs font-semibold text-[#0099A8]">Grup .txt</th>
                 <th className="text-left p-2 text-xs font-semibold text-violet-600">Codi</th>
                 <th className="text-left p-2 text-xs font-semibold">Classificador</th>
               </tr>
@@ -123,12 +124,13 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
                     <td className="p-2 text-xs text-[#0099A8]">{f.type ?? "—"}</td>
                     <td className="p-2 text-xs text-[#0099A8]">{f.discipline ?? "—"}</td>
                     <td className="p-2 text-xs text-[#0099A8]">{f.group ?? "—"}</td>
+                    <td className="p-2 text-xs text-[#0099A8]">{f.unit ?? "—"}</td>
                     <td className="p-2 font-mono text-xs text-violet-600">{f.code ?? "—"}</td>
                     <td className="p-2 text-xs text-muted-foreground">{classifierMap.get(f.col) ?? "—"}</td>
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={7} className="p-6 text-center text-muted-foreground">Cap camp</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">Cap camp</td></tr>}
             </tbody>
           </table>
         </div>
