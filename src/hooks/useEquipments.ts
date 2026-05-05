@@ -16,6 +16,41 @@ export type Equipment = {
 
 const KEY = "cbt.equipments.v1";
 
+// Retorna true si el codi GuBIMClass és de nivell 4 (XX.XX.XX.XX)
+const isLevel4 = (code: string) => code.split(".").length === 4;
+
+// Dona la llista actualitzada amb el parentEquipCode assignat automàticament:
+// Per cada grup de guinimCode nivell 4, el primer equip (createdAt més antic) és el pare,
+// i tots els altres (que no tinguin ja un pare manual) apunten a ell.
+function autoAssignParents(list: Equipment[]): Equipment[] {
+  // Agrupa per gubimCode de nivell 4
+  const groups = new Map<string, Equipment[]>();
+  list.forEach((e) => {
+    if (!isLevel4(e.gubimCode)) return;
+    const g = groups.get(e.gubimCode) ?? [];
+    g.push(e);
+    groups.set(e.gubimCode, g);
+  });
+
+  // Construeix un mapa de canvis: id -> parentEquipCode
+  const patches = new Map<string, string>();
+  groups.forEach((group) => {
+    if (group.length < 2) return;
+    // Ordena per createdAt per determinar el pare (el més antic)
+    const sorted = [...group].sort((a, b) => a.createdAt - b.createdAt);
+    const pare = sorted[0];
+    sorted.slice(1).forEach((child) => {
+      // Només assigna si no té un pare ja definit manualment
+      if (!child.parentEquipCode && pare.equipCode) {
+        patches.set(child.id, pare.equipCode);
+      }
+    });
+  });
+
+  if (patches.size === 0) return list;
+  return list.map((e) => patches.has(e.id) ? { ...e, parentEquipCode: patches.get(e.id)! } : e);
+}
+
 const SEED: Equipment[] = [
   {
     id: uid(),
@@ -74,12 +109,10 @@ export function useEquipments() {
     (e: Equipment) => {
       setItems((prev) => {
         const idx = prev.findIndex((p) => p.id === e.id);
-        if (idx >= 0) {
-          const copy = [...prev];
-          copy[idx] = e;
-          return copy;
-        }
-        return [...prev, e];
+        const next = idx >= 0
+          ? prev.map((p, i) => (i === idx ? e : p))
+          : [...prev, e];
+        return autoAssignParents(next);
       });
     },
     [setItems],
@@ -97,7 +130,7 @@ export function useEquipments() {
           seen.add(e.equipCode);
           return true;
         });
-        return [...prev, ...toAdd];
+        return autoAssignParents([...prev, ...toAdd]);
       });
     },
     [setItems],
