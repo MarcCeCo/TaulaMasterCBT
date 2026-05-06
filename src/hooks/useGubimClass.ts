@@ -149,11 +149,15 @@ export function useGubimClass() {
       seenCodeName.add(`${finalCode}||${n.name}`);
     }
 
-    // Deduplicar toUpsert per codi: si hi ha duplicats dins del batch, PostgreSQL
-    // llença "ON CONFLICT DO UPDATE command cannot affect row a second time".
-    // Quedant-nos amb l'última ocurrència de cada codi assegurem consistència.
+    // Nivells 1-3: deduplicar per codi per evitar "ON CONFLICT ... row a second time"
     const upsertDeduped = Array.from(
       toUpsert.reduce((map, row) => map.set(row.code, row), new Map<string, GubimNode>()).values()
+    );
+
+    // Nivell 4: el codi NO és únic, però l'id sí. Deduplicar per id i usar upsert
+    // per evitar "duplicate key value violates unique constraint" si el codi ja existeix a la BD.
+    const insertDeduped = Array.from(
+      toInsert.reduce((map, row) => map.set(row.id, row), new Map<string, GubimNode>()).values()
     );
 
     const BATCH = 50;
@@ -162,9 +166,9 @@ export function useGubimClass() {
       const { error } = await supabase.from("gubim_class").upsert(batch, { onConflict: "code" });
       if (error) throw new Error(error.message);
     }
-    for (let i = 0; i < toInsert.length; i += BATCH) {
-      const batch = toInsert.slice(i, i + BATCH);
-      const { error } = await supabase.from("gubim_class").insert(batch);
+    for (let i = 0; i < insertDeduped.length; i += BATCH) {
+      const batch = insertDeduped.slice(i, i + BATCH);
+      const { error } = await supabase.from("gubim_class").upsert(batch, { onConflict: "id" });
       if (error) throw new Error(error.message);
     }
 
