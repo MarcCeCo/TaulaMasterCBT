@@ -182,7 +182,7 @@ export function useEquipments() {
       return true;
     });
     if (toAdd.length === 0) return;
-    const { error } = await supabase.from("equipments").insert(toAdd.map(toRow));
+    const { error } = await supabase.from("equipments").upsert(toAdd.map(toRow), { onConflict: "id" });
     if (error) throw new Error(error.message);
     setItems((prev) => autoAssignParents([...prev, ...toAdd]));
   }, [items]);

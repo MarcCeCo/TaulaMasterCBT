@@ -86,9 +86,12 @@ export function useGubimClass() {
     }
 
     if (toInsert.length === 0) return;
-    const { error } = await supabase.from("gubim_class").insert(toInsert);
+    const { error } = await supabase.from("gubim_class").upsert(toInsert, { onConflict: "code" });
     if (error) throw new Error(error.message);
-    setNodes((prev) => [...prev, ...toInsert]);
+    setNodes((prev) => {
+      const existingCodes = new Set(prev.map((n) => n.code));
+      return [...prev, ...toInsert.filter((n) => !existingCodes.has(n.code))];
+    });
   }, [nodes]);
 
   const updateNode = useCallback(async (id: string, patch: Partial<GubimNode>) => {

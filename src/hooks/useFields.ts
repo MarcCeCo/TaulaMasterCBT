@@ -77,9 +77,12 @@ export function useFields() {
       .map((f) => ({ ...f, col: f.col.toUpperCase() }))
       .filter((f) => f.col && !seen.has(f.col));
     if (toAdd.length === 0) return;
-    const { error } = await supabase.from("fields").insert(toAdd.map(toRow));
+    const { error } = await supabase.from("fields").upsert(toAdd.map(toRow), { onConflict: "col" });
     if (error) throw new Error(error.message);
-    setRaw((prev) => [...prev, ...toAdd]);
+    setRaw((prev) => {
+      const existingCols = new Set(prev.map((f) => f.col));
+      return [...prev, ...toAdd.filter((f) => !existingCols.has(f.col))];
+    });
   }, [raw]);
 
   const updateField = useCallback(async (col: string, patch: Partial<FieldMeta>) => {
