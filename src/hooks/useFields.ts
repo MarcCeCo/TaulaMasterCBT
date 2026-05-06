@@ -72,23 +72,22 @@ export function useFields() {
   }, [fieldMap]);
 
   const addMany = useCallback(async (arr: FieldMeta[]): Promise<{ inserted: number; duplicates: number }> => {
+    // La detecció de duplicats es fa a importXlsx (nom amb "(duplicat)").
+    // Aquí simplement inserim tot el que arriba; col ja és el Codi definitiu.
     const existingCols = new Set(raw.map((f) => f.col));
-
-    // Per als duplicats (col ja existent), generem un nou col únic i marquem el nom amb "(duplicat)"
     let duplicates = 0;
-    const toAdd: FieldMeta[] = arr.map((f) => {
-      const col = f.col.toUpperCase();
-      if (existingCols.has(col)) {
-        duplicates++;
-        const newCol = col + "_DUP_" + Date.now().toString().slice(-6);
-        return { ...f, col: newCol, name: (f.name ?? col) + " (duplicat)" };
-      }
-      existingCols.add(col); // evita col·lisions dins el propi lot
-      return { ...f, col };
-    }).filter((f) => f.col);
+
+    const toAdd = arr
+      .map((f) => ({ ...f, col: f.col.toUpperCase() }))
+      .filter((f) => {
+        if (!f.col) return false;
+        if (existingCols.has(f.col)) return false; // evita error de constraint
+        existingCols.add(f.col);
+        if (f.name?.endsWith(" (duplicat)")) duplicates++;
+        return true;
+      });
 
     if (toAdd.length > 0) {
-      // Insereix en lots de 50 per evitar errors de límit
       const BATCH = 50;
       for (let i = 0; i < toAdd.length; i += BATCH) {
         const batch = toAdd.slice(i, i + BATCH);
@@ -102,7 +101,7 @@ export function useFields() {
     }
 
     return { inserted: toAdd.length, duplicates };
-  }, [raw]);
+  }, [raw]);;
 
   const updateField = useCallback(async (col: string, patch: Partial<FieldMeta>) => {
     const merged = { ...fieldMap.get(col), ...patch, col } as FieldMeta;
