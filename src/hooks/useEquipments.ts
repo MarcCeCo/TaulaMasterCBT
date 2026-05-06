@@ -203,5 +203,16 @@ export function useEquipments() {
     setItems([]);
   }, []);
 
-  return { items, upsert, remove, addMany, clearAll, isCodeTaken, loading };
+  const removeFieldColFromAll = useCallback(async (col: string) => {
+    const affected = items.filter((e) => e.fieldCols.includes(col));
+    for (const e of affected) {
+      const updated = { ...e, fieldCols: e.fieldCols.filter((c) => c !== col) };
+      await supabase.from("equipments").update({ field_cols: updated.fieldCols }).eq("id", e.id);
+    }
+    setItems((prev) => prev.map((e) =>
+      e.fieldCols.includes(col) ? { ...e, fieldCols: e.fieldCols.filter((c) => c !== col) } : e
+    ));
+  }, [items]);
+
+  return { items, upsert, remove, addMany, clearAll, isCodeTaken, removeFieldColFromAll, loading };
 }
