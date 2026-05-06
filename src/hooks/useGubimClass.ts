@@ -62,37 +62,37 @@ export function useGubimClass() {
 
   const addMany = useCallback(async (arr: Omit<GubimNode, "id">[]): Promise<{ inserted: number; autoCreated: number; duplicates: number }> => {
     // Duplicat real (tots els nivells) = codi + nom EXACTAMENT iguals → s'omet
-    // Mateix codi, nom diferent → NO és duplicat:
-    //   - Nivells 1-3: actualitza el nom (upsert per code)
-    //   - Nivell 4:    crea una entrada nova (insert, duplicats de codi permesos)
+    // Mateix codi, nom diferent:
+    //   - Nivells 1-3: actualitza el nom
+    //   - Nivell 4:    crea entrada nova (duplicats de codi permesos)
 
     const seenCodes    = new Set(nodes.map((n) => n.code));
     const seenCodeName = new Set(nodes.map((n) => `${n.code}||${n.name}`));
+    // Mapa codi→id dels nodes existents a la BD (per fer update en lloc d'insert)
+    const existingIdByCode = new Map(nodes.map((n) => [n.code, n.id]));
 
     const candidates = arr
       .map((n) => ({ ...n, code: n.code.trim() }))
       .filter((n) => n.code && n.name && isValidCode(n.code));
 
-    // Maps per acumular (última ocurrència guanya dins del batch per a nivells 1-3)
-    const upsertMap = new Map<string, GubimNode>(); // key = code, per a nivells 1-3
-    const toInsert: GubimNode[] = [];               // nivell 4
+    // nivells 1-3: Map codi→row (última ocurrència guanya, deduplicat)
+    const upsertMap = new Map<string, GubimNode>();
+    const toInsert:  GubimNode[] = []; // nivell 4
     let duplicates = 0;
     let remaining = candidates;
     let prevLength = -1;
 
     const process = (n: Omit<GubimNode, "id">) => {
       const key = `${n.code}||${n.name}`;
-      const lvl = codeLevel(n.code);
-      // Duplicat real: codi+nom ja vistos (BD o aquest batch)
-      if (seenCodeName.has(key)) { duplicates++; return; }
+      if (seenCodeName.has(key)) { duplicates++; return; } // duplicat real
       seenCodeName.add(key);
       seenCodes.add(n.code);
-      const row = toRow(n);
-      if (lvl < 4) {
-        upsertMap.set(n.code, row); // nivells 1-3: últim guanya si mateix codi
-      } else {
-        toInsert.push(row);         // nivell 4: permet múltiples entrades
-      }
+      const lvl = codeLevel(n.code);
+      // Preserva l'id existent si el codi ja era a la BD (update en lloc d'insert)
+      const existingId = existingIdByCode.get(n.code);
+      const row = toRow({ ...n, id: existingId });
+      if (lvl < 4) { upsertMap.set(n.code, row); }
+      else         { toInsert.push(row); }
     };
 
     // Pas 1: ordenació topològica
@@ -121,7 +121,8 @@ export function useGubimClass() {
         if (!seenCodeName.has(ancKey)) {
           seenCodeName.add(ancKey);
           seenCodes.add(anc.code);
-          upsertMap.set(anc.code, toRow(anc));
+          const existingId = existingIdByCode.get(anc.code);
+          upsertMap.set(anc.code, toRow({ ...anc, id: existingId }));
           autoCreated++;
         }
       }
@@ -131,14 +132,27 @@ export function useGubimClass() {
     const toUpsert = Array.from(upsertMap.values());
     const BATCH = 50;
 
-    // Nivells 1-3: upsert per code — batch ja deduplicat per codi, cap risc de conflicte doble
-    for (let i = 0; i < toUpsert.length; i += BATCH) {
-      const batch = toUpsert.slice(i, i + BATCH);
-      const { error } = await supabase.from("gubim_class").upsert(batch, { onConflict: "code" });
+    // Nivells 1-3: update si el codi ja existeix, insert si és nou
+    // (evitem onConflict perquè la constraint és parcial i Supabase no la reconeix)
+    const toUpdate = toUpsert.filter((r) => existingIdByCode.has(r.code));
+    const toInsert13 = toUpsert.filter((r) => !existingIdByCode.has(r.code));
+
+    for (let i = 0; i < toUpdate.length; i += BATCH) {
+      const batch = toUpdate.slice(i, i + BATCH);
+      for (const row of batch) {
+        const { error } = await supabase.from("gubim_class")
+          .update({ name: row.name })
+          .eq("code", row.code);
+        if (error) throw new Error(error.message);
+      }
+    }
+    for (let i = 0; i < toInsert13.length; i += BATCH) {
+      const batch = toInsert13.slice(i, i + BATCH);
+      const { error } = await supabase.from("gubim_class").insert(batch);
       if (error) throw new Error(error.message);
     }
 
-    // Nivell 4: insert — la BD no té UNIQUE(code) per a nivell 4 (aplica migració SQL)
+    // Nivell 4: insert (duplicats de codi permesos, sense cap constraint)
     for (let i = 0; i < toInsert.length; i += BATCH) {
       const batch = toInsert.slice(i, i + BATCH);
       const { error } = await supabase.from("gubim_class").insert(batch);
