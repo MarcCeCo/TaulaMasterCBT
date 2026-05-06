@@ -60,24 +60,27 @@ export function useGubimClass() {
     setNodes((prev) => [...prev, { id: row.id, code: row.code, name: row.name }]);
   }, [nodeMap]);
 
-  const addMany = useCallback(async (arr: Omit<GubimNode, "id">[]) => {
-    const seen = new Set(nodes.map((n) => n.code));
+  const addMany = useCallback(async (arr: Omit<GubimNode, "id">[]): Promise<{ inserted: number; autoCreated: number }> => {
+    // GuBIMClass permet codis duplicats: no filtrem per codi existent.
+    const seenCodes = new Set(nodes.map((n) => n.code));
     const candidates = arr
       .map((n) => ({ ...n, code: n.code.trim() }))
-      .filter((n) => n.code && n.name && isValidCode(n.code) && !seen.has(n.code));
+      .filter((n) => n.code && n.name && isValidCode(n.code));
 
     const toInsert: GubimNode[] = [];
     let remaining = candidates;
     let prevLength = -1;
+
+    // Primer pas: ordenació topològica normal (pare ja existeix o ve a l'Excel)
     while (remaining.length > 0 && remaining.length !== prevLength) {
       prevLength = remaining.length;
       const nextRemaining: typeof remaining = [];
       for (const n of remaining) {
         const p = parentCode(n.code);
-        if (!p || seen.has(p)) {
+        if (!p || seenCodes.has(p)) {
           const row = toRow(n);
           toInsert.push(row);
-          seen.add(n.code);
+          seenCodes.add(n.code);
         } else {
           nextRemaining.push(n);
         }
@@ -85,17 +88,41 @@ export function useGubimClass() {
       remaining = nextRemaining;
     }
 
-    if (toInsert.length === 0) return;
-    const BATCH = 50;
-    for (let i = 0; i < toInsert.length; i += BATCH) {
-      const batch = toInsert.slice(i, i + BATCH);
-      const { error } = await supabase.from("gubim_class").upsert(batch, { onConflict: "code" });
-      if (error) throw new Error(error.message);
+    // Segon pas: per als nodes orfes, creem tots els antecessors que faltin
+    let autoCreated = 0;
+    for (const n of remaining) {
+      // Recollim tota la cadena d'antecessors que no existeixen
+      const ancestors: Omit<GubimNode, "id">[] = [];
+      let cursor = parentCode(n.code);
+      while (cursor && !seenCodes.has(cursor)) {
+        ancestors.unshift({ code: cursor, name: cursor }); // nom = codi com a placeholder
+        cursor = parentCode(cursor);
+      }
+      // Inserim antecessors en ordre (del més alt al més baix)
+      for (const anc of ancestors) {
+        const row = toRow(anc);
+        toInsert.push(row);
+        seenCodes.add(anc.code);
+        autoCreated++;
+      }
+      // Ara el pare ja existeix, inserim el node orfe
+      const row = toRow(n);
+      toInsert.push(row);
+      seenCodes.add(n.code);
     }
-    setNodes((prev) => {
-      const existingCodes = new Set(prev.map((n) => n.code));
-      return [...prev, ...toInsert.filter((n) => !existingCodes.has(n.code))];
-    });
+
+    if (toInsert.length > 0) {
+      const BATCH = 50;
+      for (let i = 0; i < toInsert.length; i += BATCH) {
+        const batch = toInsert.slice(i, i + BATCH);
+        // Usem insert (no upsert) per permetre codis duplicats a la BD
+        const { error } = await supabase.from("gubim_class").insert(batch);
+        if (error) throw new Error(error.message);
+      }
+      setNodes((prev) => [...prev, ...toInsert]);
+    }
+
+    return { inserted: toInsert.length - autoCreated, autoCreated };
   }, [nodes]);
 
   const updateNode = useCallback(async (id: string, patch: Partial<GubimNode>) => {

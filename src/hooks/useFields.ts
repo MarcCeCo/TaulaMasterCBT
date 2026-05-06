@@ -71,24 +71,37 @@ export function useFields() {
     setRaw((prev) => [...prev, { ...f, col }]);
   }, [fieldMap]);
 
-  const addMany = useCallback(async (arr: FieldMeta[]) => {
-    const seen   = new Set(raw.map((f) => f.col));
-    const toAdd  = arr
-      .map((f) => ({ ...f, col: f.col.toUpperCase() }))
-      .filter((f) => f.col && !seen.has(f.col));
-    if (toAdd.length === 0) return;
+  const addMany = useCallback(async (arr: FieldMeta[]): Promise<{ inserted: number; duplicates: number }> => {
+    const existingCols = new Set(raw.map((f) => f.col));
 
-    // Insereix en lots de 50 per evitar errors de límit
-    const BATCH = 50;
-    for (let i = 0; i < toAdd.length; i += BATCH) {
-      const batch = toAdd.slice(i, i + BATCH);
-      const { error } = await supabase.from("fields").upsert(batch.map(toRow), { onConflict: "col" });
-      if (error) throw new Error(error.message);
+    // Per als duplicats (col ja existent), generem un nou col únic i marquem el nom amb "(duplicat)"
+    let duplicates = 0;
+    const toAdd: FieldMeta[] = arr.map((f) => {
+      const col = f.col.toUpperCase();
+      if (existingCols.has(col)) {
+        duplicates++;
+        const newCol = col + "_DUP_" + Date.now().toString().slice(-6);
+        return { ...f, col: newCol, name: (f.name ?? col) + " (duplicat)" };
+      }
+      existingCols.add(col); // evita col·lisions dins el propi lot
+      return { ...f, col };
+    }).filter((f) => f.col);
+
+    if (toAdd.length > 0) {
+      // Insereix en lots de 50 per evitar errors de límit
+      const BATCH = 50;
+      for (let i = 0; i < toAdd.length; i += BATCH) {
+        const batch = toAdd.slice(i, i + BATCH);
+        const { error } = await supabase.from("fields").upsert(batch.map(toRow), { onConflict: "col" });
+        if (error) throw new Error(error.message);
+      }
+      setRaw((prev) => {
+        const prevCols = new Set(prev.map((f) => f.col));
+        return [...prev, ...toAdd.filter((f) => !prevCols.has(f.col))];
+      });
     }
-    setRaw((prev) => {
-      const existingCols = new Set(prev.map((f) => f.col));
-      return [...prev, ...toAdd.filter((f) => !existingCols.has(f.col))];
-    });
+
+    return { inserted: toAdd.length, duplicates };
   }, [raw]);
 
   const updateField = useCallback(async (col: string, patch: Partial<FieldMeta>) => {
