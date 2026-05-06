@@ -268,7 +268,7 @@ export function EquipmentsTable() {
           createdAt: Date.now(),
         };
       }).filter((e) => e.equipName); // el nom és l'únic obligatori
-      addMany(arr);
+      addMany(arr).catch(() => toast.error("Error important equips"));
       toast.success(`${arr.length} equips processats`);
     } catch { toast.error("Error en importar"); }
   };
@@ -308,7 +308,7 @@ export function EquipmentsTable() {
             <AlertDialogHeader><AlertDialogTitle>Esborrar tots els equips?</AlertDialogTitle><AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-              <AlertDialogAction onClick={() => { clearAll(); toast.success("Equips esborrats"); }}>Esborra</AlertDialogAction>
+              <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("Equips esborrats"); } catch { toast.error("Error esborrant equips"); } }}>Esborra</AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -358,7 +358,7 @@ export function EquipmentsTable() {
                   childDepth={depth}
                   onView={() => { setViewing(e); setDetailOpen(true); }}
                   onEdit={(ev?: any) => { if(ev) ev.stopPropagation?.(); setEditing(e); setFormOpen(true); }}
-                  onDelete={() => { remove(e.id); toast.success("Equip esborrat"); }}
+                  onDelete={async () => { try { await remove(e.id); toast.success("Equip esborrat"); } catch { toast.error("Error esborrant equip"); } }}
                 />
               );
             })}
@@ -373,7 +373,7 @@ export function EquipmentsTable() {
         open={formOpen} onOpenChange={setFormOpen} editing={editing}
         nodes={nodes} nodeMap={nodeMap} fields={fields} fieldMap={fieldMap}
         isCodeTaken={isCodeTaken} allEquipments={items}
-        onSubmit={(e) => { upsert(e); toast.success(editing ? "Equip actualitzat" : "Equip creat"); }}
+        onSubmit={async (e) => { try { await upsert(e); toast.success(editing ? "Equip actualitzat" : "Equip creat"); } catch { toast.error("Error desant equip"); } }}
       />
 
       <EquipmentDetailDialog

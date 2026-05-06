@@ -120,15 +120,17 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           order: Date.now() + i, scope: "global",
         };
       }).filter(Boolean) as FieldMeta[];
-      addMany(toAdd);
+      await addMany(toAdd);
       toast.success(`${toAdd.length} camps importats`);
     } catch { toast.error("Error en importar"); }
   };
 
-  const handleDeleteField = (col: string) => {
-    removeField(col);
-    removeFieldColFromAll(col);
-    toast.success("Camp esborrat i referències eliminades");
+  const handleDeleteField = async (col: string) => {
+    try {
+      await removeField(col);
+      await removeFieldColFromAll(col);
+      toast.success("Camp esborrat i referències eliminades");
+    } catch { toast.error("Error esborrant camp"); }
   };
 
   return (
@@ -170,7 +172,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={() => { clearAll(); toast.success("Tots els camps eliminats"); }}>Esborra</AlertDialogAction>
+                <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("Tots els camps eliminats"); } catch { toast.error("Error esborrant camps"); } }}>Esborra</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -260,8 +262,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           editing={editing} existsCol={exists}
           onSubmit={(f) => {
             try {
-              if (editing) { updateField(editing.col, f); toast.success("Camp actualitzat"); }
-              else { addField(f); toast.success("Camp creat"); }
+              if (editing) { await updateField(editing.col, f); toast.success("Camp actualitzat"); }
+              else { await addField(f); toast.success("Camp creat"); }
             } catch (e: any) { toast.error(e.message ?? "Error"); }
           }}
         />
