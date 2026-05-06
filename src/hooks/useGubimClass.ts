@@ -93,8 +93,9 @@ export function useGubimClass() {
       dupCounters.set(base, count);
       let candidate = `${base}_${count}`;
       while (seenCodes.has(candidate)) {
-        dupCounters.set(base, ++dupCounters.get(base)!);
-        candidate = `${base}_${dupCounters.get(base)}`;
+        const next = (dupCounters.get(base) ?? count) + 1;
+        dupCounters.set(base, next);
+        candidate = `${base}_${next}`;
       }
       return { finalCode: candidate, isDup: true };
     };
