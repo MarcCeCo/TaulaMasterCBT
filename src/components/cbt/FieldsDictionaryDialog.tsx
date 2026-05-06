@@ -94,7 +94,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       // col = Codi (clau interna). Si no hi ha Codi, el camp no es pot importar.
       const existingCols  = new Set(fields.map((f) => f.col));
       const existingNames = new Set(fields.map((f) => f.name).filter(Boolean) as string[]);
-      const seenInFile    = new Set<string>();
+      const seenCols      = new Set<string>(); // codis ja processats en aquest Excel
+      const seenNames     = new Set<string>(); // noms ja processats en aquest Excel
 
       const toAdd: FieldMeta[] = rows.map((r, i) => {
         const nom        = String(r["Nom"] ?? "").trim();
@@ -112,8 +113,9 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         const isClsRow = nom && !codi && !cbt && !format && !agrupRevit && !disciplina;
         if (isClsRow) {
           const genCol = "CLS_" + nom.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 10);
-          const isDup  = existingCols.has(genCol) || seenInFile.has(genCol) || existingNames.has(nom);
-          seenInFile.add(genCol);
+          const isDup  = existingCols.has(genCol) || seenCols.has(genCol) || existingNames.has(nom) || seenNames.has(nom);
+          seenCols.add(genCol);
+          seenNames.add(nom);
           return {
             col: genCol,
             name: isDup ? nom + " (duplicat)" : nom,
@@ -126,8 +128,10 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         // Camp normal: Codi obligatori (= col, la clau interna)
         if (!codi || !nom) return null;
 
-        const isDup = existingCols.has(codi) || seenInFile.has(codi) || existingNames.has(nom);
-        seenInFile.add(codi);
+        // Duplicat si el codi O el nom ja existeixen (a la BD o en aquest Excel)
+        const isDup = existingCols.has(codi) || seenCols.has(codi) || existingNames.has(nom) || seenNames.has(nom);
+        seenCols.add(codi);
+        seenNames.add(nom);
 
         return {
           col:      codi,
