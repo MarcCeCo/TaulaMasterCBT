@@ -260,7 +260,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         <AddFieldDialog
           open={addOpen} onOpenChange={setAddOpen} groups={groups} disciplines={disciplines}
           editing={editing} existsCol={exists}
-          onSubmit={(f) => {
+          onSubmit={async (f) => {
             try {
               if (editing) { await updateField(editing.col, f); toast.success("Camp actualitzat"); }
               else { await addField(f); toast.success("Camp creat"); }
