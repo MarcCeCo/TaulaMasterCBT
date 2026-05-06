@@ -125,7 +125,6 @@ const SEED: Equipment[] = [
 export function useEquipments() {
   const [items, setItems]     = useState<Equipment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [seeded, setSeeded]   = useState(false);
 
   // Càrrega inicial + seed si buit
   useEffect(() => {
@@ -133,20 +132,11 @@ export function useEquipments() {
       .from("equipments")
       .select("*")
       .order("created_at")
-      .then(async ({ data, error }) => {
+      .then(({ data, error }) => {
         if (error) { console.error("useEquipments fetch:", error); setLoading(false); return; }
-        const list = (data ?? []).map(toEquip);
-        if (list.length === 0 && !seeded) {
-          // Insereix seed
-          const { error: se } = await supabase.from("equipments").insert(SEED.map(toRow));
-          if (!se) { setItems(SEED); setSeeded(true); }
-        } else {
-          setItems(list);
-        }
+        setItems((data ?? []).map(toEquip));
         setLoading(false);
       });
-
-    // Subscripció temps real eliminada temporalment fins que Realtime estigui configurat
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
