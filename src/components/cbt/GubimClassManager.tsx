@@ -72,9 +72,10 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
         .map((r) => ({ code: String(r["Codi"] ?? "").trim(), name: String(r["Nom"] ?? "").trim() }))
         .filter((n) => n.code && n.name && isValidCode(n.code));
       const invalidCount = rows.length - arr.length;
-      const { inserted, autoCreated } = await addMany(arr);
+      const { inserted, autoCreated, duplicates } = await addMany(arr);
       const parts: string[] = [];
       if (inserted > 0) parts.push(`${inserted} nodes inserits`);
+      if (duplicates > 0) parts.push(`${duplicates} duplicats (codi nivell 4 amb sufix _2, _3...)`);
       if (autoCreated > 0) parts.push(`${autoCreated} pares creats automàticament`);
       if (invalidCount > 0) parts.push(`${invalidCount} files amb format invàlid`);
       if (inserted > 0) toast.success(parts.join(" · "));
