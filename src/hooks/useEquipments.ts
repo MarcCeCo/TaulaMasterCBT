@@ -182,8 +182,12 @@ export function useEquipments() {
       return true;
     });
     if (toAdd.length === 0) return;
-    const { error } = await supabase.from("equipments").upsert(toAdd.map(toRow), { onConflict: "id" });
-    if (error) throw new Error(error.message);
+    const BATCH = 50;
+    for (let i = 0; i < toAdd.length; i += BATCH) {
+      const batch = toAdd.slice(i, i + BATCH);
+      const { error } = await supabase.from("equipments").upsert(batch.map(toRow), { onConflict: "id" });
+      if (error) throw new Error(error.message);
+    }
     setItems((prev) => autoAssignParents([...prev, ...toAdd]));
   }, [items]);
 
