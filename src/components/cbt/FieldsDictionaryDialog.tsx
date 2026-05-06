@@ -125,19 +125,22 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           };
         }
 
-        // Camp normal: Codi obligatori (= col, la clau interna)
-        if (!codi || !nom) return null;
+        // Camp normal: Nom obligatori. Codi és opcional.
+        if (!nom) return null;
 
-        // Duplicat si el codi O el nom ja existeixen (a la BD o en aquest Excel)
-        const isDup = existingCols.has(codi) || seenCols.has(codi) || existingNames.has(nom) || seenNames.has(nom);
-        seenCols.add(codi);
+        // Si no hi ha codi, generem una clau interna basada en el nom
+        const colKey = codi || ("CAMP_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + String(Date.now() + i).slice(-4));
+
+        // Duplicat si el codi (o colKey) O el nom ja existeixen (a la BD o en aquest Excel)
+        const isDup = existingCols.has(colKey) || seenCols.has(colKey) || existingNames.has(nom) || seenNames.has(nom);
+        seenCols.add(colKey);
         seenNames.add(nom);
 
         return {
-          col:      codi,
+          col:      colKey,
           name:     isDup ? nom + " (duplicat)" : nom,
           cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
-          code:     codi, category: tipusDada || null, group: agrupRevit || null,
+          code:     codi || null, category: tipusDada || null, group: agrupRevit || null,
           active:   (instancia === "N" ? "N" : "Y") as "Y" | "N",
           discipline: disciplina || null, taulaAssoc: taulaAssoc || null,
           order: Date.now() + i, scope: "global",
