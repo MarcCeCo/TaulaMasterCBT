@@ -149,9 +149,16 @@ export function useGubimClass() {
       seenCodeName.add(`${finalCode}||${n.name}`);
     }
 
+    // Deduplicar toUpsert per codi: si hi ha duplicats dins del batch, PostgreSQL
+    // llença "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    // Quedant-nos amb l'última ocurrència de cada codi assegurem consistència.
+    const upsertDeduped = Array.from(
+      toUpsert.reduce((map, row) => map.set(row.code, row), new Map<string, GubimNode>()).values()
+    );
+
     const BATCH = 50;
-    for (let i = 0; i < toUpsert.length; i += BATCH) {
-      const batch = toUpsert.slice(i, i + BATCH);
+    for (let i = 0; i < upsertDeduped.length; i += BATCH) {
+      const batch = upsertDeduped.slice(i, i + BATCH);
       const { error } = await supabase.from("gubim_class").upsert(batch, { onConflict: "code" });
       if (error) throw new Error(error.message);
     }
