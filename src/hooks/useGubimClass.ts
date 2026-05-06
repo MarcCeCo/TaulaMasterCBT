@@ -41,7 +41,9 @@ export function useGubimClass() {
           if (data) setNodes(data.map(toNode));
         });
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.warn("Realtime gubim_class no disponible:", err);
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, []);

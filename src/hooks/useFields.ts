@@ -58,7 +58,9 @@ export function useFields() {
           if (data) setRaw(data.map(toMeta));
         });
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.warn("Realtime fields no disponible:", err);
+      });
 
     return () => { supabase.removeChannel(channel); };
   }, []);

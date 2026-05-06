@@ -154,7 +154,9 @@ export function useEquipments() {
           if (data) setItems(data.map(toEquip));
         });
       })
-      .subscribe();
+      .subscribe((status, err) => {
+        if (err) console.warn("Realtime equipments no disponible:", err);
+      });
 
     return () => { supabase.removeChannel(channel); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
