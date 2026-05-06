@@ -66,7 +66,7 @@ export function useFields() {
     const col = f.col.toUpperCase();
     if (fieldMap.has(col)) throw new Error("El camp ja existeix");
     const row = toRow({ ...f, col });
-    const { error } = await supabase.from("fields").insert(row);
+    const { error } = await supabase.from("fields").upsert(row, { onConflict: "col" });
     if (error) throw new Error(error.message);
     setRaw((prev) => [...prev, { ...f, col }]);
   }, [fieldMap]);

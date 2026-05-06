@@ -55,7 +55,7 @@ export function useGubimClass() {
     if (p && !nodeMap.has(p)) throw new Error("El node pare no existeix");
     if (nodeMap.has(n.code))  throw new Error("El codi ja existeix");
     const row = toRow(n);
-    const { error } = await supabase.from("gubim_class").insert(row);
+    const { error } = await supabase.from("gubim_class").upsert(row, { onConflict: "code" });
     if (error) throw new Error(error.message);
     setNodes((prev) => [...prev, { id: row.id, code: row.code, name: row.name }]);
   }, [nodeMap]);
