@@ -33,7 +33,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     setCodeError("");
   };
 
-  const save = () => {
+  const save = async () => {
     const C = code.trim();
     const N = name.trim();
     if (!isValidCode(C)) return toast.error("Format de codi invàlid");
