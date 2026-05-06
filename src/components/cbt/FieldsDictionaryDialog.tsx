@@ -90,6 +90,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
+      const seenInFile = new Set<string>();
       const toAdd: FieldMeta[] = rows.map((r, i) => {
         const nom = String(r["Nom"] ?? "").trim();
         const codi = String(r["Codi"] ?? "").trim().toUpperCase();
@@ -105,13 +106,15 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         const isClsRow = nom && !codi && !cbt && !format && !agrupRevit && !disciplina;
         if (isClsRow) {
           const genCol = "CLS_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 10);
-          if (exists(genCol)) return null;
+          if (exists(genCol) || seenInFile.has(genCol)) { return null; }
+          seenInFile.add(genCol);
           return { col: genCol, name: nom, cbt_name: null, type: null, unit: null, code: null, category: null, group: null, active: "Y" as const, discipline: null, taulaAssoc: null, order: Date.now() + i, scope: "global" };
         }
         if (!nom) return null;
         // Permet camps sense codi (codi pot estar buit)
-        if (codi && exists(codi)) return null;
+        if (codi && (exists(codi) || seenInFile.has(codi))) { return null; }
         const colKey = codi || ("CAMP_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + (Date.now() + i).toString().slice(-4));
+        if (codi) seenInFile.add(codi);
         return {
           col: colKey, name: nom || null, cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
           code: codi || null, category: tipusDada || null, group: agrupRevit || null,
@@ -120,9 +123,15 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           order: Date.now() + i, scope: "global",
         };
       }).filter(Boolean) as FieldMeta[];
-      await addMany(toAdd);
-      toast.success(`${toAdd.length} camps importats`);
-    } catch { toast.error("Error en importar"); }
+      const { inserted, duplicates } = await addMany(toAdd);
+      const parts: string[] = [];
+      if (inserted > 0) parts.push(`${inserted} camps inserits`);
+      if (duplicates > 0) parts.push(`${duplicates} duplicats marcats amb "(duplicat)"`);
+      if (inserted > 0) toast.success(parts.join(" · "));
+      else toast.warning("Cap camp nou per importar");
+    } catch (e: any) {
+      toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
+    }
   };
 
   const handleDeleteField = async (col: string) => {

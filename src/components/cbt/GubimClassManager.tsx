@@ -71,9 +71,17 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
       const arr = rows
         .map((r) => ({ code: String(r["Codi"] ?? "").trim(), name: String(r["Nom"] ?? "").trim() }))
         .filter((n) => n.code && n.name && isValidCode(n.code));
-      await addMany(arr);
-      toast.success(`${arr.length} nodes processats`);
-    } catch { toast.error("Error en importar"); }
+      const invalidCount = rows.length - arr.length;
+      const { inserted, autoCreated } = await addMany(arr);
+      const parts: string[] = [];
+      if (inserted > 0) parts.push(`${inserted} nodes inserits`);
+      if (autoCreated > 0) parts.push(`${autoCreated} pares creats automàticament`);
+      if (invalidCount > 0) parts.push(`${invalidCount} files amb format invàlid`);
+      if (inserted > 0) toast.success(parts.join(" · "));
+      else toast.warning(parts.length > 0 ? parts.join(" · ") : "Cap node per importar");
+    } catch (e: any) {
+      toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
+    }
   };
 
   const sorted = useMemo(() => [...nodes].sort((a, b) => a.code.localeCompare(b.code)), [nodes]);
