@@ -77,8 +77,14 @@ export function useFields() {
       .map((f) => ({ ...f, col: f.col.toUpperCase() }))
       .filter((f) => f.col && !seen.has(f.col));
     if (toAdd.length === 0) return;
-    const { error } = await supabase.from("fields").upsert(toAdd.map(toRow), { onConflict: "col" });
-    if (error) throw new Error(error.message);
+
+    // Insereix en lots de 50 per evitar errors de límit
+    const BATCH = 50;
+    for (let i = 0; i < toAdd.length; i += BATCH) {
+      const batch = toAdd.slice(i, i + BATCH);
+      const { error } = await supabase.from("fields").upsert(batch.map(toRow), { onConflict: "col" });
+      if (error) throw new Error(error.message);
+    }
     setRaw((prev) => {
       const existingCols = new Set(prev.map((f) => f.col));
       return [...prev, ...toAdd.filter((f) => !existingCols.has(f.col))];

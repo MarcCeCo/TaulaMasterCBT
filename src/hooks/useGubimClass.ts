@@ -86,8 +86,12 @@ export function useGubimClass() {
     }
 
     if (toInsert.length === 0) return;
-    const { error } = await supabase.from("gubim_class").upsert(toInsert, { onConflict: "code" });
-    if (error) throw new Error(error.message);
+    const BATCH = 50;
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const batch = toInsert.slice(i, i + BATCH);
+      const { error } = await supabase.from("gubim_class").upsert(batch, { onConflict: "code" });
+      if (error) throw new Error(error.message);
+    }
     setNodes((prev) => {
       const existingCodes = new Set(prev.map((n) => n.code));
       return [...prev, ...toInsert.filter((n) => !existingCodes.has(n.code))];
