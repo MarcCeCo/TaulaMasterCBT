@@ -61,10 +61,11 @@ export function useGubimClass() {
   }, [nodeMap]);
 
   const addMany = useCallback(async (arr: Omit<GubimNode, "id">[]): Promise<{ inserted: number; autoCreated: number; duplicates: number }> => {
-    // Regles de la BD:
-    //   - Nivells 1-3: codi ÚNIC → upsert per "code" (actualitza nom si ja existeix)
-    //   - Nivell 4:    codi pot repetir-se (equip mare + components) → insert per "id"
-    //                  Duplicat real = codi+nom ja existeixen alhora → s'omet
+    // Duplicat real (tots els nivells) = codi + nom EXACTAMENT iguals → s'omet
+    // Mateix codi, nom diferent → NO és duplicat:
+    //   - Nivells 1-3: actualitza el nom (upsert per code)
+    //   - Nivell 4:    crea una entrada nova (insert, duplicats de codi permesos)
+
     const seenCodes    = new Set(nodes.map((n) => n.code));
     const seenCodeName = new Set(nodes.map((n) => `${n.code}||${n.name}`));
 
@@ -72,79 +73,72 @@ export function useGubimClass() {
       .map((n) => ({ ...n, code: n.code.trim() }))
       .filter((n) => n.code && n.name && isValidCode(n.code));
 
-    const toUpsert: GubimNode[] = []; // nivells 1-3: upsert per code
-    const toInsert: GubimNode[] = []; // nivell 4:    insert per id (duplicats permesos)
+    // Maps per acumular (última ocurrència guanya dins del batch per a nivells 1-3)
+    const upsertMap = new Map<string, GubimNode>(); // key = code, per a nivells 1-3
+    const toInsert: GubimNode[] = [];               // nivell 4
     let duplicates = 0;
     let remaining = candidates;
     let prevLength = -1;
 
-    // Pas 1: ordenació topològica (un node es processa quan el seu pare ja és conegut)
+    const process = (n: Omit<GubimNode, "id">) => {
+      const key = `${n.code}||${n.name}`;
+      const lvl = codeLevel(n.code);
+      // Duplicat real: codi+nom ja vistos (BD o aquest batch)
+      if (seenCodeName.has(key)) { duplicates++; return; }
+      seenCodeName.add(key);
+      seenCodes.add(n.code);
+      const row = toRow(n);
+      if (lvl < 4) {
+        upsertMap.set(n.code, row); // nivells 1-3: últim guanya si mateix codi
+      } else {
+        toInsert.push(row);         // nivell 4: permet múltiples entrades
+      }
+    };
+
+    // Pas 1: ordenació topològica
     while (remaining.length > 0 && remaining.length !== prevLength) {
       prevLength = remaining.length;
       const nextRemaining: typeof remaining = [];
       for (const n of remaining) {
         const p = parentCode(n.code);
-        if (!p || seenCodes.has(p)) {
-          const key = `${n.code}||${n.name}`;
-          const lvl = codeLevel(n.code);
-          if (lvl < 4) {
-            // Nivells 1-3: deduplicar per codi dins l'Excel (última guanya)
-            const existing = toUpsert.findIndex((r) => r.code === n.code);
-            const row = toRow(n);
-            if (existing >= 0) { toUpsert[existing] = row; } else { toUpsert.push(row); }
-            seenCodes.add(n.code);
-          } else {
-            // Nivell 4: duplicat real si codi+nom ja existeixen
-            if (seenCodeName.has(key)) { duplicates++; }
-            else { toInsert.push(toRow(n)); seenCodeName.add(key); }
-            seenCodes.add(n.code); // marca el codi com a vist per als fills
-          }
-        } else {
-          nextRemaining.push(n);
-        }
+        if (!p || seenCodes.has(p)) { process(n); }
+        else { nextRemaining.push(n); }
       }
       remaining = nextRemaining;
     }
 
-    // Pas 2: nodes orfes → crear antecessors manquants automàticament
+    // Pas 2: nodes orfes → crear antecessors automàticament
     let autoCreated = 0;
     for (const n of remaining) {
-      const ancestors: Omit<GubimNode, "id">[] = [];
       let cursor = parentCode(n.code);
+      const ancestors: Omit<GubimNode, "id">[] = [];
       while (cursor && !seenCodes.has(cursor)) {
         ancestors.unshift({ code: cursor, name: cursor });
         cursor = parentCode(cursor);
       }
       for (const anc of ancestors) {
-        const existing = toUpsert.findIndex((r) => r.code === anc.code);
-        const row = toRow(anc);
-        if (existing >= 0) { toUpsert[existing] = row; } else { toUpsert.push(row); autoCreated++; }
-        seenCodes.add(anc.code);
-        seenCodeName.add(`${anc.code}||${anc.name}`);
+        const ancKey = `${anc.code}||${anc.name}`;
+        if (!seenCodeName.has(ancKey)) {
+          seenCodeName.add(ancKey);
+          seenCodes.add(anc.code);
+          upsertMap.set(anc.code, toRow(anc));
+          autoCreated++;
+        }
       }
-      const key = `${n.code}||${n.name}`;
-      const lvl = codeLevel(n.code);
-      if (lvl < 4) {
-        const existing = toUpsert.findIndex((r) => r.code === n.code);
-        const row = toRow(n);
-        if (existing >= 0) { toUpsert[existing] = row; } else { toUpsert.push(row); }
-      } else {
-        if (seenCodeName.has(key)) { duplicates++; }
-        else { toInsert.push(toRow(n)); seenCodeName.add(key); }
-      }
-      seenCodes.add(n.code);
+      process(n);
     }
 
+    const toUpsert = Array.from(upsertMap.values());
     const BATCH = 50;
 
-    // Nivells 1-3: upsert per code (ja deduplicats, cap risc de conflicte doble)
+    // Nivells 1-3: upsert per code — batch ja deduplicat per codi, cap risc de conflicte doble
     for (let i = 0; i < toUpsert.length; i += BATCH) {
       const batch = toUpsert.slice(i, i + BATCH);
       const { error } = await supabase.from("gubim_class").upsert(batch, { onConflict: "code" });
       if (error) throw new Error(error.message);
     }
 
-    // Nivell 4: insert pur — la BD NO té UNIQUE(code) per a nivell 4 (vegeu migració SQL)
+    // Nivell 4: insert — la BD no té UNIQUE(code) per a nivell 4 (aplica migració SQL)
     for (let i = 0; i < toInsert.length; i += BATCH) {
       const batch = toInsert.slice(i, i + BATCH);
       const { error } = await supabase.from("gubim_class").insert(batch);
@@ -155,11 +149,10 @@ export function useGubimClass() {
     if (allNew.length > 0) {
       setNodes((prev) => {
         const updated = prev.map((n) => {
-          const u = toUpsert.find((r) => r.code === n.code);
+          const u = upsertMap.get(n.code);
           return u ? { ...n, name: u.name } : n;
         });
         const existingCodes = new Set(prev.map((n) => n.code));
-        // Nivell 4: sempre afegim (duplicats permesos); nivells 1-3: només si nou
         const brandNew = allNew.filter(
           (n) => !existingCodes.has(n.code) || codeLevel(n.code) === 4
         );
