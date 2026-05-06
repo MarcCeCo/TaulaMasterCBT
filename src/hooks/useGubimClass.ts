@@ -33,19 +33,6 @@ export function useGubimClass() {
         else setNodes((data ?? []).map(toNode));
         setLoading(false);
       });
-
-    const channel = supabase
-      .channel("gubim_class_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "gubim_class" }, () => {
-        supabase.from("gubim_class").select("*").order("code").then(({ data }) => {
-          if (data) setNodes(data.map(toNode));
-        });
-      })
-      .subscribe((status, err) => {
-        if (err) console.warn("Realtime gubim_class no disponible:", err);
-      });
-
-    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const sorted = useMemo(() => [...nodes].sort((a, b) => a.code.localeCompare(b.code)), [nodes]);

@@ -49,20 +49,6 @@ export function useFields() {
         else setRaw((data ?? []).map(toMeta));
         setLoading(false);
       });
-
-    // Subscripció temps real
-    const channel = supabase
-      .channel("fields_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "fields" }, () => {
-        supabase.from("fields").select("*").then(({ data }) => {
-          if (data) setRaw(data.map(toMeta));
-        });
-      })
-      .subscribe((status, err) => {
-        if (err) console.warn("Realtime fields no disponible:", err);
-      });
-
-    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const fields = useMemo(() => sortByClassification(raw), [raw]);

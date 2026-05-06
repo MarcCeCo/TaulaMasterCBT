@@ -146,19 +146,7 @@ export function useEquipments() {
         setLoading(false);
       });
 
-    // Subscripció temps real
-    const channel = supabase
-      .channel("equipments_changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "equipments" }, () => {
-        supabase.from("equipments").select("*").order("created_at").then(({ data }) => {
-          if (data) setItems(data.map(toEquip));
-        });
-      })
-      .subscribe((status, err) => {
-        if (err) console.warn("Realtime equipments no disponible:", err);
-      });
-
-    return () => { supabase.removeChannel(channel); };
+    // Subscripció temps real eliminada temporalment fins que Realtime estigui configurat
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
