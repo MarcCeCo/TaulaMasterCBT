@@ -159,8 +159,8 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel·la</Button>
           <Button onClick={submit}>{editing ? "Desa" : "Crea"}</Button>
         </DialogFooter>
-        <FieldPickerDialog open={pickOpen} onOpenChange={setPickOpen} fields={fields} initialSelected={cols} onConfirm={setCols} />
       </DialogContent>
     </Dialog>
+    <FieldPickerDialog open={pickOpen} onOpenChange={setPickOpen} fields={fields} initialSelected={cols} onConfirm={setCols} />
   );
 }
