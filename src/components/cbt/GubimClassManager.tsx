@@ -33,7 +33,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     setCodeError("");
   };
 
-  const save = () => {
+  const save = async () => {
     const C = code.trim();
     const N = name.trim();
     if (!isValidCode(C)) return toast.error("Format de codi invàlid");
@@ -42,10 +42,10 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (p && !nodeMap.has(p)) return toast.error(`El node pare ${p} no existeix`);
     if (editing) {
       if (C !== editing.code && nodeMap.has(C)) return toast.error("El codi ja existeix");
-      updateNode(editing.id, { code: C, name: N });
-      toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : ""));
+      try { await updateNode(editing.id, { code: C, name: N }); toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : "")); }
+      catch (e: any) { return toast.error(e.message); }
     } else {
-      try { addNode({ code: C, name: N }); toast.success("Node creat"); }
+      try { await addNode({ code: C, name: N }); toast.success("Node creat"); }
       catch (e: any) { return toast.error(e.message); }
     }
     reset();
@@ -71,9 +71,18 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
       const arr = rows
         .map((r) => ({ code: String(r["Codi"] ?? "").trim(), name: String(r["Nom"] ?? "").trim() }))
         .filter((n) => n.code && n.name && isValidCode(n.code));
-      addMany(arr);
-      toast.success(`${arr.length} nodes processats`);
-    } catch { toast.error("Error en importar"); }
+      const invalidCount = rows.length - arr.length;
+      const { inserted, autoCreated, duplicates } = await addMany(arr);
+      const parts: string[] = [];
+      if (inserted > 0) parts.push(`${inserted} nodes inserits`);
+      if (duplicates > 0) parts.push(`${duplicates} duplicats (codi nivell 4 amb sufix _2, _3...)`);
+      if (autoCreated > 0) parts.push(`${autoCreated} pares creats automàticament`);
+      if (invalidCount > 0) parts.push(`${invalidCount} files amb format invàlid`);
+      if (inserted > 0) toast.success(parts.join(" · "));
+      else toast.warning(parts.length > 0 ? parts.join(" · ") : "Cap node per importar");
+    } catch (e: any) {
+      toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
+    }
   };
 
   const sorted = useMemo(() => [...nodes].sort((a, b) => a.code.localeCompare(b.code)), [nodes]);
@@ -158,7 +167,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={() => { clearAll(); toast.success("GuBIMClass esborrat"); }}>Esborra</AlertDialogAction>
+                <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("GuBIMClass esborrat"); } catch { toast.error("Error esborrant"); } }}>Esborra</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -228,7 +237,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
                                       <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => { removeNode(n.id); toast.success("Node esborrat"); }}>Esborra</AlertDialogAction>
+                                      <AlertDialogAction onClick={async () => { try { await removeNode(n.id); toast.success("Node esborrat"); } catch { toast.error("Error esborrant node"); } }}>Esborra</AlertDialogAction>
                                     </AlertDialogFooter>
                                   </AlertDialogContent>
                                 </AlertDialog>
@@ -253,3 +262,5 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
 }
 
 export const _newId = () => uid();
+
+

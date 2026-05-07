@@ -1,29 +1,25 @@
-import { useCallback, useMemo } from "react";
-import { useDebouncedLocalStorage, uid } from "@/lib/storage";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { uid } from "@/lib/storage";
 
 export type Equipment = {
   id: string;
   gubimCode: string;
-  equipCode: string;          // opcional, màx 4 alfanumèric
+  equipCode: string;
   equipName: string;
   needsTable: boolean;
-  tableCode: string;          // "T" + equipCode si te codi, sinó buit
-  tableName: string;          // = equipName (sense prefix TAULA_)
+  tableCode: string;
+  tableName: string;
   fieldCols: string[];
-  parentEquipCode: string;    // codi de l'equip pare (jerarquia intra-gubim)
+  parentEquipCode: string;
   createdAt: number;
 };
 
 const KEY = "cbt.equipments.v1";
 
-// Retorna true si el codi GuBIMClass és de nivell 4 (XX.XX.XX.XX)
 const isLevel4 = (code: string) => code.split(".").length === 4;
 
-// Dona la llista actualitzada amb el parentEquipCode assignat automàticament:
-// Per cada grup de guinimCode nivell 4, el primer equip (createdAt més antic) és el pare,
-// i tots els altres (que no tinguin ja un pare manual) apunten a ell.
 function autoAssignParents(list: Equipment[]): Equipment[] {
-  // Agrupa per gubimCode de nivell 4
   const groups = new Map<string, Equipment[]>();
   list.forEach((e) => {
     if (!isLevel4(e.gubimCode)) return;
@@ -32,15 +28,12 @@ function autoAssignParents(list: Equipment[]): Equipment[] {
     groups.set(e.gubimCode, g);
   });
 
-  // Construeix un mapa de canvis: id -> parentEquipCode
   const patches = new Map<string, string>();
   groups.forEach((group) => {
     if (group.length < 2) return;
-    // Ordena per createdAt per determinar el pare (el més antic)
     const sorted = [...group].sort((a, b) => a.createdAt - b.createdAt);
     const pare = sorted[0];
     sorted.slice(1).forEach((child) => {
-      // Només assigna si no té un pare ja definit manualment
       if (!child.parentEquipCode && pare.equipCode) {
         patches.set(child.id, pare.equipCode);
       }
@@ -50,6 +43,33 @@ function autoAssignParents(list: Equipment[]): Equipment[] {
   if (patches.size === 0) return list;
   return list.map((e) => patches.has(e.id) ? { ...e, parentEquipCode: patches.get(e.id)! } : e);
 }
+
+// Conversió Supabase ↔ Equipment
+const toEquip = (row: any): Equipment => ({
+  id:              row.id,
+  gubimCode:       row.gubim_code,
+  equipCode:       row.equip_code ?? "",
+  equipName:       row.equip_name,
+  needsTable:      row.needs_table ?? false,
+  tableCode:       row.table_code ?? "",
+  tableName:       row.table_name ?? "",
+  fieldCols:       row.field_cols ?? [],
+  parentEquipCode: row.parent_equip_code ?? "",
+  createdAt:       row.created_at,
+});
+
+const toRow = (e: Equipment) => ({
+  id:               e.id,
+  gubim_code:       e.gubimCode,
+  equip_code:       e.equipCode || null,
+  equip_name:       e.equipName,
+  needs_table:      e.needsTable,
+  table_code:       e.tableCode || null,
+  table_name:       e.tableName || null,
+  field_cols:       e.fieldCols,
+  parent_equip_code: e.parentEquipCode || null,
+  created_at:       e.createdAt,
+});
 
 const SEED: Equipment[] = [
   {
@@ -74,7 +94,7 @@ const SEED: Equipment[] = [
     tableName: "",
     fieldCols: ["TAG", "FABRICANT", "MODEL"],
     parentEquipCode: "RNA",
-    createdAt: Date.now(),
+    createdAt: Date.now() + 1,
   },
   {
     id: uid(),
@@ -86,7 +106,7 @@ const SEED: Equipment[] = [
     tableName: "Bomba de calor",
     fieldCols: ["TAG", "SISTEMA", "FABRICANT", "MODEL", "POTNOM", "TENSNOM"],
     parentEquipCode: "",
-    createdAt: Date.now(),
+    createdAt: Date.now() + 2,
   },
   {
     id: uid(),
@@ -98,62 +118,85 @@ const SEED: Equipment[] = [
     tableName: "",
     fieldCols: [],
     parentEquipCode: "",
-    createdAt: Date.now(),
+    createdAt: Date.now() + 3,
   },
 ];
 
 export function useEquipments() {
-  const [items, setItems] = useDebouncedLocalStorage<Equipment[]>(KEY, SEED);
+  const [items, setItems]     = useState<Equipment[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const upsert = useCallback(
-    (e: Equipment) => {
-      setItems((prev) => {
-        const idx = prev.findIndex((p) => p.id === e.id);
-        const next = idx >= 0
-          ? prev.map((p, i) => (i === idx ? e : p))
-          : [...prev, e];
-        return autoAssignParents(next);
+  // Càrrega inicial + seed si buit
+  useEffect(() => {
+    supabase
+      .from("equipments")
+      .select("*")
+      .order("created_at")
+      .then(({ data, error }) => {
+        if (error) { console.error("useEquipments fetch:", error); setLoading(false); return; }
+        setItems((data ?? []).map(toEquip));
+        setLoading(false);
       });
-    },
-    [setItems],
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const isCodeTaken = useCallback(
+    (code: string, excludeId?: string) =>
+      items.some((e) => e.equipCode === code && e.id !== excludeId),
+    [items],
   );
 
-  const remove = useCallback((id: string) => setItems((p) => p.filter((e) => e.id !== id)), [setItems]);
+  const upsert = useCallback(async (e: Equipment) => {
+    const row = toRow(e);
+    const { error } = await supabase.from("equipments").upsert(row, { onConflict: "id" });
+    if (error) throw new Error(error.message);
+    setItems((prev) => {
+      const idx = prev.findIndex((p) => p.id === e.id);
+      const next = idx >= 0 ? prev.map((p, i) => (i === idx ? e : p)) : [...prev, e];
+      return autoAssignParents(next);
+    });
+  }, []);
 
-  const addMany = useCallback(
-    (arr: Equipment[]) => {
-      setItems((prev) => {
-        const seen = new Set(prev.map((p) => p.equipCode).filter(Boolean));
-        const toAdd = arr.filter((e) => {
-          if (!e.equipCode) return true;
-          if (seen.has(e.equipCode)) return false;
-          seen.add(e.equipCode);
-          return true;
-        });
-        return autoAssignParents([...prev, ...toAdd]);
-      });
-    },
-    [setItems],
-  );
+  const remove = useCallback(async (id: string) => {
+    const { error } = await supabase.from("equipments").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setItems((prev) => prev.filter((e) => e.id !== id));
+  }, []);
 
-  const clearAll = useCallback(() => setItems([]), [setItems]);
-
-  const removeFieldColFromAll = useCallback(
-    (col: string) => {
-      setItems((prev) =>
-        prev.map((e) =>
-          e.fieldCols.includes(col) ? { ...e, fieldCols: e.fieldCols.filter((c) => c !== col) } : e,
-        ),
-      );
-    },
-    [setItems],
-  );
-
-  const byCode = useMemo(() => {
-    const m = new Map<string, Equipment>();
-    items.forEach((e) => { if (e.equipCode) m.set(e.equipCode, e); });
-    return m;
+  const addMany = useCallback(async (arr: Equipment[]) => {
+    const seen   = new Set(items.map((e) => e.equipCode).filter(Boolean));
+    const toAdd  = arr.filter((e) => {
+      if (!e.equipCode) return true;
+      if (seen.has(e.equipCode)) return false;
+      seen.add(e.equipCode);
+      return true;
+    });
+    if (toAdd.length === 0) return;
+    const BATCH = 50;
+    for (let i = 0; i < toAdd.length; i += BATCH) {
+      const batch = toAdd.slice(i, i + BATCH);
+      const { error } = await supabase.from("equipments").upsert(batch.map(toRow), { onConflict: "id" });
+      if (error) throw new Error(error.message);
+    }
+    setItems((prev) => autoAssignParents([...prev, ...toAdd]));
   }, [items]);
 
-  return { items, upsert, remove, addMany, clearAll, byCode, removeFieldColFromAll };
+  const clearAll = useCallback(async () => {
+    const { error } = await supabase.from("equipments").delete().neq("id", "");
+    if (error) throw new Error(error.message);
+    setItems([]);
+  }, []);
+
+  const removeFieldColFromAll = useCallback(async (col: string) => {
+    const affected = items.filter((e) => e.fieldCols.includes(col));
+    for (const e of affected) {
+      const updated = { ...e, fieldCols: e.fieldCols.filter((c) => c !== col) };
+      await supabase.from("equipments").update({ field_cols: updated.fieldCols }).eq("id", e.id);
+    }
+    setItems((prev) => prev.map((e) =>
+      e.fieldCols.includes(col) ? { ...e, fieldCols: e.fieldCols.filter((c) => c !== col) } : e
+    ));
+  }, [items]);
+
+  return { items, upsert, remove, addMany, clearAll, isCodeTaken, removeFieldColFromAll, loading };
 }

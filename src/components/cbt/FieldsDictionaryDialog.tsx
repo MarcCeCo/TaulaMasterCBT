@@ -90,45 +90,80 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
+
+      // col = Codi (clau interna). Si no hi ha Codi, el camp no es pot importar.
+      const existingCols  = new Set(fields.map((f) => f.col));
+      const existingNames = new Set(fields.map((f) => f.name).filter(Boolean) as string[]);
+      const seenCols      = new Set<string>(); // codis ja processats en aquest Excel
+      const seenNames     = new Set<string>(); // noms ja processats en aquest Excel
+
       const toAdd: FieldMeta[] = rows.map((r, i) => {
-        const nom = String(r["Nom"] ?? "").trim();
-        const codi = String(r["Codi"] ?? "").trim().toUpperCase();
-        const cbt = String(r["CBT"] ?? "").trim();
-        const format = String(r["Format paràmetre"] ?? "").trim();
+        const nom        = String(r["Nom"] ?? "").trim();
+        const codi       = String(r["Codi"] ?? "").trim().toUpperCase();
+        const cbt        = String(r["CBT"] ?? "").trim();
+        const format     = String(r["Format paràmetre"] ?? "").trim();
         const agrupRevit = String(r["Agrupació Revit"] ?? r["Agrupació CBT"] ?? "").trim();
-        const grupTxt = String(r["Grup .txt"] ?? "").trim();
-        const instancia = String(r["Instància Revit"] ?? "Y").trim();
+        const grupTxt    = String(r["Grup .txt"] ?? "").trim();
+        const instancia  = String(r["Instància Revit"] ?? "Y").trim();
         const disciplina = String(r["Disciplina"] ?? "").trim();
         const taulaAssoc = String(r["Taula associada"] ?? "").trim();
-        const tipusDada = String(r["Tipus dada"] ?? "").trim();
-        // Si només el nom té valor → classificador
+        const tipusDada  = String(r["Tipus dada"] ?? "").trim();
+
+        // Fila classificadora: nom present, resta de camps buits
         const isClsRow = nom && !codi && !cbt && !format && !agrupRevit && !disciplina;
         if (isClsRow) {
-          const genCol = "CLS_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 10);
-          if (exists(genCol)) return null;
-          return { col: genCol, name: nom, cbt_name: null, type: null, unit: null, code: null, category: null, group: null, active: "Y" as const, discipline: null, taulaAssoc: null, order: Date.now() + i, scope: "global" };
+          const genCol = "CLS_" + nom.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 10);
+          const isDup  = existingCols.has(genCol) || seenCols.has(genCol) || existingNames.has(nom) || seenNames.has(nom);
+          seenCols.add(genCol);
+          seenNames.add(nom);
+          return {
+            col: genCol,
+            name: isDup ? nom + " (duplicat)" : nom,
+            cbt_name: null, type: null, unit: null, code: null, category: null,
+            group: null, active: "Y" as const, discipline: null, taulaAssoc: null,
+            order: Date.now() + i, scope: "global",
+          };
         }
+
+        // Camp normal: Nom obligatori. Codi és opcional.
         if (!nom) return null;
-        // Permet camps sense codi (codi pot estar buit)
-        if (codi && exists(codi)) return null;
-        const colKey = codi || ("CAMP_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + (Date.now() + i).toString().slice(-4));
+
+        // Si no hi ha codi, generem una clau interna basada en el nom
+        const colKey = codi || ("CAMP_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + String(Date.now() + i).slice(-4));
+
+        // Duplicat si el codi (o colKey) O el nom ja existeixen (a la BD o en aquest Excel)
+        const isDup = existingCols.has(colKey) || seenCols.has(colKey) || existingNames.has(nom) || seenNames.has(nom);
+        seenCols.add(colKey);
+        seenNames.add(nom);
+
         return {
-          col: colKey, name: nom || null, cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
-          code: codi || null, category: tipusDada || null, group: agrupRevit || null,
-          active: (instancia === "N" ? "N" : "Y") as "Y" | "N",
+          col:      colKey,
+          name:     isDup ? nom + " (duplicat)" : nom,
+          cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
+          code:     codi || null, category: tipusDada || null, group: agrupRevit || null,
+          active:   (instancia === "N" ? "N" : "Y") as "Y" | "N",
           discipline: disciplina || null, taulaAssoc: taulaAssoc || null,
           order: Date.now() + i, scope: "global",
         };
       }).filter(Boolean) as FieldMeta[];
-      addMany(toAdd);
-      toast.success(`${toAdd.length} camps importats`);
-    } catch { toast.error("Error en importar"); }
+
+      const { inserted, duplicates } = await addMany(toAdd);
+      const parts: string[] = [];
+      if (inserted > 0) parts.push(`${inserted} camps inserits`);
+      if (duplicates > 0) parts.push(`${duplicates} duplicats marcats amb "(duplicat)"`);
+      if (inserted > 0) toast.success(parts.join(" · "));
+      else toast.warning("Cap camp nou per importar");
+    } catch (e: any) {
+      toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
+    }
   };
 
-  const handleDeleteField = (col: string) => {
-    removeField(col);
-    removeFieldColFromAll(col);
-    toast.success("Camp esborrat i referències eliminades");
+  const handleDeleteField = async (col: string) => {
+    try {
+      await removeField(col);
+      await removeFieldColFromAll(col);
+      toast.success("Camp esborrat i referències eliminades");
+    } catch { toast.error("Error esborrant camp"); }
   };
 
   return (
@@ -170,7 +205,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={() => { clearAll(); toast.success("Tots els camps eliminats"); }}>Esborra</AlertDialogAction>
+                <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("Tots els camps eliminats"); } catch { toast.error("Error esborrant camps"); } }}>Esborra</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -258,10 +293,10 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         <AddFieldDialog
           open={addOpen} onOpenChange={setAddOpen} groups={groups} disciplines={disciplines}
           editing={editing} existsCol={exists}
-          onSubmit={(f) => {
+          onSubmit={async (f) => {
             try {
-              if (editing) { updateField(editing.col, f); toast.success("Camp actualitzat"); }
-              else { addField(f); toast.success("Camp creat"); }
+              if (editing) { await updateField(editing.col, f); toast.success("Camp actualitzat"); }
+              else { await addField(f); toast.success("Camp creat"); }
             } catch (e: any) { toast.error(e.message ?? "Error"); }
           }}
         />
