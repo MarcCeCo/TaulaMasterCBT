@@ -13,39 +13,34 @@ import {
 
 async function fetchProfile(u: User): Promise<UserProfile | null> {
   try {
-    const { data } = await supabase
+    // Intentem primer amb allowed_views
+    const { data, error } = await supabase
       .from("user_profiles")
       .select("id, email, full_name, role, allowed_views")
       .eq("id", u.id)
       .single();
-    return data ?? null;
+
+    if (error) {
+      // Si falla (p.ex. la columna allowed_views no existeix encara a la BD),
+      // fem fallback sense aquesta columna
+      const { data: data2 } = await supabase
+        .from("user_profiles")
+        .select("id, email, full_name, role")
+        .eq("id", u.id)
+        .single();
+      if (data2) return { ...data2, allowed_views: null } as UserProfile;
+      return null;
+    }
+
+    return data ? { ...data, allowed_views: data.allowed_views ?? null } as UserProfile : null;
   } catch {
     return null;
   }
 }
 
-function hasStoredSession(): boolean {
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith("sb-") && key.endsWith("-auth-token")) {
-        const raw = localStorage.getItem(key);
-        if (!raw) continue;
-        const parsed = JSON.parse(raw);
-        const expiresAt: number | undefined = parsed?.expires_at;
-        if (expiresAt && expiresAt * 1000 > Date.now()) {
-          return true;
-        }
-      }
-    }
-  } catch {}
-  return false;
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  // Sempre true fins que onAuthStateChange resolgui user + profile junts
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -56,20 +51,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(u);
 
       if (u) {
-        // Esperem el perfil ABANS de treure el loading.
-        // Això evita el render intermedi amb profile=null que causava
-        // el "Sense accés assignat" en fer F5.
+        // Esperem el perfil ABANS de treure el loading
         const p = await fetchProfile(u);
         setProfile(p);
       } else {
         setProfile(null);
       }
 
-      // Només ara, amb user + profile resolts, amaguem el loader.
       setLoading(false);
     });
 
-    // Timeout de seguretat per si onAuthStateChange no dispara mai
     const timeout = setTimeout(() => setLoading(false), 5000);
 
     return () => {
@@ -100,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canView: canViewRole(role),
         canEdit: canEditRole(role),
         isAdmin: isAdminRole(role),
-        canSeeView: canSeeViewFn(profile),
+        canSeeView: canSeeViewFn(profile, user),
         signIn,
         signOut,
       }}
