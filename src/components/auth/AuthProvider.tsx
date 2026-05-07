@@ -27,7 +27,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Sessió inicial
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -37,7 +36,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // Escoltar canvis de sessió
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         const u = session?.user ?? null;

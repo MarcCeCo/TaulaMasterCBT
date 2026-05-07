@@ -5,6 +5,7 @@ import { AppHeader } from "./AppHeader";
 import { EquipmentsTable } from "./EquipmentsTable";
 import { GubimClassManager } from "./GubimClassManager";
 import { FieldsDictionaryDialog } from "./FieldsDictionaryDialog";
+import { UserManagerDialog } from "@/components/auth/UserManagerDialog";
 import { useFields } from "@/hooks/useFields";
 import { useEquipments } from "@/hooks/useEquipments";
 import { isClassifier } from "@/lib/fields";
@@ -15,6 +16,7 @@ export function TaulaMasterMain() {
   const { items } = useEquipments();
   const [gubim, setGubim] = useState(false);
   const [dict, setDict] = useState(false);
+  const [users, setUsers] = useState(false);
 
   const stats = useMemo(() => {
     const nonClassifiers = fields.filter((f) => !isClassifier(f));
@@ -32,10 +34,13 @@ export function TaulaMasterMain() {
 
   return (
     <div className="min-h-screen bg-[#F5F7F8]">
-      <AppHeader onOpenGubim={() => setGubim(true)} onOpenFields={() => setDict(true)} />
+      <AppHeader
+        onOpenGubim={() => setGubim(true)}
+        onOpenFields={() => setDict(true)}
+        onOpenUsers={() => setUsers(true)}
+      />
 
       <main className="mx-auto max-w-[1600px] px-6 py-6 space-y-6">
-        {/* Stat cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="p-4 flex items-center gap-3 border-0 shadow-sm bg-white">
             <div className="h-10 w-10 rounded-lg bg-[#0099A8]/10 text-[#0099A8] flex items-center justify-center shrink-0">
@@ -98,7 +103,6 @@ export function TaulaMasterMain() {
           </Card>
         </div>
 
-        {/* Taula d'equips */}
         <Card className="p-4 border-0 shadow-sm bg-white">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-[#006E7A]">Equips</h2>
@@ -113,6 +117,7 @@ export function TaulaMasterMain() {
 
       <GubimClassManager open={gubim} onOpenChange={setGubim} />
       <FieldsDictionaryDialog open={dict} onOpenChange={setDict} />
+      <UserManagerDialog open={users} onOpenChange={setUsers} />
     </div>
   );
 }

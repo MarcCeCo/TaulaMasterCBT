@@ -359,10 +359,10 @@ export function EquipmentsTable() {
                   isFirstInGroup={isFirstInGroup}
                   groupSize={groupSize}
                   childDepth={depth}
-                  canEdit={canEdit}
                   onView={() => { setViewing(e); setDetailOpen(true); }}
                   onEdit={(ev?: any) => { if(ev) ev.stopPropagation?.(); setEditing(e); setFormOpen(true); }}
                   onDelete={async () => { try { await remove(e.id); toast.success("Equip esborrat"); } catch { toast.error("Error esborrant equip"); } }}
+                  canEdit={canEdit}
                 />
               );
             })}

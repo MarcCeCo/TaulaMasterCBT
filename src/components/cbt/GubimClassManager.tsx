@@ -5,23 +5,23 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { useAuth } from "@/lib/auth";
 import { ChevronRight, Download, Pencil, Trash2, Upload, Search, X } from "lucide-react";
 import { GubimNode, codeLevel, isValidCode, parentCode, useGubimClass } from "@/hooks/useGubimClass";
 import { LevelBadge } from "./LevelBadge";
 import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 
 interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
 
 export function GubimClassManager({ open, onOpenChange }: Props) {
   const { nodes, nodeMap, addNode, addMany, updateNode, removeNode, hasChildren, clearAll } = useGubimClass();
+  const { canEdit } = useAuth();
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<GubimNode | null>(null);
   const [codeError, setCodeError] = useState("");
-  const { canEdit } = useAuth();
   const [q, setQ] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -216,19 +216,20 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                     <td className="p-2 text-xs text-muted-foreground">{parent ? `${parent.code} · ${parent.name}` : "—"}</td>
                     <td className="p-2">
                       <div className="flex gap-1">
-                        {canEdit && <Button
+                        <Button
                           size="icon" variant={isEditing ? "secondary" : "ghost"} className="h-7 w-7"
+                          disabled={!canEdit}
                           onClick={() => { if (isEditing) { reset(); } else { setEditing(n); setCode(n.code); setName(n.name); setCodeError(""); } }}
                         >
                           <Pencil className="h-3.5 w-3.5" />
-                        </Button>}
+                        </Button>
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={!canEdit || hasC}>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={hasC || !canEdit}>
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                   </AlertDialogTrigger>

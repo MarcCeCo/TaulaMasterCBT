@@ -1,407 +1,285 @@
 // src/components/auth/UserManagerDialog.tsx
-// Gestió d'usuaris (només admins)
-
 import { useEffect, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Alert } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/lib/auth";
-import { ROLE_LABELS, ROLE_COLORS, type UserRole } from "@/lib/auth";
-import {
-  Loader2,
-  UserPlus,
-  Pencil,
-  Trash2,
-  CheckCircle2,
-  AlertCircle,
-  Users,
-} from "lucide-react";
+import { useAuth, type UserRole, type UserProfile } from "@/lib/auth";
+import { Pencil, Trash2, UserPlus, RefreshCw, Mail } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
-interface UserRow {
-  id: string;
-  email: string;
-  full_name: string;
-  role: UserRole;
-  created_at: string;
-}
-
-interface UserManagerDialogProps {
+interface Props {
   open: boolean;
-  onOpenChange: (v: boolean) => void;
+  onOpenChange: (b: boolean) => void;
 }
 
-type FormMode = "list" | "create" | "edit";
+const ROLE_LABELS: Record<UserRole, string> = {
+  viewer: "Visualitzador",
+  editor: "Editor",
+  admin: "Administrador",
+};
 
-const EMPTY_FORM = { email: "", password: "", full_name: "", role: "viewer" as UserRole };
+const ROLE_COLORS: Record<UserRole, string> = {
+  viewer: "bg-slate-100 text-slate-700",
+  editor: "bg-blue-100 text-blue-700",
+  admin: "bg-violet-100 text-violet-700",
+};
 
-export function UserManagerDialog({ open, onOpenChange }: UserManagerDialogProps) {
-  const { user: currentUser } = useAuth();
-  const [users, setUsers] = useState<UserRow[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-  const [mode, setMode] = useState<FormMode>("list");
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+export function UserManagerDialog({ open, onOpenChange }: Props) {
+  const { profile: myProfile } = useAuth();
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(false);
 
-  // Carregar usuaris
-  async function loadUsers() {
-    setLoadingUsers(true);
-    const { data } = await supabase
+  // Formulari nou usuari
+  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<UserRole>("viewer");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Edició rol
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRole, setEditRole] = useState<UserRole>("viewer");
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
       .from("user_profiles")
-      .select("id, email, full_name, role, created_at")
-      .order("created_at", { ascending: false });
-    setUsers(data ?? []);
-    setLoadingUsers(false);
-  }
+      .select("id, email, full_name, role")
+      .order("email");
+    if (!error && data) setUsers(data as UserProfile[]);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    if (open) {
-      loadUsers();
-      setMode("list");
-      setFeedback(null);
-    }
+    if (open) fetchUsers();
   }, [open]);
 
-  // Crear usuari via Edge Function
-  async function handleCreate(e: React.FormEvent) {
+  const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
-    setFeedback(null);
+    if (!email.trim() || !password.trim()) return toast.error("Correu i contrasenya obligatoris");
+    setSubmitting(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch("/api/create-user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${session?.access_token}`,
+          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token ?? ""}`,
         },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ email: email.trim(), password, full_name: fullName.trim(), role }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error creant usuari");
-      setFeedback({ type: "ok", msg: `Usuari ${form.email} creat correctament` });
-      setForm(EMPTY_FORM);
-      setMode("list");
-      await loadUsers();
+      toast.success(`Usuari ${email} creat correctament`);
+      setEmail(""); setFullName(""); setPassword(""); setRole("viewer");
+      await fetchUsers();
     } catch (err: any) {
-      setFeedback({ type: "err", msg: err.message });
+      toast.error(err.message ?? "Error desconegut");
     } finally {
-      setSaving(false);
+      setSubmitting(false);
     }
-  }
+  };
 
-  // Editar rol
-  async function handleEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editId) return;
-    setSaving(true);
-    setFeedback(null);
-    try {
-      const { error } = await supabase
-        .from("user_profiles")
-        .update({ full_name: form.full_name, role: form.role })
-        .eq("id", editId);
-      if (error) throw error;
-      setFeedback({ type: "ok", msg: "Usuari actualitzat correctament" });
-      setMode("list");
-      await loadUsers();
-    } catch (err: any) {
-      setFeedback({ type: "err", msg: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
+  const handleUpdateRole = async (userId: string) => {
+    const { error } = await supabase
+      .from("user_profiles")
+      .update({ role: editRole })
+      .eq("id", userId);
+    if (error) return toast.error("Error actualitzant rol");
+    toast.success("Rol actualitzat");
+    setEditingId(null);
+    await fetchUsers();
+  };
 
-  // Eliminar usuari (només el perfil; l'usuari d'auth s'ha d'eliminar via Dashboard o Edge Function)
-  async function handleDelete(u: UserRow) {
-    setSaving(true);
-    try {
-      await supabase.from("user_profiles").delete().eq("id", u.id);
-      setDeleteTarget(null);
-      await loadUsers();
-      setFeedback({ type: "ok", msg: `Perfil de ${u.email} eliminat` });
-    } catch (err: any) {
-      setFeedback({ type: "err", msg: err.message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function startEdit(u: UserRow) {
-    setEditId(u.id);
-    setForm({ email: u.email, password: "", full_name: u.full_name ?? "", role: u.role });
-    setMode("edit");
-    setFeedback(null);
-  }
+  const handleDelete = async (userId: string, userEmail: string) => {
+    // Només actualitzem el rol a viewer (no podem esborrar usuaris des del client anon)
+    // Per esborrar caldria l'API admin. Marquem com a viewer i notifiquem.
+    const { error } = await supabase
+      .from("user_profiles")
+      .update({ role: "viewer" })
+      .eq("id", userId);
+    if (error) return toast.error("Error desactivant usuari");
+    toast.success(`${userEmail} degradat a visualitzador`);
+    await fetchUsers();
+  };
 
   return (
-    <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-[#006E7A]">
-              <Users className="h-5 w-5" />
-              Gestió d'usuaris
-            </DialogTitle>
-            <DialogDescription>
-              Crea, edita i gestiona els permisos dels usuaris de l'aplicació.
-            </DialogDescription>
-          </DialogHeader>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5 text-[#0099A8]" />
+            Gestió d'usuaris i permisos
+          </DialogTitle>
+        </DialogHeader>
 
-          {/* Feedback */}
-          {feedback && (
-            <Alert
-              variant={feedback.type === "err" ? "destructive" : "default"}
-              className={`py-2.5 text-sm flex gap-2 items-center ${feedback.type === "ok" ? "bg-emerald-50 border-emerald-200 text-emerald-800" : ""}`}
-            >
-              {feedback.type === "ok" ? (
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-              ) : (
-                <AlertCircle className="h-4 w-4 shrink-0" />
-              )}
-              {feedback.msg}
-            </Alert>
-          )}
+        {/* Formulari invitació */}
+        <div className="border rounded-md p-4 bg-muted/30 space-y-3">
+          <p className="text-sm font-medium text-[#006E7A]">Convidar nou usuari</p>
+          <form onSubmit={handleInvite} className="flex flex-wrap gap-2 items-end">
+            <div className="space-y-1 flex-1 min-w-[180px]">
+              <label className="text-xs font-medium">Correu *</label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="usuari@example.com"
+                required
+              />
+            </div>
+            <div className="space-y-1 flex-1 min-w-[140px]">
+              <label className="text-xs font-medium">Nom complet</label>
+              <Input
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nom i cognoms"
+              />
+            </div>
+            <div className="space-y-1 min-w-[160px]">
+              <label className="text-xs font-medium">Contrasenya inicial *</label>
+              <Input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="mínim 6 caràcters"
+                required
+                minLength={6}
+              />
+            </div>
+            <div className="space-y-1 w-40">
+              <label className="text-xs font-medium">Rol</label>
+              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="viewer">Visualitzador</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
+                  <SelectItem value="admin">Administrador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button type="submit" disabled={submitting} className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5">
+              <Mail className="h-4 w-4" />
+              {submitting ? "Creant…" : "Crea usuari"}
+            </Button>
+          </form>
+          <p className="text-xs text-muted-foreground">
+            <strong>Visualitzador:</strong> només pot consultar dades. &nbsp;
+            <strong>Editor:</strong> pot crear, editar i esborrar registres. &nbsp;
+            <strong>Administrador:</strong> accés complet incloent gestió d'usuaris.
+          </p>
+        </div>
 
-          {/* LLISTA */}
-          {mode === "list" && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <p className="text-sm text-muted-foreground">{users.length} usuaris registrats</p>
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  style={{ background: "linear-gradient(135deg, #006E7A 0%, #0099A8 100%)" }}
-                  onClick={() => { setForm(EMPTY_FORM); setMode("create"); setFeedback(null); }}
-                >
-                  <UserPlus className="h-4 w-4" />
-                  Nou usuari
-                </Button>
-              </div>
+        {/* Llista d'usuaris */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">{users.length} usuari{users.length !== 1 ? "s" : ""}</p>
+          <Button variant="ghost" size="sm" onClick={fetchUsers} disabled={loading} className="gap-1.5">
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+            Actualitza
+          </Button>
+        </div>
 
-              {loadingUsers ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-[#0099A8]" />
-                </div>
-              ) : (
-                <div className="divide-y rounded-lg border">
-                  {users.map((u) => (
-                    <div key={u.id} className="flex items-center gap-3 px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium text-sm truncate">{u.full_name || u.email}</span>
-                          {u.id === currentUser?.id && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">Tu</Badge>
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">{u.email}</span>
-                      </div>
-                      <Badge className={`text-xs ${ROLE_COLORS[u.role]} border-0`}>
-                        {ROLE_LABELS[u.role]}
-                      </Badge>
-                      <div className="flex gap-1 shrink-0">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => startEdit(u)}
-                          title="Editar"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </Button>
-                        {u.id !== currentUser?.id && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={() => setDeleteTarget(u)}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+        <div className="border rounded-md flex-1 overflow-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 z-10 bg-muted border-b">
+              <tr className="text-left">
+                <th className="p-2 text-xs font-semibold">Correu</th>
+                <th className="p-2 text-xs font-semibold">Nom</th>
+                <th className="p-2 text-xs font-semibold">Rol</th>
+                <th className="p-2 w-32 text-xs font-semibold">Accions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => {
+                const isMe = u.id === myProfile?.id;
+                const isEditing = editingId === u.id;
+                return (
+                  <tr key={u.id} className={cn("border-t hover:bg-muted/30", isMe && "bg-[#0099A8]/5")}>
+                    <td className="p-2 font-mono text-xs">
+                      {u.email}
+                      {isMe && <Badge className="ml-2 text-[10px] px-1.5 py-0 bg-[#0099A8]">Jo</Badge>}
+                    </td>
+                    <td className="p-2 text-xs">{u.full_name ?? "—"}</td>
+                    <td className="p-2">
+                      {isEditing ? (
+                        <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
+                          <SelectTrigger className="h-7 text-xs w-36">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="viewer">Visualitzador</SelectItem>
+                            <SelectItem value="editor">Editor</SelectItem>
+                            <SelectItem value="admin">Administrador</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge className={cn("text-xs font-normal border-0", ROLE_COLORS[u.role as UserRole])}>
+                          {ROLE_LABELS[u.role as UserRole] ?? u.role}
+                        </Badge>
+                      )}
+                    </td>
+                    <td className="p-2">
+                      <div className="flex gap-1">
+                        {isEditing ? (
+                          <>
+                            <Button size="sm" className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A]" onClick={() => handleUpdateRole(u.id)}>
+                              Desa
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingId(null)}>
+                              Cancel·la
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              size="icon" variant="ghost" className="h-7 w-7"
+                              disabled={isMe}
+                              onClick={() => { setEditingId(u.id); setEditRole(u.role as UserRole); }}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            {!isMe && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Degradar usuari?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      {u.email} perdrà els permisos actuals i passarà a ser visualitzador. Per eliminar-lo completament cal accedir al panell de Supabase.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(u.id, u.email)}>
+                                      Degrada a visualitzador
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
+                          </>
                         )}
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {users.length === 0 && !loading && (
+                <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">Cap usuari trobat</td></tr>
               )}
-            </div>
-          )}
-
-          {/* FORMULARI CREACIÓ */}
-          {mode === "create" && (
-            <form onSubmit={handleCreate} className="space-y-4">
-              <h3 className="font-semibold text-sm text-[#006E7A]">Nou usuari</h3>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5 col-span-2">
-                  <Label htmlFor="new-email">Correu electrònic *</Label>
-                  <Input
-                    id="new-email"
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    required
-                    placeholder="nom@exemple.com"
-                  />
-                </div>
-
-                <div className="space-y-1.5 col-span-2">
-                  <Label htmlFor="new-name">Nom complet</Label>
-                  <Input
-                    id="new-name"
-                    value={form.full_name}
-                    onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                    placeholder="Nom i cognoms"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="new-password">Contrasenya inicial *</Label>
-                  <Input
-                    id="new-password"
-                    type="password"
-                    value={form.password}
-                    onChange={(e) => setForm({ ...form, password: e.target.value })}
-                    required
-                    placeholder="Mínim 8 caràcters"
-                    minLength={8}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="new-role">Rol *</Label>
-                  <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as UserRole })}>
-                    <SelectTrigger id="new-role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(Object.entries(ROLE_LABELS) as [UserRole, string][]).map(([value, label]) => (
-                        <SelectItem key={value} value={value}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setMode("list")}>
-                  Cancel·lar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={saving}
-                  className="gap-1.5"
-                  style={{ background: "linear-gradient(135deg, #006E7A 0%, #0099A8 100%)" }}
-                >
-                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Crear usuari
-                </Button>
-              </div>
-            </form>
-          )}
-
-          {/* FORMULARI EDICIÓ */}
-          {mode === "edit" && (
-            <form onSubmit={handleEdit} className="space-y-4">
-              <h3 className="font-semibold text-sm text-[#006E7A]">Editar usuari: {form.email}</h3>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="edit-name">Nom complet</Label>
-                <Input
-                  id="edit-name"
-                  value={form.full_name}
-                  onChange={(e) => setForm({ ...form, full_name: e.target.value })}
-                  placeholder="Nom i cognoms"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="edit-role">Rol</Label>
-                <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as UserRole })}>
-                  <SelectTrigger id="edit-role">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(Object.entries(ROLE_LABELS) as [UserRole, string][]).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>{label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
-                Per canviar la contrasenya d'un usuari, accedeix al Dashboard de Supabase.
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setMode("list")}>
-                  Cancel·lar
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={saving}
-                  style={{ background: "linear-gradient(135deg, #006E7A 0%, #0099A8 100%)" }}
-                >
-                  {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Desar canvis
-                </Button>
-              </div>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmació eliminació */}
-      <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
-            <AlertDialogDescription>
-              S'eliminarà el perfil de <strong>{deleteTarget?.email}</strong>.
-              L'usuari no podrà accedir a l'aplicació.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel·lar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteTarget && handleDelete(deleteTarget)}
-              className="bg-destructive hover:bg-destructive/90"
-            >
-              Eliminar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
+            </tbody>
+          </table>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
