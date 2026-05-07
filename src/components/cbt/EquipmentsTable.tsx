@@ -113,9 +113,9 @@ const EquipmentRow = memo(function EquipmentRow({
           <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8]" onClick={onView}><Eye className="h-3.5 w-3.5" /></Button>
           {canEdit && <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>}
           <AlertDialog>
-            {canEdit && <AlertDialogTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
-            </AlertDialogTrigger>}
+            <AlertDialogTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={!canEdit}><Trash2 className="h-3.5 w-3.5" /></Button>
+            </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Esborrar equip {e.equipName}?</AlertDialogTitle>
@@ -303,8 +303,8 @@ export function EquipmentsTable() {
         {canEdit && <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
         <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
         <AlertDialog>
-          {canEdit && <AlertDialogTrigger asChild>
-            <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4" /> Esborra tot</Button>}
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4" /> Esborra tot</Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>Esborrar tots els equips?</AlertDialogTitle><AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription></AlertDialogHeader>

@@ -168,7 +168,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           {canEdit && <Button size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nou camp</Button>}
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              {canEdit && <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>}
+              <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>

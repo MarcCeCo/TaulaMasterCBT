@@ -159,8 +159,8 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
           {canEdit && <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
           <AlertDialog>
-            {canEdit && <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4" /> Esborra tot</Button>}
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4" /> Esborra tot</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
