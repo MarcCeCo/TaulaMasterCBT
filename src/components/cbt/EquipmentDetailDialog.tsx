@@ -35,7 +35,7 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
 
   for (const f of fields) {
     if (isClassifier(f)) {
-      currentClassifier = f.name ?? f.col;
+      currentClassifier = f.col;
       classifierAdded = false;
       continue;
     }
@@ -165,17 +165,17 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
                   const f = row.field!;
                   return (
                     <tr key={f.col} className="border-t hover:bg-muted/30">
-                      <td className="px-4 py-2">{f.name}</td>
+                      <td className="px-4 py-2 font-medium">{f.col}</td>
                       {/* Revit */}
-                      <td className="px-4 py-2 font-mono text-xs text-[#006E7A] border-l-2 border-[#0099A8]/20">{f.cbt_name ?? "—"}</td>
-                      <td className="px-4 py-2 text-xs">{f.type ?? "—"}</td>
-                      <td className="px-4 py-2 text-xs">{f.discipline ?? "—"}</td>
-                      <td className="px-4 py-2 font-mono text-xs">{f.active}</td>
-                      <td className="px-4 py-2 text-xs">{f.group ?? "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-[#006E7A] border-l-2 border-[#0099A8]/20">{f.cbt ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs">{f.format_param ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs">{f.disciplina ?? "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs">{f.instancia_revit ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs">{f.agrupacio_revit ?? "—"}</td>
                       {/* Rosmiman */}
-                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground border-l-2 border-violet-100">{f.code ?? "—"}</td>
-                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.taulaAssoc ?? "—"}</td>
-                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.category ?? "—"}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground border-l-2 border-violet-100">{f.codi ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.taula_assoc ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.tipus_dada ?? "—"}</td>
                     </tr>
                   );
                 })}
