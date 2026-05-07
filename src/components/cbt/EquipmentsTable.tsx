@@ -399,7 +399,16 @@ export function EquipmentsTable() {
         open={formOpen} onOpenChange={setFormOpen} editing={editing}
         nodes={nodes} nodeMap={nodeMap} fields={fields} fieldMap={fieldMap}
         isCodeTaken={isCodeTaken} allEquipments={items}
-        onSubmit={async (e) => { try { await upsert(e); toast.success(editing ? "Equip actualitzat" : "Equip creat"); } catch { toast.error("Error desant equip"); } }}
+        onSubmit={async (e) => {
+          try {
+            await upsert(e);
+            toast.success(editing ? "Equip actualitzat" : "Equip creat");
+            setFormOpen(false);
+            setEditing(null);
+          } catch {
+            toast.error("Error desant equip");
+          }
+        }}
       />
 
       <EquipmentDetailDialog

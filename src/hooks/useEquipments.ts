@@ -11,29 +11,35 @@ export type Equipment = {
   tableCode:       string;
   tableName:       string;
   fieldCols:       string[];
+  parentEquipCode: string;
+  createdAt:       number;
 };
 
 // Conversió Supabase ↔ Equipment
 const toEquip = (row: any): Equipment => ({
-  id:        row.id,
-  gubimCode: row.gubim_code,
-  equipCode: row.equip_code  ?? "",
-  equipName: row.equip_name,
-  needsTable: row.needs_table ?? false,
-  tableCode: row.table_code  ?? "",
-  tableName: row.table_name  ?? "",
-  fieldCols: row.field_cols  ?? [],
+  id:              row.id,
+  gubimCode:       row.gubim_code,
+  equipCode:       row.equip_code       ?? "",
+  equipName:       row.equip_name,
+  needsTable:      row.needs_table      ?? false,
+  tableCode:       row.table_code       ?? "",
+  tableName:       row.table_name       ?? "",
+  fieldCols:       row.field_cols       ?? [],
+  parentEquipCode: row.parent_equip_code ?? "",
+  createdAt:       row.created_at       ?? Date.now(),
 });
 
 const toRow = (e: Equipment) => ({
-  id:         e.id,
-  gubim_code: e.gubimCode,
-  equip_code: e.equipCode || null,
-  equip_name: e.equipName,
-  needs_table: e.needsTable,
-  table_code: e.tableCode || null,
-  table_name: e.tableName || null,
-  field_cols: e.fieldCols,
+  id:               e.id,
+  gubim_code:       e.gubimCode,
+  equip_code:       e.equipCode       || null,
+  equip_name:       e.equipName,
+  needs_table:      e.needsTable,
+  table_code:       e.tableCode       || null,
+  table_name:       e.tableName       || null,
+  field_cols:       e.fieldCols,
+  parent_equip_code: e.parentEquipCode || null,
+  created_at:       e.createdAt       ?? Date.now(),
 });
 
 export function useEquipments() {
