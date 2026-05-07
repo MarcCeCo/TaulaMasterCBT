@@ -142,7 +142,7 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
                   {cols.length === 0 && <span className="text-xs text-muted-foreground">Cap camp seleccionat</span>}
                   {cols.map((c) => {
                     const f = fieldMap.get(c);
-                    const label = f?.name ?? f?.cbt_name ?? c;
+                    const label = f?.col ?? c;
                     return (
                       <Badge key={c} variant="secondary" className="gap-1">
                         <span className="text-xs">{label}</span>

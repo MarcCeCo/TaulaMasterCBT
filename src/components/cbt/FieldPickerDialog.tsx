@@ -34,7 +34,16 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
   const [cls, setCls] = useState<string>("__all__");
 
   useEffect(() => {
-    if (open) setSel(new Set(initialSelected));
+    if (open) {
+      setSel(new Set(initialSelected));
+      // Debug: log primer camp per verificar estructura
+      if (fields.length > 0) {
+        console.log("[FieldPickerDialog] Primer camp rebut:", JSON.stringify(fields[0]));
+        console.log("[FieldPickerDialog] Total camps:", fields.length);
+      } else {
+        console.warn("[FieldPickerDialog] Array fields buit!");
+      }
+    }
   }, [open]);
 
   const groups = useMemo(() => Array.from(new Set(fields.map((f) => f.agrupacio_revit).filter(Boolean) as string[])).sort(), [fields]);
