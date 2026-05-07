@@ -23,7 +23,7 @@ interface Props {
   nodeMap: Map<string, GubimNode>;
   fields: FieldMeta[];
   fieldMap: Map<string, FieldMeta>;
-  onSubmit: (e: Equipment) => void;
+  onSubmit: (e: Equipment) => Promise<void>;
   isCodeTaken: (code: string, excludeId?: string) => boolean;
   allEquipments: Equipment[];
 }
@@ -57,10 +57,11 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   // Equips candidats a ser pares (mateixa gubimCode, diferent id)
   const parentCandidates = allEquipments.filter(e => e.gubimCode === gubim && e.id !== editing?.id && e.equipCode);
 
-  const submit = () => {
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
     if (!gubim) return toast.error("Selecciona una GuBIMClass");
     const C = code.trim().toUpperCase();
-    // Codi opcional però si s'omple ha de ser vàlid i únic
     if (C && !/^[A-Z0-9]{1,4}$/.test(C)) return toast.error("Codi d'equip invàlid (màx 4 alfanumèric)");
     if (C && isCodeTaken(C, editing?.id)) return toast.error("Aquest codi ja existeix");
     if (!name.trim()) return toast.error("El nom és obligatori");
@@ -77,11 +78,19 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
       parentEquipCode: parentEquipCode,
       createdAt: editing?.createdAt ?? Date.now(),
     };
-    onSubmit(e);
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await onSubmit(e);
+      onOpenChange(false);
+    } catch {
+      // error ja gestionat al pare
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{editing ? "Edita equip" : "Nou equip"}</DialogTitle></DialogHeader>
@@ -142,7 +151,7 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
                   {cols.length === 0 && <span className="text-xs text-muted-foreground">Cap camp seleccionat</span>}
                   {cols.map((c) => {
                     const f = fieldMap.get(c);
-                    const label = f?.name ?? f?.cbt_name ?? c;
+                    const label = f?.col ?? c;
                     return (
                       <Badge key={c} variant="secondary" className="gap-1">
                         <span className="text-xs">{label}</span>
@@ -157,10 +166,11 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel·la</Button>
-          <Button onClick={submit}>{editing ? "Desa" : "Crea"}</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? "Desant…" : (editing ? "Desa" : "Crea")}</Button>
         </DialogFooter>
-        <FieldPickerDialog open={pickOpen} onOpenChange={setPickOpen} fields={fields} initialSelected={cols} onConfirm={setCols} />
       </DialogContent>
     </Dialog>
+    <FieldPickerDialog open={pickOpen} onOpenChange={setPickOpen} fields={fields} initialSelected={cols} onConfirm={setCols} />
+    </>
   );
 }

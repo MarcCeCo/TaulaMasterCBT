@@ -11,6 +11,9 @@ export type FieldMeta = {
   grup_txt:        string | null; // "Grup .txt"
   instancia_revit: string | null; // "Instència Revit"
   disciplina:      string | null; // "Disciplina"
+  // Camps opcionals — presents si la columna existeix a la BD
+  group:           string | null; // Grup visual/agrupació lliure
+  active:          string | null; // "Y" = actiu, qualsevol altra cosa = inactiu
 };
 
 // Un camp és "classificador" si tots els camps tècnics estan buits

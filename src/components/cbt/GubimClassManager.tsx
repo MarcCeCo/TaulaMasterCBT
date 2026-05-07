@@ -22,6 +22,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<GubimNode | null>(null);
   const [codeError, setCodeError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -32,6 +33,9 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (!isValidCode(val)) { setCodeError("Format invàlid (ex: 30, 30.50, 30.50.10)"); return; }
     const p = parentCode(val);
     if (p && !nodeMap.has(p)) { setCodeError(`El pare ${p} no existeix`); return; }
+    // Duplicats permesos per al nivell 4; bloquejats per als nivells 1-3
+    const lvl = codeLevel(val);
+    if (lvl < 4 && !editing && nodeMap.has(val)) { setCodeError("El codi ja existeix (nivells 1-3 han de ser únics)"); return; }
     setCodeError("");
   };
 
@@ -42,15 +46,24 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (!N) return toast.error("El nom és obligatori");
     const p = parentCode(C);
     if (p && !nodeMap.has(p)) return toast.error(`El node pare ${p} no existeix`);
-    if (editing) {
-      if (C !== editing.code && nodeMap.has(C)) return toast.error("El codi ja existeix");
-      try { await updateNode(editing.id, { code: C, name: N }); toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : "")); }
-      catch (e: any) { return toast.error(e.message); }
-    } else {
-      try { await addNode({ code: C, name: N }); toast.success("Node creat"); }
-      catch (e: any) { return toast.error(e.message); }
+    const lvl = codeLevel(C);
+    setSaving(true);
+    try {
+      if (editing) {
+        if (C !== editing.code && lvl < 4 && nodeMap.has(C)) { toast.error("El codi ja existeix"); return; }
+        await updateNode(editing.id, { code: C, name: N });
+        toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : ""));
+      } else {
+        if (lvl < 4 && nodeMap.has(C)) { toast.error("El codi ja existeix"); return; }
+        await addNode({ code: C, name: N });
+        toast.success("Node creat");
+      }
+      reset();
+    } catch (e: any) {
+      toast.error(e.message ?? "Error desant node");
+    } finally {
+      setSaving(false);
     }
-    reset();
   };
 
   const exportXlsx = () => {
@@ -141,8 +154,8 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
             />
           </div>
           <div className="flex gap-2 pt-6">
-            <Button onClick={save} disabled={!!codeError || !canEdit} className="bg-[#0099A8] hover:bg-[#006E7A]">
-              {editing ? "Desa" : "Afegeix"}
+            <Button onClick={save} disabled={!!codeError || !canEdit || saving} className="bg-[#0099A8] hover:bg-[#006E7A]">
+              {saving ? "Desant…" : (editing ? "Desa" : "Afegeix")}
             </Button>
             {editing && <Button variant="outline" onClick={reset}>Cancel·la</Button>}
           </div>

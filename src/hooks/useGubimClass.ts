@@ -22,18 +22,27 @@ const toRow  = (n: Omit<GubimNode, "id"> & { id?: string }) => ({
 export function useGubimClass() {
   const [nodes, setNodes]     = useState<GubimNode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
     supabase
       .from("gubim_class")
       .select("*")
       .order("code")
-      .then(({ data, error }) => {
-        if (error) console.error("useGubimClass fetch:", error);
-        else setNodes((data ?? []).map(toNode));
+      .then(({ data, error: err }) => {
+        if (err) {
+          console.error("useGubimClass fetch:", err);
+          setError(err.message);
+        } else {
+          setNodes((data ?? []).map(toNode));
+        }
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const sorted = useMemo(() => [...nodes].sort((a, b) => a.code.localeCompare(b.code)), [nodes]);
 
@@ -52,10 +61,12 @@ export function useGubimClass() {
   const addNode = useCallback(async (n: Omit<GubimNode, "id">) => {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
-    if (p && !nodeMap.has(p)) throw new Error("El node pare no existeix");
-    if (nodeMap.has(n.code))  throw new Error("El codi ja existeix");
+    if (p && !nodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
+    // Codi duplicat: PERMÈS per al nivell 4, BLOQUEJAT per als nivells 1-3
+    const lvl = codeLevel(n.code);
+    if (lvl < 4 && nodeMap.has(n.code)) throw new Error("El codi ja existeix");
     const row = toRow(n);
-    const { error } = await supabase.from("gubim_class").upsert(row, { onConflict: "code" });
+    const { error } = await supabase.from("gubim_class").insert(row);
     if (error) throw new Error(error.message);
     setNodes((prev) => [...prev, { id: row.id, code: row.code, name: row.name }]);
   }, [nodeMap]);
@@ -216,5 +227,5 @@ export function useGubimClass() {
     setNodes([]);
   }, []);
 
-  return { nodes: sorted, nodeMap, addNode, addMany, updateNode, removeNode, exists, hasChildren, clearAll, loading };
+  return { nodes: sorted, nodeMap, addNode, addMany, updateNode, removeNode, exists, hasChildren, clearAll, loading, error, retry: load };
 }

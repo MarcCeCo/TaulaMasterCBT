@@ -1,4 +1,4 @@
-// api/create-user.ts
+// api/list-users.ts
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
@@ -9,10 +9,10 @@ const ALLOWED_ORIGIN = process.env.VERCEL_URL
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
   res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
 
   if (req.method === "OPTIONS") return res.status(200).end();
-  if (req.method !== "POST") return res.status(405).end();
+  if (req.method !== "GET") return res.status(405).end();
 
   const supabaseAdmin = createClient(
     process.env.VITE_SUPABASE_URL!,
@@ -41,36 +41,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: "Necessites permisos d'administrador" });
   }
 
-  const { email, password, full_name, role, allowed_views } = req.body;
-
-  if (!email || !password || !role) {
-    return res.status(400).json({ error: "Falten camps obligatoris" });
-  }
-  if (!["viewer", "editor", "admin"].includes(role)) {
-    return res.status(400).json({ error: "Rol no vàlid" });
-  }
-
-  // Crear usuari
-  const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name, role },
-  });
-
-  if (createError) return res.status(400).json({ error: createError.message });
-
-  // Actualitzar rol, nom i vistes al perfil
-  await supabaseAdmin
+  // Llistar tots els usuaris amb el service role (bypassa RLS)
+  const { data, error } = await supabaseAdmin
     .from("user_profiles")
-    .update({
-      role,
-      full_name,
-      created_by: user.id,
-      // allowed_views: null significa accés a totes les vistes
-      allowed_views: allowed_views ?? null,
-    })
-    .eq("id", newUser.user!.id);
+    .select("id, email, full_name, role, allowed_views")
+    .order("email");
 
-  return res.status(200).json({ success: true, user_id: newUser.user!.id });
+  if (error) return res.status(500).json({ error: error.message });
+
+  return res.status(200).json({ users: data ?? [] });
 }

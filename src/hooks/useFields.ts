@@ -14,6 +14,8 @@ const toMeta = (row: any): FieldMeta => ({
   grup_txt:        row.grup_txt        ?? null,
   instancia_revit: row.instancia_revit ?? null,
   disciplina:      row.disciplina      ?? null,
+  group:           row.group           ?? null,
+  active:          row.active          ?? null,
 });
 
 const toRow = (f: FieldMeta) => ({
@@ -27,23 +29,34 @@ const toRow = (f: FieldMeta) => ({
   grup_txt:        f.grup_txt        || null,
   instancia_revit: f.instancia_revit || null,
   disciplina:      f.disciplina      || null,
+  // Només enviem si tenen valor (columnes opcionals a la BD)
+  ...(f.group  !== undefined && { group:  f.group  || null }),
+  ...(f.active !== undefined && { active: f.active || null }),
 });
 
 export function useFields() {
   const [raw, setRaw]         = useState<FieldMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
 
-  // Càrrega inicial
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
     supabase
       .from("fields")
       .select("*")
-      .then(({ data, error }) => {
-        if (error) console.error("useFields fetch:", error);
-        else setRaw((data ?? []).map(toMeta));
+      .then(({ data, error: err }) => {
+        if (err) {
+          console.error("useFields fetch:", err);
+          setError(err.message);
+        } else {
+          setRaw((data ?? []).map(toMeta));
+        }
         setLoading(false);
       });
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const fields = useMemo(() => sortByClassification(raw), [raw]);
 
@@ -67,16 +80,31 @@ export function useFields() {
 
   const addMany = useCallback(async (arr: FieldMeta[]): Promise<{ inserted: number; duplicates: number }> => {
     const existingCols = new Set(raw.map((f) => f.col));
+    const existingCodis = new Map(raw.filter(f => f.codi).map((f) => [f.codi!, f.col]));
     let duplicates = 0;
 
     const toAdd = arr
-      .map((f) => ({ ...f, col: f.col.toUpperCase() }))
-      .filter((f) => {
-        if (!f.col) return false;
-        if (existingCols.has(f.col)) { duplicates++; return false; }
-        existingCols.add(f.col);
-        return true;
-      });
+      .map((f) => {
+        let col = f.col.toUpperCase();
+        if (!col) return null;
+
+        // Si el nom (col) ja existeix → marcar com a duplicat
+        if (existingCols.has(col)) {
+          col = col + " (DUPLICAT)";
+          duplicates++;
+        }
+        existingCols.add(col);
+
+        // Si el codi ja existeix en un altre camp → marcar com a duplicat
+        let codi = f.codi;
+        if (codi && existingCodis.has(codi) && existingCodis.get(codi) !== f.col) {
+          codi = codi + " (DUPLICAT)";
+        }
+        if (codi) existingCodis.set(codi, col);
+
+        return { ...f, col, codi };
+      })
+      .filter(Boolean) as FieldMeta[];
 
     if (toAdd.length > 0) {
       const BATCH = 50;
@@ -123,5 +151,5 @@ export function useFields() {
     [fields],
   );
 
-  return { fields, fieldMap, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines, loading };
+  return { fields, fieldMap, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines, loading, error, retry: load };
 }

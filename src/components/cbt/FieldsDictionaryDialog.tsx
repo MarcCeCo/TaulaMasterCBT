@@ -89,9 +89,6 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
 
-      const existingCols = new Set(fields.map((f) => f.col));
-      const seenCols     = new Set<string>();
-
       const toAdd: FieldMeta[] = rows.map((r) => {
         const nom        = String(r["Nom"]              ?? "").trim().toUpperCase();
         const codi       = String(r["Codi"]             ?? "").trim() || null;
@@ -105,8 +102,6 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         const disciplina = String(r["Disciplina"]       ?? "").trim() || null;
 
         if (!nom) return null;
-        if (existingCols.has(nom) || seenCols.has(nom)) return null;
-        seenCols.add(nom);
 
         return {
           col:             nom,
@@ -123,7 +118,10 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       }).filter(Boolean) as FieldMeta[];
 
       const { inserted, duplicates } = await addMany(toAdd);
-      if (inserted > 0) toast.success(`${inserted} camps inserits` + (duplicates > 0 ? ` · ${duplicates} duplicats omesos` : ""));
+      const parts: string[] = [];
+      if (inserted > 0) parts.push(`${inserted} camps inserits`);
+      if (duplicates > 0) parts.push(`${duplicates} duplicats importats amb el sufix (DUPLICAT)`);
+      if (inserted > 0 || duplicates > 0) toast.success(parts.join(" · "));
       else toast.warning("Cap camp nou per importar");
     } catch (e: any) {
       toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
@@ -256,10 +254,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           open={addOpen} onOpenChange={setAddOpen} groups={groups} disciplines={disciplines}
           editing={editing} existsCol={exists}
           onSubmit={async (f) => {
-            try {
-              if (editing) { await updateField(editing.col, f); toast.success("Camp actualitzat"); }
-              else { await addField(f); toast.success("Camp creat"); }
-            } catch (e: any) { toast.error(e.message ?? "Error"); }
+            if (editing) { await updateField(editing.col, f); toast.success("Camp actualitzat"); }
+            else { await addField(f); toast.success("Camp creat"); }
           }}
         />
       </DialogContent>

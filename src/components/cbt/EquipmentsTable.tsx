@@ -3,9 +3,10 @@ import * as XLSX from "xlsx";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, ChevronRight } from "lucide-react";
+import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, ChevronRight, RefreshCw } from "lucide-react";
 import { Equipment, useEquipments } from "@/hooks/useEquipments";
 import { useGubimClass, codeLevel, parentCode } from "@/hooks/useGubimClass";
 import { useFields } from "@/hooks/useFields";
@@ -135,7 +136,7 @@ const EquipmentRow = memo(function EquipmentRow({
 });
 
 export function EquipmentsTable() {
-  const { items, upsert, remove, addMany, clearAll, byCode } = useEquipments();
+  const { items, upsert, remove, addMany, clearAll, isCodeTaken: isCodeTakenHook, loading, error, retry } = useEquipments();
   const { nodes, nodeMap } = useGubimClass();
   const { fields, fieldMap } = useFields();
   const { canEdit } = useAuth();
@@ -202,11 +203,7 @@ export function EquipmentsTable() {
     );
   }, [sorted, q]);
 
-  const isCodeTaken = (code: string, excludeId?: string) => {
-    if (!code) return false;
-    const ex = byCode.get(code);
-    return !!ex && ex.id !== excludeId;
-  };
+  const isCodeTaken = isCodeTakenHook;
 
   // Export: cada camp en columna independent
   const exportXlsx = () => {
@@ -271,8 +268,30 @@ export function EquipmentsTable() {
           createdAt: Date.now(),
         };
       }).filter((e) => e.equipName); // el nom és l'únic obligatori
-      addMany(arr).catch(() => toast.error("Error important equips"));
-      toast.success(`${arr.length} equips processats`);
+
+      // Detectar equips omesos per codi duplicat
+      const existingCodes = new Set(items.map((e) => e.equipCode).filter(Boolean));
+      const skipped: string[] = [];
+      const seenInFile = new Set<string>();
+      arr.forEach((e) => {
+        if (e.equipCode) {
+          if (existingCodes.has(e.equipCode) || seenInFile.has(e.equipCode)) {
+            skipped.push(e.equipName + (e.equipCode ? ` (${e.equipCode})` : ""));
+          }
+          seenInFile.add(e.equipCode);
+        }
+      });
+
+      addMany(arr).then(() => {
+        const imported = arr.length - skipped.length;
+        if (skipped.length > 0) {
+          toast.warning(
+            `${imported} equips importats · ${skipped.length} no importats per codi duplicat: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? ` i ${skipped.length - 5} més` : ""}`
+          );
+        } else {
+          toast.success(`${imported} equips importats correctament`);
+        }
+      }).catch(() => toast.error("Error important equips"));
     } catch { toast.error("Error en importar"); }
   };
 
@@ -300,12 +319,12 @@ export function EquipmentsTable() {
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca equips…" className="pl-8" />
         </div>
         <div className="flex-1" />
-        <Button size="sm" variant="outline" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta</Button>
-        {canEdit && <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
+        <Button size="sm" variant="outline" onClick={exportXlsx} disabled={loading}><Download className="h-4 w-4" /> Exporta</Button>
+        {canEdit && <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={loading}><Upload className="h-4 w-4" /> Importa</Button>}
         <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
         <AlertDialog>
           <AlertDialogTrigger asChild>
-            <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4" /> Esborra tot</Button>
+            <Button size="sm" variant="destructive" disabled={!canEdit || loading}><Trash2 className="h-4 w-4" /> Esborra tot</Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>Esborrar tots els equips?</AlertDialogTitle><AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription></AlertDialogHeader>
@@ -315,10 +334,21 @@ export function EquipmentsTable() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        {canEdit && <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={() => { setEditing(null); setFormOpen(true); }}>
+        {canEdit && <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" disabled={loading} onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="h-4 w-4" /> Nou equip
         </Button>}
       </div>
+
+      {/* Error banner amb retry */}
+      {error && !loading && (
+        <div className="flex items-center gap-3 p-3 rounded-md bg-destructive/10 border border-destructive/20 text-sm">
+          <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+          <span className="flex-1 text-destructive">{error}</span>
+          <Button size="sm" variant="outline" onClick={retry} className="shrink-0 h-7">
+            <RefreshCw className="h-3.5 w-3.5 mr-1" />Reintenta
+          </Button>
+        </div>
+      )}
 
       <div className="border rounded-md overflow-auto bg-card">
         <table className="w-full text-sm">
@@ -335,39 +365,57 @@ export function EquipmentsTable() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map(({ equip: e, depth }) => {
-              const node = nodeMap.get(e.gubimCode);
-              const lvl = (node ? codeLevel(node.code) : 1) as 1|2|3|4;
-              const pc = node ? parentCode(node.code) : null;
-              const parent = pc ? nodeMap.get(pc) : null;
-              const orphanCols = e.fieldCols.filter((c) => !fieldMap.has(c));
-              const isChild = !!e.parentEquipCode;
-              const groupSize = sharedCodeInfo.countByCode.get(e.gubimCode) ?? 1;
-              const isSharedCode = groupSize > 1;
-              const groupColorIdx = sharedCodeInfo.colorIdxByCode.get(e.gubimCode) ?? 0;
-              const isFirstInGroup = isSharedCode && !seenGroupCodes.has(e.gubimCode);
-              if (isSharedCode) seenGroupCodes.add(e.gubimCode);
-              return (
-                <EquipmentRow
-                  key={e.id} e={e}
-                  gubimName={node?.name ?? ""}
-                  parentName={parent ? `${parent.code} · ${parent.name}` : ""}
-                  level={lvl} fieldCount={e.fieldCols.length}
-                  orphanCols={orphanCols} isChild={isChild}
-                  isSharedCode={isSharedCode}
-                  groupColorIdx={groupColorIdx}
-                  isFirstInGroup={isFirstInGroup}
-                  groupSize={groupSize}
-                  childDepth={depth}
-                  onView={() => { setViewing(e); setDetailOpen(true); }}
-                  onEdit={(ev?: any) => { if(ev) ev.stopPropagation?.(); setEditing(e); setFormOpen(true); }}
-                  onDelete={async () => { try { await remove(e.id); toast.success("Equip esborrat"); } catch { toast.error("Error esborrant equip"); } }}
-                  canEdit={canEdit}
-                />
-              );
-            })}
-            {filtered.length === 0 && (
-              <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Cap equip</td></tr>
+            {loading ? (
+              // Skeleton rows mentre carrega
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={i} className="border-t">
+                  <td className="p-2"><Skeleton className="h-4 w-28" /></td>
+                  <td className="p-2"><Skeleton className="h-4 w-16" /></td>
+                  <td className="p-2"><Skeleton className="h-4 w-40" /></td>
+                  <td className="p-2"><Skeleton className="h-5 w-10 rounded-full" /></td>
+                  <td className="p-2"><Skeleton className="h-4 w-14" /></td>
+                  <td className="p-2"><Skeleton className="h-4 w-24" /></td>
+                  <td className="p-2 text-center"><Skeleton className="h-5 w-8 mx-auto rounded-full" /></td>
+                  <td className="p-2"><Skeleton className="h-7 w-20" /></td>
+                </tr>
+              ))
+            ) : (
+              <>
+                {filtered.map(({ equip: e, depth }) => {
+                  const node = nodeMap.get(e.gubimCode);
+                  const lvl = (node ? codeLevel(node.code) : 1) as 1|2|3|4;
+                  const pc = node ? parentCode(node.code) : null;
+                  const parent = pc ? nodeMap.get(pc) : null;
+                  const orphanCols = e.fieldCols.filter((c) => !fieldMap.has(c));
+                  const isChild = !!e.parentEquipCode;
+                  const groupSize = sharedCodeInfo.countByCode.get(e.gubimCode) ?? 1;
+                  const isSharedCode = groupSize > 1;
+                  const groupColorIdx = sharedCodeInfo.colorIdxByCode.get(e.gubimCode) ?? 0;
+                  const isFirstInGroup = isSharedCode && !seenGroupCodes.has(e.gubimCode);
+                  if (isSharedCode) seenGroupCodes.add(e.gubimCode);
+                  return (
+                    <EquipmentRow
+                      key={e.id} e={e}
+                      gubimName={node?.name ?? ""}
+                      parentName={parent ? `${parent.code} · ${parent.name}` : ""}
+                      level={lvl} fieldCount={e.fieldCols.length}
+                      orphanCols={orphanCols} isChild={isChild}
+                      isSharedCode={isSharedCode}
+                      groupColorIdx={groupColorIdx}
+                      isFirstInGroup={isFirstInGroup}
+                      groupSize={groupSize}
+                      childDepth={depth}
+                      onView={() => { setViewing(e); setDetailOpen(true); }}
+                      onEdit={(ev?: any) => { if(ev) ev.stopPropagation?.(); setEditing(e); setFormOpen(true); }}
+                      onDelete={async () => { try { await remove(e.id); toast.success("Equip esborrat"); } catch { toast.error("Error esborrant equip"); } }}
+                      canEdit={canEdit}
+                    />
+                  );
+                })}
+                {filtered.length === 0 && !loading && (
+                  <tr><td colSpan={8} className="p-8 text-center text-muted-foreground">Cap equip</td></tr>
+                )}
+              </>
             )}
           </tbody>
         </table>
@@ -377,7 +425,16 @@ export function EquipmentsTable() {
         open={formOpen} onOpenChange={setFormOpen} editing={editing}
         nodes={nodes} nodeMap={nodeMap} fields={fields} fieldMap={fieldMap}
         isCodeTaken={isCodeTaken} allEquipments={items}
-        onSubmit={async (e) => { try { await upsert(e); toast.success(editing ? "Equip actualitzat" : "Equip creat"); } catch { toast.error("Error desant equip"); } }}
+        onSubmit={async (e) => {
+          try {
+            await upsert(e);
+            toast.success(editing ? "Equip actualitzat" : "Equip creat");
+            setFormOpen(false);
+            setEditing(null);
+          } catch {
+            toast.error("Error desant equip");
+          }
+        }}
       />
 
       <EquipmentDetailDialog

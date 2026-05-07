@@ -20,7 +20,7 @@ function buildClassifierMap(fields: FieldMeta[]): Map<string, string> {
   const map = new Map<string, string>();
   let currentClassifier: string | null = null;
   for (const f of fields) {
-    if (isClassifier(f)) { currentClassifier = f.name ?? f.col; }
+    if (isClassifier(f)) { currentClassifier = f.col; }
     else if (currentClassifier) { map.set(f.col, currentClassifier); }
   }
   return map;
@@ -34,11 +34,20 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
   const [cls, setCls] = useState<string>("__all__");
 
   useEffect(() => {
-    if (open) setSel(new Set(initialSelected));
+    if (open) {
+      setSel(new Set(initialSelected));
+      // Debug: log primer camp per verificar estructura
+      if (fields.length > 0) {
+        console.log("[FieldPickerDialog] Primer camp rebut:", JSON.stringify(fields[0]));
+        console.log("[FieldPickerDialog] Total camps:", fields.length);
+      } else {
+        console.warn("[FieldPickerDialog] Array fields buit!");
+      }
+    }
   }, [open]);
 
-  const groups = useMemo(() => Array.from(new Set(fields.map((f) => f.group).filter(Boolean) as string[])).sort(), [fields]);
-  const cats = useMemo(() => Array.from(new Set(fields.map((f) => f.category).filter(Boolean) as string[])).sort(), [fields]);
+  const groups = useMemo(() => Array.from(new Set(fields.map((f) => f.agrupacio_revit).filter(Boolean) as string[])).sort(), [fields]);
+  const cats = useMemo(() => Array.from(new Set(fields.map((f) => f.disciplina).filter(Boolean) as string[])).sort(), [fields]);
   const classifiers = useMemo(() => fields.filter(isClassifier), [fields]);
   const classifierMap = useMemo(() => buildClassifierMap(fields), [fields]);
 
@@ -46,11 +55,11 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
     const t = q.trim().toLowerCase();
     return fields.filter((f) => {
       if (isClassifier(f)) return false;
-      if (grp !== "__all__" && f.group !== grp) return false;
-      if (cat !== "__all__" && f.category !== cat) return false;
+      if (grp !== "__all__" && f.agrupacio_revit !== grp) return false;
+      if (cat !== "__all__" && f.disciplina !== cat) return false;
       if (cls !== "__all__" && classifierMap.get(f.col) !== cls) return false;
       if (!t) return true;
-      return (f.code ?? "").toLowerCase().includes(t) || (f.name ?? "").toLowerCase().includes(t) || (f.cbt_name ?? "").toLowerCase().includes(t);
+      return (f.codi ?? "").toLowerCase().includes(t) || (f.col ?? "").toLowerCase().includes(t) || (f.cbt ?? "").toLowerCase().includes(t);
     });
   }, [fields, q, grp, cat, cls, classifierMap]);
 
@@ -92,7 +101,7 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
             <SelectTrigger><SelectValue placeholder="Classificador" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Tots els classificadors</SelectItem>
-              {classifiers.map((c) => <SelectItem key={c.col} value={c.name ?? c.col}>{c.name}</SelectItem>)}
+              {classifiers.map((c) => <SelectItem key={c.col} value={c.col}>{c.col}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -120,12 +129,12 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
                     <td className="p-2" onClick={(e) => e.stopPropagation()}>
                       <Checkbox checked={checked} onCheckedChange={() => toggle(f.col)} />
                     </td>
-                    <td className="p-2">{f.name}</td>
-                    <td className="p-2 text-xs text-[#0099A8]">{f.type ?? "—"}</td>
-                    <td className="p-2 text-xs text-[#0099A8]">{f.discipline ?? "—"}</td>
-                    <td className="p-2 text-xs text-[#0099A8]">{f.group ?? "—"}</td>
-                    <td className="p-2 text-xs text-[#0099A8]">{f.unit ?? "—"}</td>
-                    <td className="p-2 font-mono text-xs text-violet-600">{f.code ?? "—"}</td>
+                    <td className="p-2 font-medium">{f.col}</td>
+                    <td className="p-2 text-xs text-[#0099A8]">{f.format_param ?? "—"}</td>
+                    <td className="p-2 text-xs text-[#0099A8]">{f.disciplina ?? "—"}</td>
+                    <td className="p-2 text-xs text-[#0099A8]">{f.agrupacio_revit ?? "—"}</td>
+                    <td className="p-2 text-xs text-[#0099A8]">{f.grup_txt ?? "—"}</td>
+                    <td className="p-2 font-mono text-xs text-violet-600">{f.codi ?? "—"}</td>
                     <td className="p-2 text-xs text-muted-foreground">{classifierMap.get(f.col) ?? "—"}</td>
                   </tr>
                 );

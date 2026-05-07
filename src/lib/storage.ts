@@ -27,5 +27,5 @@ export function useDebouncedLocalStorage<T>(key: string, initial: T) {
   return [value, setValue] as const;
 }
 
-export const uid = () =>
-  Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+// Genera un UUID v4 estàndard (criptogràficament segur, disponible nativament)
+export const uid = (): string => crypto.randomUUID();
