@@ -22,6 +22,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<GubimNode | null>(null);
   const [codeError, setCodeError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [q, setQ] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -46,17 +47,23 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     const p = parentCode(C);
     if (p && !nodeMap.has(p)) return toast.error(`El node pare ${p} no existeix`);
     const lvl = codeLevel(C);
-    if (editing) {
-      if (C !== editing.code && lvl < 4 && nodeMap.has(C)) return toast.error("El codi ja existeix");
-      try { await updateNode(editing.id, { code: C, name: N }); toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : "")); }
-      catch (e: any) { return toast.error(e.message); }
-    } else {
-      // Nivell 4: duplicats de codi permesos
-      if (lvl < 4 && nodeMap.has(C)) return toast.error("El codi ja existeix");
-      try { await addNode({ code: C, name: N }); toast.success("Node creat"); }
-      catch (e: any) { return toast.error(e.message); }
+    setSaving(true);
+    try {
+      if (editing) {
+        if (C !== editing.code && lvl < 4 && nodeMap.has(C)) { toast.error("El codi ja existeix"); return; }
+        await updateNode(editing.id, { code: C, name: N });
+        toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : ""));
+      } else {
+        if (lvl < 4 && nodeMap.has(C)) { toast.error("El codi ja existeix"); return; }
+        await addNode({ code: C, name: N });
+        toast.success("Node creat");
+      }
+      reset();
+    } catch (e: any) {
+      toast.error(e.message ?? "Error desant node");
+    } finally {
+      setSaving(false);
     }
-    reset();
   };
 
   const exportXlsx = () => {
@@ -147,8 +154,8 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
             />
           </div>
           <div className="flex gap-2 pt-6">
-            <Button onClick={save} disabled={!!codeError || !canEdit} className="bg-[#0099A8] hover:bg-[#006E7A]">
-              {editing ? "Desa" : "Afegeix"}
+            <Button onClick={save} disabled={!!codeError || !canEdit || saving} className="bg-[#0099A8] hover:bg-[#006E7A]">
+              {saving ? "Desant…" : (editing ? "Desa" : "Afegeix")}
             </Button>
             {editing && <Button variant="outline" onClick={reset}>Cancel·la</Button>}
           </div>

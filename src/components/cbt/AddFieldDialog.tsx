@@ -14,7 +14,7 @@ interface Props {
   groups: string[];
   disciplines: string[];
   editing?: FieldMeta | null;
-  onSubmit: (f: FieldMeta) => void;
+  onSubmit: (f: FieldMeta) => Promise<void>;
   existsCol: (col: string) => boolean;
 }
 
@@ -76,7 +76,9 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
   const finalDisciplina  = disciplina  === "__new__" ? disciplinaCustom.trim()  : disciplina;
   const taulaRequired    = tipusDada === "2";
 
-  const submit = () => {
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
     const col = nom.trim().toUpperCase();
     if (!col) return toast.error("El nom és obligatori");
     if (!/^[A-Z0-9_]+$/.test(col)) return toast.error("Nom no vàlid (només lletres, números i _)");
@@ -97,8 +99,15 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
           instancia_revit: instancia || null,
           disciplina:      finalDisciplina || null,
         };
-    onSubmit(f);
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await onSubmit(f);
+      onOpenChange(false);
+    } catch {
+      // error ja gestionat al pare
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -216,7 +225,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel·la</Button>
-          <Button onClick={submit}>{editing ? "Desa" : "Crea"}</Button>
+          <Button onClick={submit} disabled={saving}>{saving ? "Desant…" : (editing ? "Desa" : "Crea")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
