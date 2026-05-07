@@ -1,14 +1,43 @@
 // src/components/auth/UserManagerDialog.tsx
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
-import { useAuth, type UserRole, type UserProfile } from "@/lib/auth";
-import { Pencil, Trash2, UserPlus, RefreshCw, Mail } from "lucide-react";
+import {
+  useAuth,
+  type UserRole,
+  type UserProfile,
+  type AppView,
+  ALL_VIEWS,
+  VIEW_LABELS,
+} from "@/lib/auth";
+import { Pencil, Trash2, UserPlus, RefreshCw, Mail, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -39,17 +68,19 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("viewer");
+  const [newUserViews, setNewUserViews] = useState<AppView[]>([...ALL_VIEWS]);
   const [submitting, setSubmitting] = useState(false);
 
-  // Edició rol
+  // Edició inline
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRole, setEditRole] = useState<UserRole>("viewer");
+  const [editViews, setEditViews] = useState<AppView[]>([...ALL_VIEWS]);
 
   const fetchUsers = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("user_profiles")
-      .select("id, email, full_name, role")
+      .select("id, email, full_name, role, allowed_views")
       .order("email");
     if (!error && data) setUsers(data as UserProfile[]);
     setLoading(false);
@@ -61,21 +92,34 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) return toast.error("Correu i contrasenya obligatoris");
+    if (!email.trim() || !password.trim())
+      return toast.error("Correu i contrasenya obligatoris");
     setSubmitting(true);
     try {
       const res = await fetch("/api/create-user", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token ?? ""}`,
+          Authorization: `Bearer ${
+            (await supabase.auth.getSession()).data.session?.access_token ?? ""
+          }`,
         },
-        body: JSON.stringify({ email: email.trim(), password, full_name: fullName.trim(), role }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+          full_name: fullName.trim(),
+          role,
+          allowed_views: newUserViews,
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error creant usuari");
       toast.success(`Usuari ${email} creat correctament`);
-      setEmail(""); setFullName(""); setPassword(""); setRole("viewer");
+      setEmail("");
+      setFullName("");
+      setPassword("");
+      setRole("viewer");
+      setNewUserViews([...ALL_VIEWS]);
       await fetchUsers();
     } catch (err: any) {
       toast.error(err.message ?? "Error desconegut");
@@ -84,20 +128,25 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
     }
   };
 
-  const handleUpdateRole = async (userId: string) => {
+  const startEditing = (u: UserProfile) => {
+    setEditingId(u.id);
+    setEditRole(u.role as UserRole);
+    // null = totes les vistes
+    setEditViews(u.allowed_views ?? [...ALL_VIEWS]);
+  };
+
+  const handleUpdateUser = async (userId: string) => {
     const { error } = await supabase
       .from("user_profiles")
-      .update({ role: editRole })
+      .update({ role: editRole, allowed_views: editViews })
       .eq("id", userId);
-    if (error) return toast.error("Error actualitzant rol");
-    toast.success("Rol actualitzat");
+    if (error) return toast.error("Error actualitzant usuari");
+    toast.success("Usuari actualitzat");
     setEditingId(null);
     await fetchUsers();
   };
 
   const handleDelete = async (userId: string, userEmail: string) => {
-    // Només actualitzem el rol a viewer (no podem esborrar usuaris des del client anon)
-    // Per esborrar caldria l'API admin. Marquem com a viewer i notifiquem.
     const { error } = await supabase
       .from("user_profiles")
       .update({ role: "viewer" })
@@ -107,9 +156,19 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
     await fetchUsers();
   };
 
+  const toggleView = (
+    view: AppView,
+    current: AppView[],
+    setter: (v: AppView[]) => void
+  ) => {
+    setter(
+      current.includes(view) ? current.filter((v) => v !== view) : [...current, view]
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5 text-[#0099A8]" />
@@ -120,65 +179,101 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
         {/* Formulari invitació */}
         <div className="border rounded-md p-4 bg-muted/30 space-y-3">
           <p className="text-sm font-medium text-[#006E7A]">Convidar nou usuari</p>
-          <form onSubmit={handleInvite} className="flex flex-wrap gap-2 items-end">
-            <div className="space-y-1 flex-1 min-w-[180px]">
-              <label className="text-xs font-medium">Correu *</label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="usuari@example.com"
-                required
-              />
+          <form onSubmit={handleInvite} className="space-y-3">
+            <div className="flex flex-wrap gap-2 items-end">
+              <div className="space-y-1 flex-1 min-w-[180px]">
+                <label className="text-xs font-medium">Correu *</label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="usuari@example.com"
+                  required
+                />
+              </div>
+              <div className="space-y-1 flex-1 min-w-[140px]">
+                <label className="text-xs font-medium">Nom complet</label>
+                <Input
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Nom i cognoms"
+                />
+              </div>
+              <div className="space-y-1 min-w-[160px]">
+                <label className="text-xs font-medium">Contrasenya inicial *</label>
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="mínim 6 caràcters"
+                  required
+                  minLength={6}
+                />
+              </div>
+              <div className="space-y-1 w-40">
+                <label className="text-xs font-medium">Rol</label>
+                <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="viewer">Visualitzador</SelectItem>
+                    <SelectItem value="editor">Editor</SelectItem>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <div className="space-y-1 flex-1 min-w-[140px]">
-              <label className="text-xs font-medium">Nom complet</label>
-              <Input
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nom i cognoms"
-              />
+
+            {/* Vistes accessibles per al nou usuari */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Vistes accessibles</label>
+              <div className="flex flex-wrap gap-3">
+                {ALL_VIEWS.map((v) => (
+                  <label
+                    key={v}
+                    className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
+                  >
+                    <Checkbox
+                      checked={newUserViews.includes(v)}
+                      onCheckedChange={() =>
+                        toggleView(v, newUserViews, setNewUserViews)
+                      }
+                    />
+                    {VIEW_LABELS[v]}
+                  </label>
+                ))}
+              </div>
             </div>
-            <div className="space-y-1 min-w-[160px]">
-              <label className="text-xs font-medium">Contrasenya inicial *</label>
-              <Input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="mínim 6 caràcters"
-                required
-                minLength={6}
-              />
-            </div>
-            <div className="space-y-1 w-40">
-              <label className="text-xs font-medium">Rol</label>
-              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="viewer">Visualitzador</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="admin">Administrador</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button type="submit" disabled={submitting} className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5">
+
+            <Button
+              type="submit"
+              disabled={submitting}
+              className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5"
+            >
               <Mail className="h-4 w-4" />
               {submitting ? "Creant…" : "Crea usuari"}
             </Button>
           </form>
           <p className="text-xs text-muted-foreground">
-            <strong>Visualitzador:</strong> només pot consultar dades. &nbsp;
-            <strong>Editor:</strong> pot crear, editar i esborrar registres. &nbsp;
-            <strong>Administrador:</strong> accés complet incloent gestió d'usuaris.
+            <strong>Visualitzador:</strong> només pot consultar dades.&nbsp;
+            <strong>Editor:</strong> pot crear, editar i esborrar registres.&nbsp;
+            <strong>Administrador:</strong> accés complet incloent gestió d'usuaris (veu sempre totes les vistes).
           </p>
         </div>
 
         {/* Llista d'usuaris */}
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium">{users.length} usuari{users.length !== 1 ? "s" : ""}</p>
-          <Button variant="ghost" size="sm" onClick={fetchUsers} disabled={loading} className="gap-1.5">
+          <p className="text-sm font-medium">
+            {users.length} usuari{users.length !== 1 ? "s" : ""}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchUsers}
+            disabled={loading}
+            className="gap-1.5"
+          >
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             Actualitza
           </Button>
@@ -191,23 +286,47 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                 <th className="p-2 text-xs font-semibold">Correu</th>
                 <th className="p-2 text-xs font-semibold">Nom</th>
                 <th className="p-2 text-xs font-semibold">Rol</th>
-                <th className="p-2 w-32 text-xs font-semibold">Accions</th>
+                <th className="p-2 text-xs font-semibold">Vistes</th>
+                <th className="p-2 w-28 text-xs font-semibold">Accions</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => {
                 const isMe = u.id === myProfile?.id;
                 const isEditing = editingId === u.id;
+                const effectiveViews =
+                  u.role === "admin"
+                    ? ALL_VIEWS
+                    : u.allowed_views ?? ALL_VIEWS;
+
                 return (
-                  <tr key={u.id} className={cn("border-t hover:bg-muted/30", isMe && "bg-[#0099A8]/5")}>
+                  <tr
+                    key={u.id}
+                    className={cn(
+                      "border-t hover:bg-muted/30 align-top",
+                      isMe && "bg-[#0099A8]/5"
+                    )}
+                  >
+                    {/* Correu */}
                     <td className="p-2 font-mono text-xs">
                       {u.email}
-                      {isMe && <Badge className="ml-2 text-[10px] px-1.5 py-0 bg-[#0099A8]">Jo</Badge>}
+                      {isMe && (
+                        <Badge className="ml-2 text-[10px] px-1.5 py-0 bg-[#0099A8]">
+                          Jo
+                        </Badge>
+                      )}
                     </td>
+
+                    {/* Nom */}
                     <td className="p-2 text-xs">{u.full_name ?? "—"}</td>
+
+                    {/* Rol */}
                     <td className="p-2">
                       {isEditing ? (
-                        <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
+                        <Select
+                          value={editRole}
+                          onValueChange={(v) => setEditRole(v as UserRole)}
+                        >
                           <SelectTrigger className="h-7 text-xs w-36">
                             <SelectValue />
                           </SelectTrigger>
@@ -218,35 +337,117 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                           </SelectContent>
                         </Select>
                       ) : (
-                        <Badge className={cn("text-xs font-normal border-0", ROLE_COLORS[u.role as UserRole])}>
+                        <Badge
+                          className={cn(
+                            "text-xs font-normal border-0",
+                            ROLE_COLORS[u.role as UserRole]
+                          )}
+                        >
                           {ROLE_LABELS[u.role as UserRole] ?? u.role}
                         </Badge>
                       )}
                     </td>
+
+                    {/* Vistes */}
+                    <td className="p-2">
+                      {isEditing ? (
+                        <div className="flex flex-wrap gap-2">
+                          {ALL_VIEWS.map((v) => (
+                            <label
+                              key={v}
+                              className={cn(
+                                "flex items-center gap-1 text-xs cursor-pointer select-none",
+                                editRole === "admin" && "opacity-50 pointer-events-none"
+                              )}
+                            >
+                              <Checkbox
+                                checked={
+                                  editRole === "admin" || editViews.includes(v)
+                                }
+                                onCheckedChange={() =>
+                                  toggleView(v, editViews, setEditViews)
+                                }
+                                disabled={editRole === "admin"}
+                              />
+                              {VIEW_LABELS[v]}
+                            </label>
+                          ))}
+                          {editRole === "admin" && (
+                            <span className="text-[10px] text-muted-foreground italic">
+                              Admin veu tot
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {u.role === "admin" ? (
+                            <span className="text-[10px] text-muted-foreground italic">
+                              Totes
+                            </span>
+                          ) : (
+                            effectiveViews.map((v) => (
+                              <Badge
+                                key={v}
+                                variant="secondary"
+                                className="text-[10px] px-1.5 py-0 font-normal"
+                              >
+                                {VIEW_LABELS[v]}
+                              </Badge>
+                            ))
+                          )}
+                          {!isEditing &&
+                            u.role !== "admin" &&
+                            effectiveViews.length === 0 && (
+                              <span className="text-[10px] text-destructive">
+                                Cap vista
+                              </span>
+                            )}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* Accions */}
                     <td className="p-2">
                       <div className="flex gap-1">
                         {isEditing ? (
                           <>
-                            <Button size="sm" className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A]" onClick={() => handleUpdateRole(u.id)}>
+                            <Button
+                              size="sm"
+                              className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] gap-1"
+                              onClick={() => handleUpdateUser(u.id)}
+                            >
+                              <Check className="h-3 w-3" />
                               Desa
                             </Button>
-                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setEditingId(null)}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1"
+                              onClick={() => setEditingId(null)}
+                            >
+                              <X className="h-3 w-3" />
                               Cancel·la
                             </Button>
                           </>
                         ) : (
                           <>
                             <Button
-                              size="icon" variant="ghost" className="h-7 w-7"
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
                               disabled={isMe}
-                              onClick={() => { setEditingId(u.id); setEditRole(u.role as UserRole); }}
+                              onClick={() => startEditing(u)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             {!isMe && (
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive">
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 text-destructive"
+                                  >
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </AlertDialogTrigger>
@@ -254,12 +455,16 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                                   <AlertDialogHeader>
                                     <AlertDialogTitle>Degradar usuari?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      {u.email} perdrà els permisos actuals i passarà a ser visualitzador. Per eliminar-lo completament cal accedir al panell de Supabase.
+                                      {u.email} perdrà els permisos actuals i passarà a ser
+                                      visualitzador. Per eliminar-lo completament cal accedir
+                                      al panell de Supabase.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDelete(u.id, u.email)}>
+                                    <AlertDialogAction
+                                      onClick={() => handleDelete(u.id, u.email)}
+                                    >
                                       Degrada a visualitzador
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
@@ -274,7 +479,11 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                 );
               })}
               {users.length === 0 && !loading && (
-                <tr><td colSpan={4} className="p-8 text-center text-muted-foreground">Cap usuari trobat</td></tr>
+                <tr>
+                  <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                    Cap usuari trobat
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
