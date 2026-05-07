@@ -1,143 +1,55 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { uid } from "@/lib/storage";
 
 export type Equipment = {
-  id: string;
-  gubimCode: string;
-  equipCode: string;
-  equipName: string;
-  needsTable: boolean;
-  tableCode: string;
-  tableName: string;
-  fieldCols: string[];
-  parentEquipCode: string;
-  createdAt: number;
+  id:              string;
+  gubimCode:       string;
+  equipCode:       string;
+  equipName:       string;
+  needsTable:      boolean;
+  tableCode:       string;
+  tableName:       string;
+  fieldCols:       string[];
 };
-
-const KEY = "cbt.equipments.v1";
-
-const isLevel4 = (code: string) => code.split(".").length === 4;
-
-function autoAssignParents(list: Equipment[]): Equipment[] {
-  const groups = new Map<string, Equipment[]>();
-  list.forEach((e) => {
-    if (!isLevel4(e.gubimCode)) return;
-    const g = groups.get(e.gubimCode) ?? [];
-    g.push(e);
-    groups.set(e.gubimCode, g);
-  });
-
-  const patches = new Map<string, string>();
-  groups.forEach((group) => {
-    if (group.length < 2) return;
-    const sorted = [...group].sort((a, b) => a.createdAt - b.createdAt);
-    const pare = sorted[0];
-    sorted.slice(1).forEach((child) => {
-      if (!child.parentEquipCode && pare.equipCode) {
-        patches.set(child.id, pare.equipCode);
-      }
-    });
-  });
-
-  if (patches.size === 0) return list;
-  return list.map((e) => patches.has(e.id) ? { ...e, parentEquipCode: patches.get(e.id)! } : e);
-}
 
 // Conversió Supabase ↔ Equipment
 const toEquip = (row: any): Equipment => ({
-  id:              row.id,
-  gubimCode:       row.gubim_code,
-  equipCode:       row.equip_code ?? "",
-  equipName:       row.equip_name,
-  needsTable:      row.needs_table ?? false,
-  tableCode:       row.table_code ?? "",
-  tableName:       row.table_name ?? "",
-  fieldCols:       row.field_cols ?? [],
-  parentEquipCode: row.parent_equip_code ?? "",
-  createdAt:       row.created_at,
+  id:        row.id,
+  gubimCode: row.gubim_code,
+  equipCode: row.equip_code  ?? "",
+  equipName: row.equip_name,
+  needsTable: row.needs_table ?? false,
+  tableCode: row.table_code  ?? "",
+  tableName: row.table_name  ?? "",
+  fieldCols: row.field_cols  ?? [],
 });
 
 const toRow = (e: Equipment) => ({
-  id:               e.id,
-  gubim_code:       e.gubimCode,
-  equip_code:       e.equipCode || null,
-  equip_name:       e.equipName,
-  needs_table:      e.needsTable,
-  table_code:       e.tableCode || null,
-  table_name:       e.tableName || null,
-  field_cols:       e.fieldCols,
-  parent_equip_code: e.parentEquipCode || null,
-  created_at:       e.createdAt,
+  id:         e.id,
+  gubim_code: e.gubimCode,
+  equip_code: e.equipCode || null,
+  equip_name: e.equipName,
+  needs_table: e.needsTable,
+  table_code: e.tableCode || null,
+  table_name: e.tableName || null,
+  field_cols: e.fieldCols,
 });
-
-const SEED: Equipment[] = [
-  {
-    id: uid(),
-    gubimCode: "30.50.10.10",
-    equipCode: "RNA",
-    equipName: "Refredadora aire-aigua",
-    needsTable: true,
-    tableCode: "TRNA",
-    tableName: "Refredadora aire-aigua",
-    fieldCols: ["TAG", "SISTEMA", "FABRICANT", "MODEL", "NUMSERIE", "POTNOM", "CABAL"],
-    parentEquipCode: "",
-    createdAt: Date.now(),
-  },
-  {
-    id: uid(),
-    gubimCode: "30.50.10.10",
-    equipCode: "COND",
-    equipName: "Condensador (component refredadora)",
-    needsTable: false,
-    tableCode: "",
-    tableName: "",
-    fieldCols: ["TAG", "FABRICANT", "MODEL"],
-    parentEquipCode: "RNA",
-    createdAt: Date.now() + 1,
-  },
-  {
-    id: uid(),
-    gubimCode: "30.50.10.20",
-    equipCode: "BMC",
-    equipName: "Bomba de calor",
-    needsTable: true,
-    tableCode: "TBMC",
-    tableName: "Bomba de calor",
-    fieldCols: ["TAG", "SISTEMA", "FABRICANT", "MODEL", "POTNOM", "TENSNOM"],
-    parentEquipCode: "",
-    createdAt: Date.now() + 2,
-  },
-  {
-    id: uid(),
-    gubimCode: "30.50.20.10",
-    equipCode: "VTM",
-    equipName: "Ventilador",
-    needsTable: false,
-    tableCode: "",
-    tableName: "",
-    fieldCols: [],
-    parentEquipCode: "",
-    createdAt: Date.now() + 3,
-  },
-];
 
 export function useEquipments() {
   const [items, setItems]     = useState<Equipment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Càrrega inicial + seed si buit
   useEffect(() => {
     supabase
       .from("equipments")
       .select("*")
-      .order("created_at")
+      .order("equip_code")
       .then(({ data, error }) => {
         if (error) { console.error("useEquipments fetch:", error); setLoading(false); return; }
         setItems((data ?? []).map(toEquip));
         setLoading(false);
       });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const isCodeTaken = useCallback(
@@ -152,8 +64,7 @@ export function useEquipments() {
     if (error) throw new Error(error.message);
     setItems((prev) => {
       const idx = prev.findIndex((p) => p.id === e.id);
-      const next = idx >= 0 ? prev.map((p, i) => (i === idx ? e : p)) : [...prev, e];
-      return autoAssignParents(next);
+      return idx >= 0 ? prev.map((p, i) => (i === idx ? e : p)) : [...prev, e];
     });
   }, []);
 
@@ -164,8 +75,8 @@ export function useEquipments() {
   }, []);
 
   const addMany = useCallback(async (arr: Equipment[]) => {
-    const seen   = new Set(items.map((e) => e.equipCode).filter(Boolean));
-    const toAdd  = arr.filter((e) => {
+    const seen  = new Set(items.map((e) => e.equipCode).filter(Boolean));
+    const toAdd = arr.filter((e) => {
       if (!e.equipCode) return true;
       if (seen.has(e.equipCode)) return false;
       seen.add(e.equipCode);
@@ -178,7 +89,7 @@ export function useEquipments() {
       const { error } = await supabase.from("equipments").upsert(batch.map(toRow), { onConflict: "id" });
       if (error) throw new Error(error.message);
     }
-    setItems((prev) => autoAssignParents([...prev, ...toAdd]));
+    setItems((prev) => [...prev, ...toAdd]);
   }, [items]);
 
   const clearAll = useCallback(async () => {

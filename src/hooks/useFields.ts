@@ -4,35 +4,29 @@ import { supabase } from "@/lib/supabase";
 
 // Conversió entre FieldMeta (camelCase) i columnes Supabase (snake_case)
 const toMeta = (row: any): FieldMeta => ({
-  col:        row.col,
-  name:       row.name,
-  cbt_name:   row.cbt_name,
-  type:       row.type,
-  unit:       row.unit,
-  code:       row.code,
-  category:   row.category,
-  group:      row.group,
-  active:     row.active ?? "Y",
-  discipline: row.discipline,
-  taulaAssoc: row.taula_assoc,
-  order:      row.order,
-  scope:      row.scope ?? "custom",
+  col:             row.col,
+  codi:            row.codi            ?? null,
+  taula_assoc:     row.taula_assoc     ?? null,
+  tipus_dada:      row.tipus_dada      ?? null,
+  cbt:             row.cbt             ?? null,
+  format_param:    row.format_param    ?? null,
+  agrupacio_revit: row.agrupacio_revit ?? null,
+  grup_txt:        row.grup_txt        ?? null,
+  instancia_revit: row.instancia_revit ?? null,
+  disciplina:      row.disciplina      ?? null,
 });
 
 const toRow = (f: FieldMeta) => ({
-  col:        f.col,
-  name:       f.name,
-  cbt_name:   f.cbt_name,
-  type:       f.type,
-  unit:       f.unit,
-  code:       f.code,
-  category:   f.category,
-  group:      f.group,
-  active:     f.active,
-  discipline: f.discipline,
-  taula_assoc: f.taulaAssoc,
-  order:      f.order,
-  scope:      f.scope,
+  col:             f.col,
+  codi:            f.codi            || null,
+  taula_assoc:     f.taula_assoc     || null,
+  tipus_dada:      f.tipus_dada      || null,
+  cbt:             f.cbt             || null,
+  format_param:    f.format_param    || null,
+  agrupacio_revit: f.agrupacio_revit || null,
+  grup_txt:        f.grup_txt        || null,
+  instancia_revit: f.instancia_revit || null,
+  disciplina:      f.disciplina      || null,
 });
 
 export function useFields() {
@@ -72,8 +66,6 @@ export function useFields() {
   }, [fieldMap]);
 
   const addMany = useCallback(async (arr: FieldMeta[]): Promise<{ inserted: number; duplicates: number }> => {
-    // La detecció de duplicats es fa a importXlsx (nom amb "(duplicat)").
-    // Aquí simplement inserim tot el que arriba; col ja és el Codi definitiu.
     const existingCols = new Set(raw.map((f) => f.col));
     let duplicates = 0;
 
@@ -81,9 +73,8 @@ export function useFields() {
       .map((f) => ({ ...f, col: f.col.toUpperCase() }))
       .filter((f) => {
         if (!f.col) return false;
-        if (existingCols.has(f.col)) return false; // evita error de constraint
+        if (existingCols.has(f.col)) { duplicates++; return false; }
         existingCols.add(f.col);
-        if (f.name?.endsWith(" (duplicat)")) duplicates++;
         return true;
       });
 
@@ -101,7 +92,7 @@ export function useFields() {
     }
 
     return { inserted: toAdd.length, duplicates };
-  }, [raw]);;
+  }, [raw]);
 
   const updateField = useCallback(async (col: string, patch: Partial<FieldMeta>) => {
     const merged = { ...fieldMap.get(col), ...patch, col } as FieldMeta;
@@ -123,12 +114,12 @@ export function useFields() {
   }, []);
 
   const groups = useMemo(
-    () => Array.from(new Set(fields.map((f) => f.group).filter(Boolean) as string[])).sort(),
+    () => Array.from(new Set(fields.map((f) => f.agrupacio_revit).filter(Boolean) as string[])).sort(),
     [fields],
   );
 
   const disciplines = useMemo(
-    () => Array.from(new Set(fields.map((f) => f.discipline).filter(Boolean) as string[])).sort(),
+    () => Array.from(new Set(fields.map((f) => f.disciplina).filter(Boolean) as string[])).sort(),
     [fields],
   );
 
