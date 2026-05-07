@@ -15,6 +15,7 @@ import { EquipmentDetailDialog } from "./EquipmentDetailDialog";
 import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 
 // Colors per als grups de codi compartit (ciclics)
 const GROUP_COLORS = [
@@ -110,11 +111,11 @@ const EquipmentRow = memo(function EquipmentRow({
       <td className="p-2" onClick={(e) => e.stopPropagation()}>
         <div className="flex gap-1">
           <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8]" onClick={onView}><Eye className="h-3.5 w-3.5" /></Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>
+          {canEdit && <Button size="icon" variant="ghost" className="h-7 w-7" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>}
           <AlertDialog>
-            <AlertDialogTrigger asChild>
+            {canEdit && <AlertDialogTrigger asChild>
               <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
-            </AlertDialogTrigger>
+            </AlertDialogTrigger>}
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Esborrar equip {e.equipName}?</AlertDialogTitle>
@@ -136,6 +137,7 @@ export function EquipmentsTable() {
   const { items, upsert, remove, addMany, clearAll, byCode } = useEquipments();
   const { nodes, nodeMap } = useGubimClass();
   const { fields, fieldMap } = useFields();
+  const { canEdit } = useAuth();
   const [q, setQ] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -298,11 +300,11 @@ export function EquipmentsTable() {
         </div>
         <div className="flex-1" />
         <Button size="sm" variant="outline" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta</Button>
-        <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>
+        {canEdit && <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
         <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
         <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4" /> Esborra tot</Button>
+          {canEdit && <AlertDialogTrigger asChild>
+            <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4" /> Esborra tot</Button>}
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>Esborrar tots els equips?</AlertDialogTitle><AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription></AlertDialogHeader>
@@ -312,9 +314,9 @@ export function EquipmentsTable() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={() => { setEditing(null); setFormOpen(true); }}>
+        {canEdit && <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={() => { setEditing(null); setFormOpen(true); }}>
           <Plus className="h-4 w-4" /> Nou equip
-        </Button>
+        </Button>}
       </div>
 
       <div className="border rounded-md overflow-auto bg-card">

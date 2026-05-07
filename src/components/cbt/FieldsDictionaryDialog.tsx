@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, Plus, Trash2, Upload, Pencil } from "lucide-react";
@@ -53,6 +54,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const [q, setQ] = useState("");
   const [grp, setGrp] = useState("__all__");
   const [cls, setCls] = useState("__all__");
+  const { canEdit } = useAuth();
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<FieldMeta | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -163,10 +165,10 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           <Button variant="outline" size="sm" onClick={exportXlsx}><Download className="h-4 w-4 mr-1" /> Exporta Excel</Button>
           <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1" /> Importa Excel</Button>
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
-          <Button size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nou camp</Button>
+          {canEdit && <Button size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nou camp</Button>}
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
+              {canEdit && <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>}
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
