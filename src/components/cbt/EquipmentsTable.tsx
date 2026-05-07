@@ -29,13 +29,14 @@ const GROUP_COLORS = [
 
 const EquipmentRow = memo(function EquipmentRow({
   e, gubimName, parentName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
-  isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth,
+  isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth, canEdit,
 }: {
   e: Equipment; gubimName: string; parentName: string; level: 1|2|3|4;
   onEdit: () => void; onDelete: () => void; onView: () => void;
   fieldCount: number; orphanCols: string[]; isChild: boolean;
   isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
   childDepth: number; // 0 = equip mare, 1+ = component fill
+  canEdit: boolean;
 }) {
   const gubimIndent = ["pl-2", "pl-5", "pl-8", "pl-11"][level - 1];
   // Tabulació addicional per jerarquia d'equips (components)
@@ -358,6 +359,7 @@ export function EquipmentsTable() {
                   isFirstInGroup={isFirstInGroup}
                   groupSize={groupSize}
                   childDepth={depth}
+                  canEdit={canEdit}
                   onView={() => { setViewing(e); setDetailOpen(true); }}
                   onEdit={(ev?: any) => { if(ev) ev.stopPropagation?.(); setEditing(e); setFormOpen(true); }}
                   onDelete={async () => { try { await remove(e.id); toast.success("Equip esborrat"); } catch { toast.error("Error esborrant equip"); } }}
