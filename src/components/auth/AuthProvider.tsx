@@ -1,6 +1,4 @@
 // src/components/auth/AuthProvider.tsx
-// Proveïdor global d'autenticació
-
 import { useEffect, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
@@ -18,26 +16,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   async function loadProfile(u: User) {
-    const { data } = await supabase
-      .from("user_profiles")
-      .select("id, email, full_name, role")
-      .eq("id", u.id)
-      .single();
-    setProfile(data ?? null);
+    try {
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("id, email, full_name, role")
+        .eq("id", u.id)
+        .single();
+      setProfile(data ?? null);
+    } catch {
+      setProfile(null);
+    }
   }
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadProfile(session.user).finally(() => setLoading(false));
-      } else {
-        setLoading(false);
+    let cancelled = false;
+
+    // Timeout de seguretat: si getSession tarda més de 5s, desbloqueja
+    const timeout = setTimeout(() => {
+      if (!cancelled) setLoading(false);
+    }, 5000);
+
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (cancelled) return;
+      clearTimeout(timeout);
+      const u = session?.user ?? null;
+      setUser(u);
+      if (u) {
+        await loadProfile(u);
       }
+      setLoading(false);
+    }).catch(() => {
+      if (!cancelled) setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
+        if (cancelled) return;
         const u = session?.user ?? null;
         setUser(u);
         if (u) {
@@ -49,7 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   async function signIn(email: string, password: string) {
@@ -59,6 +77,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
   }
 
   const role = profile?.role ?? "viewer";
