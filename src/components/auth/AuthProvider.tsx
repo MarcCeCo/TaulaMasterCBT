@@ -10,52 +10,34 @@ import {
   type UserProfile,
 } from "@/lib/auth";
 
+async function fetchProfile(u: User): Promise<UserProfile | null> {
+  try {
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("id, email, full_name, role")
+      .eq("id", u.id)
+      .single();
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function loadProfile(u: User) {
-    try {
-      const { data } = await supabase
-        .from("user_profiles")
-        .select("id, email, full_name, role")
-        .eq("id", u.id)
-        .single();
-      setProfile(data ?? null);
-    } catch {
-      setProfile(null);
-    }
-  }
-
   useEffect(() => {
-    let cancelled = false;
-
-    // Timeout de seguretat: si getSession tarda més de 5s, desbloqueja
-    const timeout = setTimeout(() => {
-      if (!cancelled) setLoading(false);
-    }, 5000);
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (cancelled) return;
-      clearTimeout(timeout);
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u) {
-        await loadProfile(u);
-      }
-      setLoading(false);
-    }).catch(() => {
-      if (!cancelled) setLoading(false);
-    });
-
+    // onAuthStateChange dispara INITIAL_SESSION immediatament amb la sessió
+    // guardada a localStorage — és l'únic punt de veritat, no cal getSession
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
-        if (cancelled) return;
         const u = session?.user ?? null;
         setUser(u);
         if (u) {
-          await loadProfile(u);
+          const p = await fetchProfile(u);
+          setProfile(p);
         } else {
           setProfile(null);
         }
@@ -63,10 +45,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
+    // Timeout de seguretat per si onAuthStateChange no dispara mai
+    const timeout = setTimeout(() => setLoading(false), 4000);
+
     return () => {
-      cancelled = true;
-      clearTimeout(timeout);
       subscription.unsubscribe();
+      clearTimeout(timeout);
     };
   }, []);
 
@@ -76,9 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
-    await supabase.auth.signOut();
     setUser(null);
     setProfile(null);
+    await supabase.auth.signOut();
   }
 
   const role = profile?.role ?? "viewer";
