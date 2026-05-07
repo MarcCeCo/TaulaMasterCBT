@@ -10,6 +10,7 @@ export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: false, // no uses OAuth, evita bloqueig en F5
+    storageKey: "cbt-taula-master-auth",
   },
 });
