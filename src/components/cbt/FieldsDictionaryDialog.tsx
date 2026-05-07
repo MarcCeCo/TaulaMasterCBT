@@ -24,14 +24,6 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
   let currentChildren: FieldMeta[] = [];
 
   const flushChildren = () => {
-    // Ordena: primer els sense codi, després per codi alfabètic
-    currentChildren.sort((a, b) => {
-      const ca = a.code ?? "";
-      const cb = b.code ?? "";
-      if (!ca && cb) return -1;
-      if (ca && !cb) return 1;
-      return ca.localeCompare(cb);
-    });
     result.push(...currentChildren);
     currentChildren = [];
   };
@@ -41,9 +33,13 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
       flushChildren();
       currentClassifier = f; classifierAdded = false; continue;
     }
-    if (grp !== "__all__" && f.group !== grp) continue;
-    if (cls !== "__all__" && currentClassifier?.name !== cls) continue;
-    if (t && !((f.code ?? "").toLowerCase().includes(t) || (f.name ?? "").toLowerCase().includes(t) || (f.cbt_name ?? "").toLowerCase().includes(t))) continue;
+    if (grp !== "__all__" && f.agrupacio_revit !== grp) continue;
+    if (cls !== "__all__" && currentClassifier?.col !== cls) continue;
+    if (t && !(
+      (f.col ?? "").toLowerCase().includes(t) ||
+      (f.codi ?? "").toLowerCase().includes(t) ||
+      (f.cbt ?? "").toLowerCase().includes(t)
+    )) continue;
     if (currentClassifier && !classifierAdded) { result.push(currentClassifier); classifierAdded = true; }
     currentChildren.push(f);
   }
@@ -62,20 +58,20 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const classifiers = useMemo(() => fields.filter(isClassifier), [fields]);
-  const filtered = useMemo(() => filterWithClassifiers(fields, q, grp, cls), [fields, q, grp, cls]);
+  const filtered    = useMemo(() => filterWithClassifiers(fields, q, grp, cls), [fields, q, grp, cls]);
 
   const exportXlsx = () => {
     const rows = fields.filter(f => !isClassifier(f)).map((f) => ({
-      Nom: f.name ?? "",
-      Codi: f.code ?? "",
-      "Taula associada": f.taulaAssoc ?? "",
-      "Tipus dada": f.category ?? "",
-      CBT: f.cbt_name ?? "",
-      "Format paràmetre": f.type ?? "",
-      "Agrupació Revit": f.group ?? "",
-      "Grup .txt": f.unit ?? "",
-      "Instància Revit": f.active,
-      Disciplina: f.discipline ?? "",
+      "Nom":              f.col,
+      "Codi":             f.codi            ?? "",
+      "Taula associada":  f.taula_assoc     ?? "",
+      "Tipus dada":       f.tipus_dada      ?? "",
+      "CBT":              f.cbt             ?? "",
+      "Format paràmetre": f.format_param    ?? "",
+      "Agrupació Revit":  f.agrupacio_revit ?? "",
+      "Grup .txt":        f.grup_txt        ?? "",
+      "Instància Revit":  f.instancia_revit ?? "",
+      "Disciplina":       f.disciplina      ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -86,72 +82,46 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
 
   const importXlsx = async (file: File) => {
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf);
-      const ws = wb.Sheets[wb.SheetNames[0]];
+      const buf  = await file.arrayBuffer();
+      const wb   = XLSX.read(buf);
+      const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
 
-      // col = Codi (clau interna). Si no hi ha Codi, el camp no es pot importar.
-      const existingCols  = new Set(fields.map((f) => f.col));
-      const existingNames = new Set(fields.map((f) => f.name).filter(Boolean) as string[]);
-      const seenCols      = new Set<string>(); // codis ja processats en aquest Excel
-      const seenNames     = new Set<string>(); // noms ja processats en aquest Excel
+      const existingCols = new Set(fields.map((f) => f.col));
+      const seenCols     = new Set<string>();
 
-      const toAdd: FieldMeta[] = rows.map((r, i) => {
-        const nom        = String(r["Nom"] ?? "").trim();
-        const codi       = String(r["Codi"] ?? "").trim().toUpperCase();
-        const cbt        = String(r["CBT"] ?? "").trim();
-        const format     = String(r["Format paràmetre"] ?? "").trim();
-        const agrupRevit = String(r["Agrupació Revit"] ?? r["Agrupació CBT"] ?? "").trim();
-        const grupTxt    = String(r["Grup .txt"] ?? "").trim();
-        const instancia  = String(r["Instància Revit"] ?? "Y").trim();
-        const disciplina = String(r["Disciplina"] ?? "").trim();
-        const taulaAssoc = String(r["Taula associada"] ?? "").trim();
-        const tipusDada  = String(r["Tipus dada"] ?? "").trim();
+      const toAdd: FieldMeta[] = rows.map((r) => {
+        const nom        = String(r["Nom"]              ?? "").trim().toUpperCase();
+        const codi       = String(r["Codi"]             ?? "").trim() || null;
+        const taulaAssoc = String(r["Taula associada"]  ?? "").trim() || null;
+        const tipusDada  = String(r["Tipus dada"]       ?? "").trim() || null;
+        const cbt        = String(r["CBT"]              ?? "").trim() || null;
+        const formatP    = String(r["Format paràmetre"] ?? "").trim() || null;
+        const agrupRevit = String(r["Agrupació Revit"]  ?? "").trim() || null;
+        const grupTxt    = String(r["Grup .txt"]        ?? "").trim() || null;
+        const instancia  = String(r["Instància Revit"]  ?? "").trim() || null;
+        const disciplina = String(r["Disciplina"]       ?? "").trim() || null;
 
-        // Fila classificadora: nom present, resta de camps buits
-        const isClsRow = nom && !codi && !cbt && !format && !agrupRevit && !disciplina;
-        if (isClsRow) {
-          const genCol = "CLS_" + nom.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 10);
-          const isDup  = existingCols.has(genCol) || seenCols.has(genCol) || existingNames.has(nom) || seenNames.has(nom);
-          seenCols.add(genCol);
-          seenNames.add(nom);
-          return {
-            col: genCol,
-            name: isDup ? nom + " (duplicat)" : nom,
-            cbt_name: null, type: null, unit: null, code: null, category: null,
-            group: null, active: "Y" as const, discipline: null, taulaAssoc: null,
-            order: Date.now() + i, scope: "global",
-          };
-        }
-
-        // Camp normal: Nom obligatori. Codi és opcional.
         if (!nom) return null;
-
-        // Si no hi ha codi, generem una clau interna basada en el nom
-        const colKey = codi || ("CAMP_" + nom.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]/g, "_").slice(0, 16) + "_" + String(Date.now() + i).slice(-4));
-
-        // Duplicat si el codi (o colKey) O el nom ja existeixen (a la BD o en aquest Excel)
-        const isDup = existingCols.has(colKey) || seenCols.has(colKey) || existingNames.has(nom) || seenNames.has(nom);
-        seenCols.add(colKey);
-        seenNames.add(nom);
+        if (existingCols.has(nom) || seenCols.has(nom)) return null;
+        seenCols.add(nom);
 
         return {
-          col:      colKey,
-          name:     isDup ? nom + " (duplicat)" : nom,
-          cbt_name: cbt || null, type: format || null, unit: grupTxt || null,
-          code:     codi || null, category: tipusDada || null, group: agrupRevit || null,
-          active:   (instancia === "N" ? "N" : "Y") as "Y" | "N",
-          discipline: disciplina || null, taulaAssoc: taulaAssoc || null,
-          order: Date.now() + i, scope: "global",
-        };
+          col:             nom,
+          codi,
+          taula_assoc:     taulaAssoc,
+          tipus_dada:      tipusDada,
+          cbt,
+          format_param:    formatP,
+          agrupacio_revit: agrupRevit,
+          grup_txt:        grupTxt,
+          instancia_revit: instancia,
+          disciplina,
+        } as FieldMeta;
       }).filter(Boolean) as FieldMeta[];
 
       const { inserted, duplicates } = await addMany(toAdd);
-      const parts: string[] = [];
-      if (inserted > 0) parts.push(`${inserted} camps inserits`);
-      if (duplicates > 0) parts.push(`${duplicates} duplicats marcats amb "(duplicat)"`);
-      if (inserted > 0) toast.success(parts.join(" · "));
+      if (inserted > 0) toast.success(`${inserted} camps inserits` + (duplicates > 0 ? ` · ${duplicates} duplicats omesos` : ""));
       else toast.warning("Cap camp nou per importar");
     } catch (e: any) {
       toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
@@ -172,7 +142,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
         <DialogHeader><DialogTitle>Diccionari de camps</DialogTitle></DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <Input placeholder="Cerca per codi, nom o CBT…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} />
           <Select value={grp} onValueChange={setGrp}>
             <SelectTrigger><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
             <SelectContent>
@@ -184,7 +154,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
             <SelectTrigger><SelectValue placeholder="Classificador" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Tots els classificadors</SelectItem>
-              {classifiers.map((c) => <SelectItem key={c.col} value={c.name ?? c.col}>{c.name}</SelectItem>)}
+              {classifiers.map((c) => <SelectItem key={c.col} value={c.col}>{c.col}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -211,25 +181,17 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           </AlertDialog>
         </div>
 
-        {/* Llegenda */}
-        <div className="flex gap-4 text-xs">
-          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-[#0099A8]" /><span className="text-[#0099A8] font-medium">Revit (.txt)</span></span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full bg-violet-400" /><span className="text-violet-600 font-medium">Rosmiman</span></span>
-        </div>
-
         <div className="border rounded-md flex-1 overflow-auto">
           <table className="w-full text-sm">
             <thead className="bg-background sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
               <tr className="text-left">
                 <th className="p-2 font-semibold text-xs">Nom</th>
-                {/* Revit */}
                 <th className="p-2 font-semibold text-xs text-[#0099A8] border-l-2 border-[#0099A8]/30">CBT</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Format par.</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Disciplina</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Instància</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació Revit</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Grup .txt</th>
-                {/* Rosmiman */}
+                <th className="p-2 font-semibold text-xs text-[#0099A8]">Instància Revit</th>
+                <th className="p-2 font-semibold text-xs text-[#0099A8]">Disciplina</th>
                 <th className="p-2 font-semibold text-xs text-violet-600 border-l-2 border-violet-200">Codi</th>
                 <th className="p-2 font-semibold text-xs text-violet-600">Taula assoc.</th>
                 <th className="p-2 font-semibold text-xs text-violet-600">Tipus dada</th>
@@ -242,20 +204,18 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                 return (
                   <tr key={f.col} className={cn("border-t", c && "bg-accent/30 font-semibold")}>
                     <td className="p-2">
-                      <div>{f.name}</div>
+                      <div>{f.col}</div>
                       {c && <Badge variant="outline" className="mt-0.5 text-[10px] uppercase tracking-wide">Classificador</Badge>}
                     </td>
-                    {/* Revit */}
-                    <td className="p-2 font-mono text-xs text-muted-foreground border-l-2 border-[#0099A8]/20">{f.cbt_name ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.type ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.discipline ?? "—"}</td>
-                    <td className="p-2 text-xs font-mono">{c ? "—" : f.active}</td>
-                    <td className="p-2 text-xs">{f.group ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.unit ?? "—"}</td>
-                    {/* Rosmiman */}
-                    <td className="p-2 font-mono text-xs border-l-2 border-violet-100">{c ? "—" : (f.code ?? "—")}</td>
-                    <td className="p-2 text-xs">{f.taulaAssoc ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.category ?? "—"}</td>
+                    <td className="p-2 font-mono text-xs text-muted-foreground border-l-2 border-[#0099A8]/20">{f.cbt ?? "—"}</td>
+                    <td className="p-2 text-xs">{f.format_param ?? "—"}</td>
+                    <td className="p-2 text-xs">{f.agrupacio_revit ?? "—"}</td>
+                    <td className="p-2 text-xs">{f.grup_txt ?? "—"}</td>
+                    <td className="p-2 text-xs font-mono">{c ? "—" : (f.instancia_revit ?? "—")}</td>
+                    <td className="p-2 text-xs">{f.disciplina ?? "—"}</td>
+                    <td className="p-2 font-mono text-xs border-l-2 border-violet-100">{c ? "—" : (f.codi ?? "—")}</td>
+                    <td className="p-2 text-xs">{f.taula_assoc ?? "—"}</td>
+                    <td className="p-2 text-xs">{f.tipus_dada ?? "—"}</td>
                     <td className="p-2">
                       {isCustom(f.col) && (
                         <div className="flex gap-1">
@@ -269,7 +229,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>Esborrar camp?</AlertDialogTitle>
-                                <AlertDialogDescription>S'eliminarà «{f.name}» i les seves referències en equips.</AlertDialogDescription>
+                                <AlertDialogDescription>S'eliminarà «{f.col}» i les seves referències en equips.</AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel·la</AlertDialogCancel>
