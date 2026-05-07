@@ -82,6 +82,7 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{editing ? "Edita equip" : "Nou equip"}</DialogTitle></DialogHeader>
@@ -162,5 +163,6 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
       </DialogContent>
     </Dialog>
     <FieldPickerDialog open={pickOpen} onOpenChange={setPickOpen} fields={fields} initialSelected={cols} onConfirm={setCols} />
+    </>
   );
 }
