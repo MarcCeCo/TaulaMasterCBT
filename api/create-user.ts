@@ -1,3 +1,4 @@
+// api/create-user.ts
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
@@ -35,12 +36,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: "Necessites permisos d'administrador" });
   }
 
-  const { email, password, full_name, role } = req.body;
+  const { email, password, full_name, role, allowed_views } = req.body;
 
   if (!email || !password || !role) {
     return res.status(400).json({ error: "Falten camps obligatoris" });
   }
-
   if (!["viewer", "editor", "admin"].includes(role)) {
     return res.status(400).json({ error: "Rol no vàlid" });
   }
@@ -55,10 +55,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (createError) return res.status(400).json({ error: createError.message });
 
-  // Actualitzar rol i nom al perfil
+  // Actualitzar rol, nom i vistes al perfil
   await supabaseAdmin
     .from("user_profiles")
-    .update({ role, full_name, created_by: user.id })
+    .update({
+      role,
+      full_name,
+      created_by: user.id,
+      // allowed_views: null significa accés a totes les vistes
+      allowed_views: allowed_views ?? null,
+    })
     .eq("id", newUser.user!.id);
 
   return res.status(200).json({ success: true, user_id: newUser.user!.id });
