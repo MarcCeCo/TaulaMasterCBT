@@ -271,8 +271,30 @@ export function EquipmentsTable() {
           createdAt: Date.now(),
         };
       }).filter((e) => e.equipName); // el nom és l'únic obligatori
-      addMany(arr).catch(() => toast.error("Error important equips"));
-      toast.success(`${arr.length} equips processats`);
+
+      // Detectar equips omesos per codi duplicat
+      const existingCodes = new Set(items.map((e) => e.equipCode).filter(Boolean));
+      const skipped: string[] = [];
+      const seenInFile = new Set<string>();
+      arr.forEach((e) => {
+        if (e.equipCode) {
+          if (existingCodes.has(e.equipCode) || seenInFile.has(e.equipCode)) {
+            skipped.push(e.equipName + (e.equipCode ? ` (${e.equipCode})` : ""));
+          }
+          seenInFile.add(e.equipCode);
+        }
+      });
+
+      addMany(arr).then(() => {
+        const imported = arr.length - skipped.length;
+        if (skipped.length > 0) {
+          toast.warning(
+            `${imported} equips importats · ${skipped.length} no importats per codi duplicat: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? ` i ${skipped.length - 5} més` : ""}`
+          );
+        } else {
+          toast.success(`${imported} equips importats correctament`);
+        }
+      }).catch(() => toast.error("Error important equips"));
     } catch { toast.error("Error en importar"); }
   };
 

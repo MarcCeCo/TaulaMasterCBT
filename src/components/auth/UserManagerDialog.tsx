@@ -78,11 +78,26 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
 
   const fetchUsers = async () => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("user_profiles")
-      .select("id, email, full_name, role, allowed_views")
-      .order("email");
-    if (!error && data) setUsers(data as UserProfile[]);
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+      const res = await fetch("/api/list-users", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setUsers((json.users ?? []) as UserProfile[]);
+      } else {
+        // Fallback: consulta directa (pot estar limitada per RLS)
+        const { data, error } = await supabase
+          .from("user_profiles")
+          .select("id, email, full_name, role, allowed_views")
+          .order("email");
+        if (!error && data) setUsers(data as UserProfile[]);
+        else toast.error("Error carregant usuaris");
+      }
+    } catch {
+      toast.error("Error carregant usuaris");
+    }
     setLoading(false);
   };
 

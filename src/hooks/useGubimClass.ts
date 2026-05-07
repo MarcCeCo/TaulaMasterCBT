@@ -52,10 +52,12 @@ export function useGubimClass() {
   const addNode = useCallback(async (n: Omit<GubimNode, "id">) => {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
-    if (p && !nodeMap.has(p)) throw new Error("El node pare no existeix");
-    if (nodeMap.has(n.code))  throw new Error("El codi ja existeix");
+    if (p && !nodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
+    // Codi duplicat: PERMÈS per al nivell 4, BLOQUEJAT per als nivells 1-3
+    const lvl = codeLevel(n.code);
+    if (lvl < 4 && nodeMap.has(n.code)) throw new Error("El codi ja existeix");
     const row = toRow(n);
-    const { error } = await supabase.from("gubim_class").upsert(row, { onConflict: "code" });
+    const { error } = await supabase.from("gubim_class").insert(row);
     if (error) throw new Error(error.message);
     setNodes((prev) => [...prev, { id: row.id, code: row.code, name: row.name }]);
   }, [nodeMap]);

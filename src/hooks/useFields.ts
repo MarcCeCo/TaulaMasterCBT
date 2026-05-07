@@ -67,16 +67,31 @@ export function useFields() {
 
   const addMany = useCallback(async (arr: FieldMeta[]): Promise<{ inserted: number; duplicates: number }> => {
     const existingCols = new Set(raw.map((f) => f.col));
+    const existingCodis = new Map(raw.filter(f => f.codi).map((f) => [f.codi!, f.col]));
     let duplicates = 0;
 
     const toAdd = arr
-      .map((f) => ({ ...f, col: f.col.toUpperCase() }))
-      .filter((f) => {
-        if (!f.col) return false;
-        if (existingCols.has(f.col)) { duplicates++; return false; }
-        existingCols.add(f.col);
-        return true;
-      });
+      .map((f) => {
+        let col = f.col.toUpperCase();
+        if (!col) return null;
+
+        // Si el nom (col) ja existeix → marcar com a duplicat
+        if (existingCols.has(col)) {
+          col = col + " (DUPLICAT)";
+          duplicates++;
+        }
+        existingCols.add(col);
+
+        // Si el codi ja existeix en un altre camp → marcar com a duplicat
+        let codi = f.codi;
+        if (codi && existingCodis.has(codi) && existingCodis.get(codi) !== f.col) {
+          codi = codi + " (DUPLICAT)";
+        }
+        if (codi) existingCodis.set(codi, col);
+
+        return { ...f, col, codi };
+      })
+      .filter(Boolean) as FieldMeta[];
 
     if (toAdd.length > 0) {
       const BATCH = 50;

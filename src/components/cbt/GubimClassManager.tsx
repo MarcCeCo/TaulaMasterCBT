@@ -32,6 +32,9 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (!isValidCode(val)) { setCodeError("Format invàlid (ex: 30, 30.50, 30.50.10)"); return; }
     const p = parentCode(val);
     if (p && !nodeMap.has(p)) { setCodeError(`El pare ${p} no existeix`); return; }
+    // Duplicats permesos per al nivell 4; bloquejats per als nivells 1-3
+    const lvl = codeLevel(val);
+    if (lvl < 4 && !editing && nodeMap.has(val)) { setCodeError("El codi ja existeix (nivells 1-3 han de ser únics)"); return; }
     setCodeError("");
   };
 
@@ -42,11 +45,14 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (!N) return toast.error("El nom és obligatori");
     const p = parentCode(C);
     if (p && !nodeMap.has(p)) return toast.error(`El node pare ${p} no existeix`);
+    const lvl = codeLevel(C);
     if (editing) {
-      if (C !== editing.code && nodeMap.has(C)) return toast.error("El codi ja existeix");
+      if (C !== editing.code && lvl < 4 && nodeMap.has(C)) return toast.error("El codi ja existeix");
       try { await updateNode(editing.id, { code: C, name: N }); toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : "")); }
       catch (e: any) { return toast.error(e.message); }
     } else {
+      // Nivell 4: duplicats de codi permesos
+      if (lvl < 4 && nodeMap.has(C)) return toast.error("El codi ja existeix");
       try { await addNode({ code: C, name: N }); toast.success("Node creat"); }
       catch (e: any) { return toast.error(e.message); }
     }
