@@ -13,6 +13,7 @@ import { useEquipments } from "@/hooks/useEquipments";
 import { AddFieldDialog } from "./AddFieldDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 
 interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
 
@@ -50,6 +51,7 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
 export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const { fields, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines } = useFields();
   const { removeFieldColFromAll } = useEquipments();
+  const { canEdit } = useAuth();
   const [q, setQ] = useState("");
   const [grp, setGrp] = useState("__all__");
   const [cls, setCls] = useState("__all__");
@@ -161,12 +163,12 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
 
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={exportXlsx}><Download className="h-4 w-4 mr-1" /> Exporta Excel</Button>
-          <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1" /> Importa Excel</Button>
+          {canEdit && <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1" /> Importa Excel</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
-          <Button size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nou camp</Button>
+          {canEdit && <Button size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nou camp</Button>}
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
+              <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>

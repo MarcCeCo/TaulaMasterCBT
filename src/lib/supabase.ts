@@ -7,11 +7,10 @@ if (!url) throw new Error("Falta VITE_SUPABASE_URL");
 if (!key) throw new Error("Falta VITE_SUPABASE_ANON_KEY");
 
 export const supabase = createClient(url, key, {
-  auth: { persistSession: false },
-  global: {
-    headers: {
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-    },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false, // no uses OAuth, evita bloqueig en F5
+    storageKey: "cbt-taula-master-auth",
   },
 });

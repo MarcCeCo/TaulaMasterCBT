@@ -1,8 +1,27 @@
+// src/routes/__root.tsx  (versió actualitzada amb auth gate)
 import { Outlet, createRootRoute } from "@tanstack/react-router";
-import { useEffect } from "react";
-
-// Importem el CSS directament — imprescindible per Tailwind v4 en mode SPA
 import "../styles.css";
+import { useAuth } from "@/lib/auth";
+import { LoginPage } from "@/components/auth/LoginPage";
+import { Loader2 } from "lucide-react";
+
+function RootComponent() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F5F7F8]">
+        <Loader2 className="h-8 w-8 animate-spin text-[#0099A8]" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
+  return <Outlet />;
+}
 
 function NotFoundComponent() {
   return (
@@ -10,9 +29,7 @@ function NotFoundComponent() {
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
         <h2 className="mt-4 text-xl font-semibold text-foreground">Pàgina no trobada</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          La pàgina que busques no existeix.
-        </p>
+        <p className="mt-2 text-sm text-muted-foreground">La pàgina que busques no existeix.</p>
         <div className="mt-6">
           <a
             href="/"
@@ -27,6 +44,6 @@ function NotFoundComponent() {
 }
 
 export const Route = createRootRoute({
-  component: () => <Outlet />,
+  component: RootComponent,
   notFoundComponent: NotFoundComponent,
 });

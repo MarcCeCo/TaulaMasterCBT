@@ -11,11 +11,13 @@ import { LevelBadge } from "./LevelBadge";
 import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAuth } from "@/lib/auth";
 
 interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
 
 export function GubimClassManager({ open, onOpenChange }: Props) {
   const { nodes, nodeMap, addNode, addMany, updateNode, removeNode, hasChildren, clearAll } = useGubimClass();
+  const { canEdit } = useAuth();
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<GubimNode | null>(null);
@@ -139,7 +141,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
             />
           </div>
           <div className="flex gap-2 pt-6">
-            <Button onClick={save} disabled={!!codeError} className="bg-[#0099A8] hover:bg-[#006E7A]">
+            <Button onClick={save} disabled={!!codeError || !canEdit} className="bg-[#0099A8] hover:bg-[#006E7A]">
               {editing ? "Desa" : "Afegeix"}
             </Button>
             {editing && <Button variant="outline" onClick={reset}>Cancel·la</Button>}
@@ -154,11 +156,11 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
             {q && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6" onClick={() => setQ("")}><X className="h-3 w-3" /></Button>}
           </div>
           <Button size="sm" variant="outline" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta</Button>
-          <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>
+          {canEdit && <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4" /> Esborra tot</Button>
+              <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4" /> Esborra tot</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
@@ -216,6 +218,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                       <div className="flex gap-1">
                         <Button
                           size="icon" variant={isEditing ? "secondary" : "ghost"} className="h-7 w-7"
+                          disabled={!canEdit}
                           onClick={() => { if (isEditing) { reset(); } else { setEditing(n); setCode(n.code); setName(n.name); setCodeError(""); } }}
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -226,7 +229,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                               <span>
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={hasC}>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={hasC || !canEdit}>
                                       <Trash2 className="h-3.5 w-3.5" />
                                     </Button>
                                   </AlertDialogTrigger>
