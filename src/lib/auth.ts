@@ -4,7 +4,6 @@ import type { User } from "@supabase/supabase-js";
 
 export type UserRole = "viewer" | "editor" | "admin";
 
-// Vistes disponibles a l'app
 export type AppView = "equips" | "gubimclass" | "fields";
 
 export const ALL_VIEWS: AppView[] = ["equips", "gubimclass", "fields"];
@@ -57,14 +56,29 @@ export const canEditRole = (role: UserRole) =>
 
 export const isAdminRole = (role: UserRole) => role === "admin";
 
-// null = totes les vistes; array buit = cap vista
+/**
+ * Retorna true si l'usuari pot veure la vista donada.
+ *
+ * Lògica de fallback segura:
+ * - Si no hi ha perfil PERÒ hi ha user (perfil encara carregant o error de BD):
+ *   retorna TRUE per defecte — mai bloquejem per error tècnic.
+ * - Si no hi ha ni user ni perfil: retorna false (no autenticat).
+ * - Admin: sempre true.
+ * - allowed_views === null: true (accés total, comportament per defecte).
+ * - allowed_views array: comprova si la vista hi és.
+ */
 export const canSeeViewFn =
-  (profile: UserProfile | null) =>
+  (profile: UserProfile | null, user: User | null = null) =>
   (view: AppView): boolean => {
+    // No autenticat
+    if (!profile && !user) return false;
+    // Autenticat però perfil no carregat (error de BD, columna inexistent, etc.)
+    // → permetem accés per no bloquejar per raons tècniques
+    if (!profile && user) return true;
     if (!profile) return false;
-    // Admin sempre veu tot
+    // Admin veu tot sempre
     if (profile.role === "admin") return true;
-    // null significa accés a totes les vistes
+    // null = totes les vistes
     if (profile.allowed_views === null) return true;
     return profile.allowed_views.includes(view);
   };
