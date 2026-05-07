@@ -29,18 +29,23 @@ const toEquip = (row: any): Equipment => ({
   createdAt:       row.created_at       ?? Date.now(),
 });
 
-const toRow = (e: Equipment) => ({
-  id:               e.id,
-  gubim_code:       e.gubimCode,
-  equip_code:       e.equipCode       || null,
-  equip_name:       e.equipName,
-  needs_table:      e.needsTable,
-  table_code:       e.tableCode       || null,
-  table_name:       e.tableName       || null,
-  field_cols:       e.fieldCols,
-  parent_equip_code: e.parentEquipCode || null,
-  created_at:       e.createdAt       ?? Date.now(),
-});
+// Columnes segures que sempre existeixen a la taula equipments
+const toRow = (e: Equipment) => {
+  const row: any = {
+    id:          e.id,
+    gubim_code:  e.gubimCode,
+    equip_code:  e.equipCode  || null,
+    equip_name:  e.equipName,
+    needs_table: e.needsTable,
+    table_code:  e.tableCode  || null,
+    table_name:  e.tableName  || null,
+    field_cols:  e.fieldCols,
+  };
+  // Afegim columnes opcionals només si tenen valor (per evitar 400 si no existeixen a la BD)
+  if (e.parentEquipCode) row.parent_equip_code = e.parentEquipCode;
+  if (e.createdAt)       row.created_at        = e.createdAt;
+  return row;
+};
 
 export function useEquipments() {
   const [items, setItems]     = useState<Equipment[]>([]);

@@ -135,7 +135,7 @@ const EquipmentRow = memo(function EquipmentRow({
 });
 
 export function EquipmentsTable() {
-  const { items, upsert, remove, addMany, clearAll, byCode } = useEquipments();
+  const { items, upsert, remove, addMany, clearAll, isCodeTaken: isCodeTakenHook } = useEquipments();
   const { nodes, nodeMap } = useGubimClass();
   const { fields, fieldMap } = useFields();
   const { canEdit } = useAuth();
@@ -202,11 +202,7 @@ export function EquipmentsTable() {
     );
   }, [sorted, q]);
 
-  const isCodeTaken = (code: string, excludeId?: string) => {
-    if (!code) return false;
-    const ex = byCode.get(code);
-    return !!ex && ex.id !== excludeId;
-  };
+  const isCodeTaken = isCodeTakenHook;
 
   // Export: cada camp en columna independent
   const exportXlsx = () => {
