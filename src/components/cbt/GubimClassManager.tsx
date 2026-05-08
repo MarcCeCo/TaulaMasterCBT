@@ -39,9 +39,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (!isValidCode(val)) { setCodeError("Format invàlid (ex: 10, 10.20, 10.20.100, 90.40.10.390)"); return; }
     const p = parentCode(val);
     if (p && !nodeMap.has(p)) { setCodeError(`El pare ${p} no existeix`); return; }
-    // Duplicats permesos per al nivell 4; bloquejats per als nivells 1-3
-    const lvl = codeLevel(val);
-    if (lvl < 4 && !editing && nodeMap.has(val)) { setCodeError("El codi ja existeix (nivells 1-3 han de ser únics)"); return; }
+    // Duplicats permesos a tots els nivells (equip mare + components)
     setCodeError("");
   };
 
@@ -52,15 +50,12 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (!N) return toast.error("El nom és obligatori");
     const p = parentCode(C);
     if (p && !nodeMap.has(p)) return toast.error(`El node pare ${p} no existeix`);
-    const lvl = codeLevel(C);
     setSaving(true);
     try {
       if (editing) {
-        if (C !== editing.code && lvl < 4 && nodeMap.has(C)) { toast.error("El codi ja existeix"); return; }
         await updateNode(editing.id, { code: C, name: N });
         toast.success("Node actualitzat" + (C !== editing.code ? " (fills actualitzats en cascada)" : ""));
       } else {
-        if (lvl < 4 && nodeMap.has(C)) { toast.error("El codi ja existeix"); return; }
         await addNode({ code: C, name: N });
         toast.success("Node creat");
       }
@@ -232,13 +227,13 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                 const padTop = startIdx * ROW_H;
                 const padBot = Math.max(0, (filtered.length - endIdx - 1) * ROW_H);
 
-                // Detecta codis de nivell 4 repetits
-                const lvl4Codes = filtered.map((n) => n.code).filter((c) => codeLevel(c) === 4);
-                const repeatedLvl4 = new Set(lvl4Codes.filter((c, i) => lvl4Codes.indexOf(c) !== i));
-                const seenLvl4 = new Set<string>();
-                // Pre-computa per a les files visibles
+                // Detecta codis repetits a qualsevol nivell (equip mare + components)
+                const allCodes = filtered.map((n) => n.code);
+                const repeatedCodes = new Set(allCodes.filter((c, i) => allCodes.indexOf(c) !== i));
+                const seenCodes = new Set<string>();
+                // Pre-computa per a les files virtuals anteriors a la finestra visible
                 filtered.slice(0, startIdx).forEach((n) => {
-                  if (lvl4Codes.filter(c => c === n.code).length > 1) seenLvl4.add(n.code);
+                  if (repeatedCodes.has(n.code)) seenCodes.add(n.code);
                 });
 
                 return (
@@ -251,9 +246,9 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                       const parent = pc ? nodeMap.get(pc) : null;
                       const hasC = hasChildren(n.code);
                       const isEditing = editing?.id === n.id;
-                      const isRepeatedLvl4 = lvl === 4 && repeatedLvl4.has(n.code);
-                      const isComponent = isRepeatedLvl4 && seenLvl4.has(n.code);
-                      if (isRepeatedLvl4) seenLvl4.add(n.code);
+                      const isRepeated = repeatedCodes.has(n.code);
+                      const isComponent = isRepeated && seenCodes.has(n.code);
+                      if (isRepeated) seenCodes.add(n.code);
                       return (
                         <tr key={n.id} className={cn("border-t hover:bg-muted/30", isEditing && "bg-accent/40")}>
                           <td className={cn("p-2 font-mono text-xs", indent)}>{n.code}</td>
