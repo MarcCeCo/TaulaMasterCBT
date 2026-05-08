@@ -10,18 +10,18 @@ export const supabase = createClient(url, key, {
   auth: {
     persistSession:    true,
     autoRefreshToken:  true,
-    detectSessionInUrl: false, // no uses OAuth, evita bloqueig en F5
+    detectSessionInUrl: false,
     storageKey:        "cbt-taula-master-auth",
   },
   global: {
-    // keepalive manté la connexió HTTP viva entre peticions
-    // → estalvia el handshake TCP+TLS en cada crida
-    fetch: (input, init) =>
-      fetch(input, { ...init, keepalive: true }),
+    fetch: (input, init) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
+      return fetch(input, { ...init, keepalive: true, signal: controller.signal })
+        .finally(() => clearTimeout(timeout));
+    },
   },
   db: {
-    // Evita la petició extra que fa supabase-js per introspeccionar
-    // el schema de la BD en environments de producció
     schema: "public",
   },
 });
