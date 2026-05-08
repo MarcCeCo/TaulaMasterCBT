@@ -373,15 +373,18 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
     if (p && !gubimNodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
-    // Upsert per codi: evita fallada per constraint UNIQUE si el codi ja existeix a Supabase
-    const row = { id: uid(), code: n.code, name: n.name };
-    const { error } = await supabase.from("gubim_class").upsert(row, { onConflict: "code" });
-    handleSupabaseError(error);
-    setGubimRaw((prev) => {
-      const idx = prev.findIndex((x) => x.code === n.code);
-      if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], name: n.name }; return next; }
-      return [...prev, row];
-    });
+    // Si el codi ja existeix localment, actualitza el nom; si no, insereix a Supabase
+    const existing = gubimRaw.find((x) => x.code === n.code);
+    const row = existing ? { ...existing, name: n.name } : { id: uid(), code: n.code, name: n.name };
+    if (existing) {
+      const { error } = await supabase.from("gubim_class").update({ name: n.name }).eq("id", existing.id);
+      handleSupabaseError(error);
+      setGubimRaw((prev) => prev.map((x) => x.id === existing.id ? row : x));
+    } else {
+      const { error } = await supabase.from("gubim_class").insert(row);
+      handleSupabaseError(error);
+      setGubimRaw((prev) => [...prev, row]);
+    }
   }, [gubimNodeMap]);
 
   const addManyGubim = useCallback(async (
@@ -435,22 +438,18 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       processNode(n);
     }
 
-    // Upsert per codi: si el codi ja existeix a Supabase (constraint UNIQUE),
-    // actualitza el nom en lloc de fer fallar tot el batch
+    // Insert simple: els codis ja existents han estat filtrats per seenCodes
+    // No usem upsert perquè la taula pot no tenir constraint UNIQUE sobre code
     const BATCH = 50;
     for (let i = 0; i < toUpsert.length; i += BATCH) {
       const { error } = await supabase
         .from("gubim_class")
-        .upsert(toUpsert.slice(i, i + BATCH), { onConflict: "code" });
+        .insert(toUpsert.slice(i, i + BATCH));
       handleSupabaseError(error);
     }
 
     if (toUpsert.length > 0) {
-      setGubimRaw((prev) => {
-        const map = new Map(prev.map((n) => [n.code, n]));
-        toUpsert.forEach((n) => map.set(n.code, n));
-        return Array.from(map.values());
-      });
+      setGubimRaw((prev) => [...prev, ...toUpsert]);
     }
     return { inserted: toUpsert.length - autoCreated, autoCreated, duplicates };
   }, [gubimRaw]);
