@@ -209,10 +209,29 @@ export function EquipmentsTable() {
     });
 
     byGubim.forEach((group) => {
-      const groupCodes = new Set(group.map((e) => e.equipCode).filter(Boolean));
-      const roots = group.filter((e) => !e.parentEquipCode || !groupCodes.has(e.parentEquipCode));
-      roots.forEach((r) => insertWithChildren(r, 0));
-      group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));
+      if (group.length === 1) {
+        // Equip únic en el grup: sempre depth 0
+        result.push({ equip: group[0], depth: 0 });
+        added.add(group[0].id);
+        return;
+      }
+
+      const hasExplicitParent = group.some((e) => !!e.parentEquipCode);
+
+      if (hasExplicitParent) {
+        // Jerarquia explícita via parentEquipCode
+        const groupCodes = new Set(group.map((e) => e.equipCode).filter(Boolean));
+        const roots = group.filter((e) => !e.parentEquipCode || !groupCodes.has(e.parentEquipCode));
+        roots.forEach((r) => insertWithChildren(r, 0));
+        group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));
+      } else {
+        // Sense jerarquia explícita: el primer equip del grup és el "pare" visual (depth 0),
+        // la resta són "fills" visuals (depth 1) per reflectir que comparteixen gubimCode
+        group.forEach((e, i) => {
+          result.push({ equip: e, depth: i === 0 ? 0 : 1 });
+          added.add(e.id);
+        });
+      }
     });
 
     return result;
