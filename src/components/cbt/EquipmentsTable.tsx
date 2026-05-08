@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, ChevronRight, RefreshCw } from "lucide-react";
+import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, RefreshCw } from "lucide-react";
 import { useDataStore } from "@/lib/dataStore";
 import { codeLevel, parentCode } from "@/hooks/useGubimClass";
 import type { Equipment } from "@/hooks/useEquipments";
@@ -90,7 +90,9 @@ const EquipmentRow = memo(function EquipmentRow({
       <td className="p-2 font-medium text-sm">
         <div className="flex items-center gap-1.5" style={{ paddingLeft: childIndentPx }}>
           {childDepth > 0 && (
-            <span className="shrink-0 inline-flex items-end" style={{ width: 12, height: 14, borderLeft: "2px solid #cbd5e1", borderBottom: "2px solid #cbd5e1", borderBottomLeftRadius: 2, marginBottom: 1 }} />
+            <svg width="12" height="14" viewBox="0 0 12 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 text-slate-300">
+              <path d="M1 0 L1 10 Q1 13 4 13 L12 13" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+            </svg>
           )}
           {e.equipName}
         </div>
@@ -193,9 +195,9 @@ export function EquipmentsTable() {
       if (added.has(e.id)) return;
       added.add(e.id);
       result.push({ equip: e, depth });
-      const children = base.filter(
-        (c) => c.parentEquipCode === e.equipCode && c.gubimCode === e.gubimCode && !added.has(c.id)
-      );
+      const children = e.equipCode
+        ? base.filter((c) => c.parentEquipCode === e.equipCode && c.gubimCode === e.gubimCode && !added.has(c.id))
+        : [];
       children.forEach((c) => insertWithChildren(c, depth + 1));
     }
 
@@ -207,7 +209,7 @@ export function EquipmentsTable() {
     });
 
     byGubim.forEach((group) => {
-      const groupCodes = new Set(group.map((e) => e.equipCode));
+      const groupCodes = new Set(group.map((e) => e.equipCode).filter(Boolean));
       const roots = group.filter((e) => !e.parentEquipCode || !groupCodes.has(e.parentEquipCode));
       roots.forEach((r) => insertWithChildren(r, 0));
       group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));

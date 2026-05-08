@@ -67,20 +67,8 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const debouncedQ = useDebounce(q, 180);
 
   const classifiers = useMemo(() => fields.filter(isClassifier), [fields]);
-  const sortedFields = useMemo(() => {
-    const classifierSet = new Set(fields.filter(isClassifier).map(f => f.col));
-    return [...fields].sort((a, b) => {
-      // Classificadors mantenen la seva posició relativa (no es mouen)
-      if (isClassifier(a) || isClassifier(b)) return 0;
-      const ca = a.codi ?? "";
-      const cb = b.codi ?? "";
-      if (!ca && !cb) return 0;
-      if (!ca) return 1;
-      if (!cb) return -1;
-      return ca.localeCompare(cb, undefined, { numeric: true, sensitivity: "base" });
-    });
-  }, [fields]);
-  const filtered    = useMemo(() => filterWithClassifiers(sortedFields, debouncedQ, grp, cls), [sortedFields, debouncedQ, grp, cls]);
+  // L'ordenació correcta (sense codi primer, per codi numèric dins cada grup) la fa sortByClassification al dataStore
+  const filtered    = useMemo(() => filterWithClassifiers(fields, debouncedQ, grp, cls), [fields, debouncedQ, grp, cls]);
 
   // Reset scroll when filters change
   useEffect(() => { setScrollTop(0); containerRef.current?.scrollTo(0, 0); }, [debouncedQ, grp, cls]);
