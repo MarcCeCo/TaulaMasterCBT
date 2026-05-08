@@ -83,7 +83,9 @@ const EquipmentRow = memo(function EquipmentRow({
         {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate">↳ {parentName}</div>}
       </td>
       <td className="p-2 font-mono text-xs">
-        {e.equipCode || <span className="text-muted-foreground italic">—</span>}
+        <div style={{ paddingLeft: childIndentPx }}>
+          {e.equipCode || <span className="text-muted-foreground italic">—</span>}
+        </div>
       </td>
       <td className="p-2 font-medium text-sm">
         <div className="flex items-center gap-1" style={{ paddingLeft: childIndentPx }}>
