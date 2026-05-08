@@ -69,7 +69,6 @@ const toMeta = (row: any): FieldMeta => ({
   instancia_revit: row.instancia_revit ?? null,
   disciplina:      row.disciplina      ?? null,
   group:           row.group           ?? null,
-  active:          row.active          ?? null,
 });
 
 const fieldToRow = (f: FieldMeta) => ({
@@ -84,7 +83,6 @@ const fieldToRow = (f: FieldMeta) => ({
   instancia_revit: f.instancia_revit || null,
   disciplina:      f.disciplina      || null,
   ...(f.group  !== undefined && { group:  f.group  || null }),
-  ...(f.active !== undefined && { active: f.active || null }),
 });
 
 const toNode = (row: any): GubimNode => ({ id: row.id, code: row.code, name: row.name });
