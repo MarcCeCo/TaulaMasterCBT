@@ -63,7 +63,6 @@ export function TaulaMasterMain() {
   const stats = useMemo(() => {
     const nonClassifiers = fields.filter((f) => !isClassifier(f));
     const total = nonClassifiers.length;
-    const active = nonClassifiers.filter((f) => f.active === "Y").length;
     const groups = Array.from(
       new Set(fields.map((f) => f.group).filter(Boolean) as string[])
     );
@@ -73,7 +72,7 @@ export function TaulaMasterMain() {
     const usedCount = [...usedCols].filter((c) => fieldMap.has(c)).length;
     const orphanCount = [...usedCols].filter((c) => !fieldMap.has(c)).length;
     const usagePercent = total > 0 ? Math.round((usedCount / total) * 100) : 0;
-    return { total, active, groups, totalEquips, equipWithTable, usedCount, usagePercent, orphanCount };
+    return { total, groups, totalEquips, equipWithTable, usedCount, usagePercent, orphanCount };
   }, [fields, items, fieldMap]);
 
   const profileLoaded = !!profile || !user;
@@ -143,7 +142,6 @@ export function TaulaMasterMain() {
                       <div>
                         <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">Total camps</div>
                         <div className="text-2xl font-bold text-[#006E7A]">{stats.total}</div>
-                        <div className="text-xs text-muted-foreground">{stats.active} actius</div>
                       </div>
                     </Card>
 
