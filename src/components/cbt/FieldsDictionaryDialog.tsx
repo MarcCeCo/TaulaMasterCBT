@@ -114,7 +114,6 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           grup_txt:        String(r["Grup .txt"]        ?? "").trim() || null,
           instancia_revit: String(r["Instància Revit"]  ?? "").trim() || null,
           disciplina:      String(r["Disciplina"]       ?? "").trim() || null,
-          group: null,
         } as FieldMeta;
       }).filter(Boolean) as FieldMeta[];
 

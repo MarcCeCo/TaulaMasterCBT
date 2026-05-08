@@ -42,7 +42,7 @@ export function TaulaMasterMain() {
   // PERF FIX: una sola subscripció al DataStore centralitzat
   // Eliminem 2 hooks separats (useFields + useEquipments) que causaven doble re-render
   const {
-    fields, fieldMap,
+    fields, fieldMap, fieldGroups,
     equipments: items,
     loading, error, retry,
   } = useDataStore();
@@ -63,16 +63,13 @@ export function TaulaMasterMain() {
   const stats = useMemo(() => {
     const nonClassifiers = fields.filter((f) => !isClassifier(f));
     const total = nonClassifiers.length;
-    const groups = Array.from(
-      new Set(fields.map((f) => f.group).filter(Boolean) as string[])
-    );
     const totalEquips = items.length;
     const equipWithTable = items.filter((e) => e.needsTable).length;
     const usedCols = new Set(items.flatMap((e) => e.fieldCols));
     const usedCount = [...usedCols].filter((c) => fieldMap.has(c)).length;
     const orphanCount = [...usedCols].filter((c) => !fieldMap.has(c)).length;
     const usagePercent = total > 0 ? Math.round((usedCount / total) * 100) : 0;
-    return { total, groups, totalEquips, equipWithTable, usedCount, usagePercent, orphanCount };
+    return { total, totalEquips, equipWithTable, usedCount, usagePercent, orphanCount };
   }, [fields, items, fieldMap]);
 
   const profileLoaded = !!profile || !user;
@@ -162,13 +159,13 @@ export function TaulaMasterMain() {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">Grups</div>
-                        <div className="text-2xl font-bold text-blue-700">{stats.groups.length}</div>
+                        <div className="text-2xl font-bold text-blue-700">{fieldGroups.length}</div>
                         <div className="flex flex-wrap gap-1 mt-0.5">
-                          {stats.groups.slice(0, 2).map((g) => (
+                          {fieldGroups.slice(0, 2).map((g) => (
                             <Badge key={g} variant="secondary" className="text-[10px] px-1.5 py-0">{g}</Badge>
                           ))}
-                          {stats.groups.length > 2 && (
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">+{stats.groups.length - 2}</Badge>
+                          {fieldGroups.length > 2 && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0">+{fieldGroups.length - 2}</Badge>
                           )}
                         </div>
                       </div>
