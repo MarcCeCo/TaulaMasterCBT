@@ -45,7 +45,8 @@ const EquipmentRow = memo(function EquipmentRow({
   isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
   childDepth: number; canEdit: boolean;
 }) {
-  const gubimIndent = ["pl-2", "pl-5", "pl-8", "pl-11"][level - 1];
+  // N1-N3: indentació per nivell al GuBIMClass. N4: sempre alineats (pl-11 fix)
+  const gubimIndent = level < 4 ? ["pl-2", "pl-5", "pl-8"][level - 1] : "pl-11";
   const childIndentPx = childDepth * 20;
   const hasOrphans = orphanCols.length > 0;
   const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
@@ -53,7 +54,6 @@ const EquipmentRow = memo(function EquipmentRow({
     <tr className={cn("border-t hover:bg-muted/40 cursor-pointer", isChild && !isSharedCode && "bg-muted/20", groupClass)} onClick={onView}>
       <td className={cn("p-2", gubimIndent)}>
         <div className="flex items-center gap-2">
-          {isChild && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
           <LevelBadge level={level} />
           <Tooltip>
             <TooltipTrigger asChild>
@@ -80,7 +80,7 @@ const EquipmentRow = memo(function EquipmentRow({
             </Tooltip>
           )}
         </div>
-        {parentName && <div className="text-[11px] text-muted-foreground pl-10 truncate">↳ {parentName}</div>}
+        {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate">↳ {parentName}</div>}
       </td>
       <td className="p-2 font-mono text-xs">
         {e.equipCode || <span className="text-muted-foreground italic">—</span>}
@@ -171,9 +171,14 @@ export function EquipmentsTable() {
   const handleView   = useCallback((e: Equipment) => () => { setViewing(e); setDetailOpen(true); }, []);
   const handleEdit   = useCallback((e: Equipment) => () => { setEditing(e); setFormOpen(true); }, []);
   const handleDelete = useCallback((e: Equipment) => async () => {
-    try { await remove(e.id); toast.success("Equip esborrat"); }
+    try {
+      await remove(e.id);
+      toast.success("Equip esborrat");
+      setViewing((prev) => (prev?.id === e.id ? null : prev));
+      setDetailOpen((prev) => (prev && viewing?.id === e.id ? false : prev));
+    }
     catch { toast.error("Error esborrant equip"); }
-  }, [remove]);
+  }, [remove, viewing]);
 
   const sorted = useMemo(() => {
     const base = [...items].sort((a, b) => {
@@ -284,10 +289,24 @@ export function EquipmentsTable() {
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
+
+      // Build a map of equipCode -> equipName from the imported rows (for parent lookup)
+      // Do this BEFORE parsing so the map is complete regardless of row order
+      const importedNameByCode = new Map<string, string>();
+      rows.forEach((r) => {
+        const code = String(r["Codi equip"] ?? "").toUpperCase().trim();
+        const name = String(r["Nom equip"] ?? "").trim();
+        if (code && name) importedNameByCode.set(code, name);
+      });
+      // Also include existing items for cross-reference
+      items.forEach((e) => { if (e.equipCode && e.equipName) importedNameByCode.set(e.equipCode, e.equipName); });
+
       const arr: Equipment[] = rows.map((r) => {
         const code = String(r["Codi equip"] ?? "").toUpperCase().trim();
         const name = String(r["Nom equip"] ?? "").trim();
         const needs = String(r["Necessita taula"] ?? "N") === "Y";
+        const gubimCode = String(r["GuBIMClass"] ?? "").trim();
+        const parentEquipCode = String(r["Equip pare"] ?? "").trim();
         let fieldCols: string[] = [];
         if (r["Camps"]) {
           fieldCols = String(r["Camps"]).split("|").map((s: string) => s.trim()).filter(Boolean);
@@ -298,34 +317,62 @@ export function EquipmentsTable() {
             return String(r[k]).toUpperCase() === "Y";
           }).map(k => k.split(" (")[0].trim());
         }
+        // tableName: "NomMare NomFill" si té pare, sino sol el nom
+        let tableName = "";
+        if (needs) {
+          if (parentEquipCode) {
+            const parentName = importedNameByCode.get(parentEquipCode) ?? parentEquipCode;
+            tableName = `${parentName} ${name}`;
+          } else {
+            tableName = name;
+          }
+        }
         return {
           id: uid(),
-          gubimCode: String(r["GuBIMClass"] ?? "").trim(),
+          gubimCode,
           equipCode: code,
           equipName: name,
           needsTable: needs,
           tableCode: needs && code ? "T" + code : "",
-          tableName: needs ? name : "",
+          tableName,
           fieldCols,
-          parentEquipCode: String(r["Equip pare"] ?? "").trim(),
+          parentEquipCode,
           createdAt: Date.now(),
         };
       }).filter((e) => e.equipName);
 
-      const existingCodes = new Set(items.map((e) => e.equipCode).filter(Boolean));
+      // Deduplicate by gubimCode + equipCode combination (identity key)
+      // An equipment already exists if same gubimCode AND same equipCode are both present
+      const existingKeys = new Set(
+        items.map((e) => `${e.gubimCode}::${e.equipCode}`).filter((k) => !k.startsWith("::"))
+      );
       const skipped: string[] = [];
       const seenInFile = new Set<string>();
       arr.forEach((e) => {
+        const key = `${e.gubimCode}::${e.equipCode}`;
         if (e.equipCode) {
-          if (existingCodes.has(e.equipCode) || seenInFile.has(e.equipCode)) {
+          if (existingKeys.has(key) || seenInFile.has(key)) {
             skipped.push(e.equipName + (e.equipCode ? ` (${e.equipCode})` : ""));
           }
-          seenInFile.add(e.equipCode);
+          seenInFile.add(key);
         }
       });
 
-      addMany(arr).then(() => {
-        const imported = arr.length - skipped.length;
+      const toImport = arr.filter((e) => {
+        const key = `${e.gubimCode}::${e.equipCode}`;
+        return !existingKeys.has(key);
+      });
+      // Also deduplicate within the file itself (keep first occurrence)
+      const seenKeys = new Set<string>();
+      const deduped = toImport.filter((e) => {
+        const key = `${e.gubimCode}::${e.equipCode}`;
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      });
+
+      addMany(deduped).then(() => {
+        const imported = deduped.length;
         if (skipped.length > 0) {
           toast.warning(
             `${imported} equips importats · ${skipped.length} no importats per codi duplicat: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? ` i ${skipped.length - 5} més` : ""}`
@@ -478,10 +525,12 @@ export function EquipmentsTable() {
             try {
               await upsert(e);
               toast.success(editing ? "Equip actualitzat" : "Equip creat");
-              setFormOpen(false);
               setEditing(null);
-            } catch {
+              setFormOpen(false);
+              if (viewing && viewing.id === e.id) setViewing(e);
+            } catch (err) {
               toast.error("Error desant equip");
+              throw err; // re-llança perquè el fill pugui fer setSaving(false)
             }
           }}
         />

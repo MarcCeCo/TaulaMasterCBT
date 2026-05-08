@@ -177,22 +177,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       const [equipRes, fieldsRes, gubimRes] = await Promise.all([
         supabase.from("equipments").select("*").order("equip_code"),
         supabase.from("fields").select("*"),
-        (async () => {
-          // Supabase limita a 1000 files per defecte — paginació per carregar-ho tot
-          const all: any[] = [];
-          const PAGE = 1000;
-          let from = 0;
-          while (true) {
-            const { data, error } = await supabase
-              .from("gubim_class").select("*").order("code")
-              .range(from, from + PAGE - 1);
-            if (error) return { data: null, error };
-            all.push(...(data ?? []));
-            if ((data ?? []).length < PAGE) break;
-            from += PAGE;
-          }
-          return { data: all, error: null };
-        })(),
+        supabase.from("gubim_class").select("*").order("code"),
       ]);
 
       const errs = [equipRes.error, fieldsRes.error, gubimRes.error].filter(Boolean);

@@ -51,8 +51,11 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   const sanitizedName = name.trim();
   // tableCode: "T" + codi si té codi, buit si no
   const tableCode = needs && sanitizedCode ? "T" + sanitizedCode : "";
-  // tableName = nom de l'equip (sense prefix)
-  const tableName = needs && sanitizedName ? sanitizedName : "";
+  // tableName = "NomMare NomFill" si hi ha equip pare, sinó sol el nom
+  const parentEquip = parentEquipCode ? allEquipments.find(e => e.equipCode === parentEquipCode) : null;
+  const tableName = needs && sanitizedName
+    ? (parentEquip ? `${parentEquip.equipName} ${sanitizedName}` : sanitizedName)
+    : "";
 
   // Equips candidats a ser pares (mateixa gubimCode, diferent id)
   const parentCandidates = allEquipments.filter(e => e.gubimCode === gubim && e.id !== editing?.id && e.equipCode);
@@ -66,6 +69,10 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
     if (C && isCodeTaken(C, editing?.id)) return toast.error("Aquest codi ja existeix");
     if (!name.trim()) return toast.error("El nom és obligatori");
 
+    const parentE = parentEquipCode ? allEquipments.find(e => e.equipCode === parentEquipCode) : null;
+    const computedTableName = needs
+      ? (parentE ? `${parentE.equipName} ${name.trim()}` : name.trim())
+      : "";
     const e: Equipment = {
       id: editing?.id ?? uid(),
       gubimCode: gubim,
@@ -73,7 +80,7 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
       equipName: name.trim(),
       needsTable: needs,
       tableCode: needs && C ? "T" + C : "",
-      tableName: needs ? name.trim() : "",
+      tableName: computedTableName,
       fieldCols: needs ? cols : [],
       parentEquipCode: parentEquipCode,
       createdAt: editing?.createdAt ?? Date.now(),
@@ -81,9 +88,9 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
     setSaving(true);
     try {
       await onSubmit(e);
-      onOpenChange(false);
-    } catch {
-      // error ja gestionat al pare
+      // El pare és responsable de tancar el diàleg (onOpenChange)
+    } catch (err: any) {
+      // L'error ja es mostra via toast al pare, però assegurem que setSaving es reseteja
     } finally {
       setSaving(false);
     }
