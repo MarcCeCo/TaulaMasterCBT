@@ -485,10 +485,10 @@ export function EquipmentsTable() {
               toast.success(editing ? "Equip actualitzat" : "Equip creat");
               setEditing(null);
               setFormOpen(false);
-              // Si estàvem veient el detall d'aquest equip, actualitzem la vista
               if (viewing && viewing.id === e.id) setViewing(e);
-            } catch {
+            } catch (err) {
               toast.error("Error desant equip");
+              throw err; // re-llança perquè el fill pugui fer setSaving(false)
             }
           }}
         />
