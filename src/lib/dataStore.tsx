@@ -177,7 +177,22 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       const [equipRes, fieldsRes, gubimRes] = await Promise.all([
         supabase.from("equipments").select("*").order("equip_code"),
         supabase.from("fields").select("*"),
-        supabase.from("gubim_class").select("*").order("code"),
+        (async () => {
+          // Supabase limita a 1000 files per defecte — paginació per carregar-ho tot
+          const all: any[] = [];
+          const PAGE = 1000;
+          let from = 0;
+          while (true) {
+            const { data, error } = await supabase
+              .from("gubim_class").select("*").order("code")
+              .range(from, from + PAGE - 1);
+            if (error) return { data: null, error };
+            all.push(...(data ?? []));
+            if ((data ?? []).length < PAGE) break;
+            from += PAGE;
+          }
+          return { data: all, error: null };
+        })(),
       ]);
 
       const errs = [equipRes.error, fieldsRes.error, gubimRes.error].filter(Boolean);
@@ -217,8 +232,9 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const gubimNodeMap = useMemo(() => {
+    // Guarda el PRIMER node per codi (el "mare") — codis repetits = equip mare + components
     const m = new Map<string, GubimNode>();
-    gubimNodes.forEach((n) => m.set(n.code, n));
+    gubimNodes.forEach((n) => { if (!m.has(n.code)) m.set(n.code, n); });
     return m;
   }, [gubimNodes]);
 
@@ -373,25 +389,24 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
     if (p && !gubimNodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
-    // Si el codi ja existeix localment, actualitza el nom; si no, insereix a Supabase
-    const existing = gubimRaw.find((x) => x.code === n.code);
-    const row = existing ? { ...existing, name: n.name } : { id: uid(), code: n.code, name: n.name };
-    if (existing) {
-      const { error } = await supabase.from("gubim_class").update({ name: n.name }).eq("id", existing.id);
-      handleSupabaseError(error);
-      setGubimRaw((prev) => prev.map((x) => x.id === existing.id ? row : x));
-    } else {
-      const { error } = await supabase.from("gubim_class").insert(row);
-      handleSupabaseError(error);
-      setGubimRaw((prev) => [...prev, row]);
-    }
-  }, [gubimNodeMap]);
+    // Permet codi repetit si el nom és diferent (equip mare + components)
+    // Duplicat = mateix codi I mateix nom → error
+    const alreadyExists = gubimRaw.some((x) => x.code === n.code && x.name === n.name);
+    if (alreadyExists) throw new Error("Aquest node (codi + nom) ja existeix");
+    const row = { id: uid(), code: n.code, name: n.name };
+    const { error } = await supabase.from("gubim_class").insert(row);
+    handleSupabaseError(error);
+    setGubimRaw((prev) => [...prev, row]);
+  }, [gubimNodeMap, gubimRaw]);
 
   const addManyGubim = useCallback(async (
     arr: Omit<GubimNode, "id">[],
   ): Promise<{ inserted: number; autoCreated: number; duplicates: number }> => {
-    // seenCodes: tots els codis que ja existeixen a Supabase (clau de deduplicació = code)
-    const seenCodes = new Set(gubimRaw.map((n) => n.code));
+    // seenCodes: codis existents (per validar que el pare existeix abans d'inserir el fill)
+    // seenCodeName: parells code||name existents (deduplicació real — mateix codi, mateix nom = duplicat)
+    // Un mateix codi amb nom diferent és VÀLID: representa equip mare + components
+    const seenCodes    = new Set(gubimRaw.map((n) => n.code));
+    const seenCodeName = new Set(gubimRaw.map((n) => `${n.code}||${n.name}`));
 
     const candidates = arr
       .map((n) => ({ ...n, code: n.code.trim() }))
@@ -403,9 +418,11 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     let prevLength = -1;
 
     const processNode = (n: Omit<GubimNode, "id">) => {
-      // Deduplicació per codi (coherent amb la constraint UNIQUE de Supabase)
-      if (seenCodes.has(n.code)) { duplicates++; return; }
-      seenCodes.add(n.code);
+      const key = `${n.code}||${n.name}`;
+      // Duplicat = mateix codi I mateix nom
+      if (seenCodeName.has(key)) { duplicates++; return; }
+      seenCodeName.add(key);
+      seenCodes.add(n.code); // marca el codi com a "existent" per desbloquejar fills
       toUpsert.push({ id: uid(), code: n.code, name: n.name });
     };
 
@@ -429,7 +446,9 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         cursor = parentCode(cursor);
       }
       for (const anc of ancestors) {
-        if (!seenCodes.has(anc.code)) {
+        const k = `${anc.code}||${anc.name}`;
+        if (!seenCodeName.has(k)) {
+          seenCodeName.add(k);
           seenCodes.add(anc.code);
           toUpsert.push({ id: uid(), code: anc.code, name: anc.name });
           autoCreated++;
