@@ -45,13 +45,14 @@ const EquipmentRow = memo(function EquipmentRow({
   isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
   childDepth: number; canEdit: boolean;
 }) {
-  const gubimIndent = ["pl-2", "pl-5", "pl-8", "pl-11"][level - 1];
+  // N1-N3: indentació per nivell al GuBIMClass. N4: sempre alineats (pl-11 fix)
+  const gubimIndent = level < 4 ? ["pl-2", "pl-5", "pl-8"][level - 1] : "pl-11";
   const childIndentPx = childDepth * 20;
   const hasOrphans = orphanCols.length > 0;
   const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
   return (
     <tr className={cn("border-t hover:bg-muted/40 cursor-pointer", isChild && !isSharedCode && "bg-muted/20", groupClass)} onClick={onView}>
-      <td className="p-2">
+      <td className={cn("p-2", gubimIndent)}>
         <div className="flex items-center gap-2">
           <LevelBadge level={level} />
           <Tooltip>
@@ -290,6 +291,7 @@ export function EquipmentsTable() {
       const rows = XLSX.utils.sheet_to_json<any>(ws);
 
       // Build a map of equipCode -> equipName from the imported rows (for parent lookup)
+      // Do this BEFORE parsing so the map is complete regardless of row order
       const importedNameByCode = new Map<string, string>();
       rows.forEach((r) => {
         const code = String(r["Codi equip"] ?? "").toUpperCase().trim();
@@ -315,7 +317,7 @@ export function EquipmentsTable() {
             return String(r[k]).toUpperCase() === "Y";
           }).map(k => k.split(" (")[0].trim());
         }
-        // tableName = "NomMare NomFill" if has parent, else just name
+        // tableName: "NomMare NomFill" si té pare, sino sol el nom
         let tableName = "";
         if (needs) {
           if (parentEquipCode) {
