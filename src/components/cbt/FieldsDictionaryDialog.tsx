@@ -263,8 +263,13 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           open={addOpen} onOpenChange={setAddOpen} groups={groups} disciplines={disciplines}
           editing={editing} existsCol={exists}
           onSubmit={async (f) => {
-            if (editing) { await updateField(editing.col, f); toast.success("Camp actualitzat"); }
-            else { await addField(f); toast.success("Camp creat"); }
+            try {
+              if (editing) { await updateField(editing.col, f); toast.success("Camp actualitzat"); }
+              else { await addField(f); toast.success("Camp creat"); }
+            } catch (e: any) {
+              toast.error(e?.message ?? "Error desant camp");
+              throw e; // re-llança perquè AddFieldDialog pugui fer setSaving(false)
+            }
           }}
         />
       </DialogContent>

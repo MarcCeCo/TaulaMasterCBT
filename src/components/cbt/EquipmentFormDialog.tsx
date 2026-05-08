@@ -82,8 +82,8 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
     try {
       await onSubmit(e);
       // El pare és responsable de tancar el diàleg (onOpenChange)
-    } catch {
-      // error ja gestionat al pare
+    } catch (err: any) {
+      // L'error ja es mostra via toast al pare, però assegurem que setSaving es reseteja
     } finally {
       setSaving(false);
     }
