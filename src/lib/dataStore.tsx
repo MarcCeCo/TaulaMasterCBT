@@ -23,7 +23,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { uid } from "@/lib/storage";
 import { type FieldMeta, sortByClassification } from "@/lib/fields";
-import { type GubimNode, isValidCode, codeLevel, parentCode } from "@/hooks/useGubimClass";
+import { type GubimNode, isValidCode, parentCode } from "@/hooks/useGubimClass";
 import { type Equipment } from "@/hooks/useEquipments";
 
 // ─── Conversors ──────────────────────────────────────────────────────────────
@@ -355,8 +355,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
     if (p && !gubimNodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
-    const lvl = codeLevel(n.code);
-    if (lvl < 4 && gubimNodeMap.has(n.code)) throw new Error("El codi ja existeix");
+    // Duplicats permesos a tots els nivells: un codi duplicat indica equip mare + components
     const row = { id: uid(), code: n.code, name: n.name };
     const { error } = await supabase.from("gubim_class").insert(row);
     if (error) throw new Error(error.message);
@@ -366,16 +365,17 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const addManyGubim = useCallback(async (
     arr: Omit<GubimNode, "id">[],
   ): Promise<{ inserted: number; autoCreated: number; duplicates: number }> => {
+    // seenCodes: tots els codis que ja existeixen (per validar pares)
+    // Ara els duplicats estan permesos a TOTS els nivells (equip mare + components)
     const seenCodes    = new Set(gubimRaw.map((n) => n.code));
     const seenCodeName = new Set(gubimRaw.map((n) => `${n.code}||${n.name}`));
-    const existingIdByCode = new Map(gubimRaw.map((n) => [n.code, n.id]));
 
     const candidates = arr
       .map((n) => ({ ...n, code: n.code.trim() }))
       .filter((n) => n.code && n.name && isValidCode(n.code));
 
-    const upsertMap = new Map<string, GubimNode>();
-    const toInsert4: GubimNode[] = [];
+    // Tots els nodes nous (inclosos nivells 1-3 duplicats) van a toInsert
+    const toInsert: GubimNode[] = [];
     let duplicates = 0;
     let remaining = candidates;
     let prevLength = -1;
@@ -385,10 +385,8 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       if (seenCodeName.has(key)) { duplicates++; return; }
       seenCodeName.add(key);
       seenCodes.add(n.code);
-      const existingId = existingIdByCode.get(n.code);
-      const row = { id: existingId ?? uid(), code: n.code, name: n.name };
-      if (codeLevel(n.code) < 4) upsertMap.set(n.code, row);
-      else toInsert4.push(row);
+      // Tots els nivells usen insert (duplicats permesos)
+      toInsert.push({ id: uid(), code: n.code, name: n.name });
     };
 
     while (remaining.length > 0 && remaining.length !== prevLength) {
@@ -415,49 +413,23 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         if (!seenCodeName.has(k)) {
           seenCodeName.add(k);
           seenCodes.add(anc.code);
-          const existingId = existingIdByCode.get(anc.code);
-          upsertMap.set(anc.code, { id: existingId ?? uid(), code: anc.code, name: anc.name });
+          toInsert.push({ id: uid(), code: anc.code, name: anc.name });
           autoCreated++;
         }
       }
       processNode(n);
     }
 
-    const toUpsertArr = Array.from(upsertMap.values());
     const BATCH = 50;
-    const toUpdate  = toUpsertArr.filter((r) => existingIdByCode.has(r.code));
-    const toInsert13 = toUpsertArr.filter((r) => !existingIdByCode.has(r.code));
-
-    for (let i = 0; i < toUpdate.length; i += BATCH) {
-      for (const row of toUpdate.slice(i, i + BATCH)) {
-        const { error } = await supabase.from("gubim_class").update({ name: row.name }).eq("code", row.code);
-        if (error) throw new Error(error.message);
-      }
-    }
-    for (let i = 0; i < toInsert13.length; i += BATCH) {
-      const { error } = await supabase.from("gubim_class").insert(toInsert13.slice(i, i + BATCH));
-      if (error) throw new Error(error.message);
-    }
-    for (let i = 0; i < toInsert4.length; i += BATCH) {
-      const { error } = await supabase.from("gubim_class").insert(toInsert4.slice(i, i + BATCH));
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const { error } = await supabase.from("gubim_class").insert(toInsert.slice(i, i + BATCH));
       if (error) throw new Error(error.message);
     }
 
-    const allNew = [...toUpsertArr, ...toInsert4];
-    if (allNew.length > 0) {
-      setGubimRaw((prev) => {
-        const updated = prev.map((n) => {
-          const u = upsertMap.get(n.code);
-          return u ? { ...n, name: u.name } : n;
-        });
-        const prevCodes = new Set(prev.map((n) => n.code));
-        const brandNew = allNew.filter(
-          (n) => !prevCodes.has(n.code) || codeLevel(n.code) === 4,
-        );
-        return [...updated, ...brandNew];
-      });
+    if (toInsert.length > 0) {
+      setGubimRaw((prev) => [...prev, ...toInsert]);
     }
-    return { inserted: toUpsertArr.length + toInsert4.length - autoCreated, autoCreated, duplicates };
+    return { inserted: toInsert.length - autoCreated, autoCreated, duplicates };
   }, [gubimRaw]);
 
   const updateGubimNode = useCallback(async (id: string, patch: Partial<GubimNode>) => {
