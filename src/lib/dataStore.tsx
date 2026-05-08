@@ -26,6 +26,25 @@ import { type FieldMeta, sortByClassification } from "@/lib/fields";
 import { type GubimNode, isValidCode, parentCode } from "@/hooks/useGubimClass";
 import { type Equipment } from "@/hooks/useEquipments";
 
+// ─── Helper: detecta errors d'autenticació i força renovació ─────────────────
+// Si Supabase retorna "JWT expired" o similar, recarreguem la pàgina per
+// forçar una nova sessió — és la solució més segura per a SPAs
+function handleSupabaseError(error: { message: string; code?: string } | null) {
+  if (!error) return;
+  const msg = error.message?.toLowerCase() ?? "";
+  if (
+    msg.includes("jwt expired") ||
+    msg.includes("invalid claim") ||
+    msg.includes("not authenticated") ||
+    msg.includes("unauthorized")
+  ) {
+    supabase.auth.refreshSession().then(({ error: refreshErr }) => {
+      if (refreshErr) window.location.reload();
+    });
+  }
+  throw new Error(error.message);
+}
+
 // ─── Conversors ──────────────────────────────────────────────────────────────
 
 const toEquip = (row: any): Equipment => ({
@@ -216,7 +235,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   // ── Equipments: mutacions ─────────────────────────────────────────────────
   const upsertEquip = useCallback(async (e: Equipment) => {
     const { error } = await supabase.from("equipments").upsert(equipToRow(e), { onConflict: "id" });
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setEquipments((prev) => {
       const idx = prev.findIndex((p) => p.id === e.id);
       return idx >= 0 ? prev.map((p, i) => (i === idx ? e : p)) : [...prev, e];
@@ -225,16 +244,19 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
   const removeEquip = useCallback(async (id: string) => {
     const { error } = await supabase.from("equipments").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setEquipments((prev) => prev.filter((e) => e.id !== id));
   }, []);
 
   const addManyEquips = useCallback(async (arr: Equipment[]) => {
-    const seen  = new Set(equipments.map((e) => e.equipCode).filter(Boolean));
+    const seen = new Set(
+      equipments.map((e) => `${e.gubimCode}::${e.equipCode}`).filter((k) => !k.endsWith("::"))
+    );
     const toAdd = arr.filter((e) => {
       if (!e.equipCode) return true;
-      if (seen.has(e.equipCode)) return false;
-      seen.add(e.equipCode);
+      const key = `${e.gubimCode}::${e.equipCode}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
     if (toAdd.length === 0) return;
@@ -244,14 +266,14 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         toAdd.slice(i, i + BATCH).map(equipToRow),
         { onConflict: "id" },
       );
-      if (error) throw new Error(error.message);
+      handleSupabaseError(error);
     }
     setEquipments((prev) => [...prev, ...toAdd]);
   }, [equipments]);
 
   const clearEquips = useCallback(async () => {
     const { error } = await supabase.from("equipments").delete().neq("id", "");
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setEquipments([]);
   }, []);
 
@@ -288,7 +310,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     const col = f.col.toUpperCase();
     if (fieldMap.has(col)) throw new Error("El camp ja existeix");
     const { error } = await supabase.from("fields").upsert(fieldToRow({ ...f, col }), { onConflict: "col" });
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setRawFields((prev) => [...prev, { ...f, col }]);
   }, [fieldMap]);
 
@@ -317,7 +339,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
           toAdd.slice(i, i + BATCH).map(fieldToRow),
           { onConflict: "col" },
         );
-        if (error) throw new Error(error.message);
+        handleSupabaseError(error);
       }
       setRawFields((prev) => {
         const prevCols = new Set(prev.map((f) => f.col));
@@ -330,19 +352,19 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const updateField = useCallback(async (col: string, patch: Partial<FieldMeta>) => {
     const merged = { ...fieldMap.get(col), ...patch, col } as FieldMeta;
     const { error } = await supabase.from("fields").update(fieldToRow(merged)).eq("col", col);
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setRawFields((prev) => prev.map((f) => (f.col === col ? merged : f)));
   }, [fieldMap]);
 
   const removeField = useCallback(async (col: string) => {
     const { error } = await supabase.from("fields").delete().eq("col", col);
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setRawFields((prev) => prev.filter((f) => f.col !== col));
   }, []);
 
   const clearFields = useCallback(async () => {
     const { error } = await supabase.from("fields").delete().neq("col", "");
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setRawFields([]);
   }, []);
 
@@ -354,7 +376,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     // Duplicats permesos a tots els nivells: un codi duplicat indica equip mare + components
     const row = { id: uid(), code: n.code, name: n.name };
     const { error } = await supabase.from("gubim_class").insert(row);
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setGubimRaw((prev) => [...prev, row]);
   }, [gubimNodeMap]);
 
@@ -419,7 +441,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     const BATCH = 50;
     for (let i = 0; i < toInsert.length; i += BATCH) {
       const { error } = await supabase.from("gubim_class").insert(toInsert.slice(i, i + BATCH));
-      if (error) throw new Error(error.message);
+      handleSupabaseError(error);
     }
 
     if (toInsert.length > 0) {
@@ -443,7 +465,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       }
     }
     const { error } = await supabase.from("gubim_class").update({ code: newCode, name: newName }).eq("id", id);
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setGubimRaw((prev) => prev.map((n) => {
       if (n.id === id) return { ...n, code: newCode, name: newName };
       if (newCode !== oldCode && n.code.startsWith(oldCode + "."))
@@ -454,13 +476,13 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
   const removeGubimNode = useCallback(async (id: string) => {
     const { error } = await supabase.from("gubim_class").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setGubimRaw((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
   const clearGubim = useCallback(async () => {
     const { error } = await supabase.from("gubim_class").delete().neq("id", "");
-    if (error) throw new Error(error.message);
+    handleSupabaseError(error);
     setGubimRaw([]);
   }, []);
 
