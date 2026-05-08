@@ -6,6 +6,19 @@
     <meta name="description" content="CBT TaulaMaster — Gestió d'actius i paràmetres tècnics BIM" />
     <title>CBT · TaulaMaster</title>
     <link rel="icon" type="image/png" href="/src/assets/Simbol_Web2.png" />
+    <!--
+      PERF: preconnect obre TCP+TLS a Supabase MENTRE el navegador
+      carrega el JS → la primera petició de dades arriba ~200ms abans.
+      Substitueix <PROJECT_ID> pel teu ID real de Supabase.
+    -->
+    <link rel="preconnect" href="https://supabase.co" crossorigin />
+    <link rel="preconnect" href="https://<PROJECT_ID>.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://supabase.co" />
+    <!--
+      PERF: modulepreload del chunk principal accelera el TTI
+      (Vite afegirà automàticament els modulepreload del build,
+       però el main chunk es pot preindicar manualment)
+    -->
   </head>
   <body>
     <div id="root"></div>
