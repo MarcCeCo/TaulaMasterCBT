@@ -7,12 +7,18 @@
     <title>CBT · TaulaMaster</title>
     <link rel="icon" type="image/png" href="/src/assets/Simbol_Web2.png" />
     <!--
-      preconnect: el navegador obre la connexió TCP+TLS a Supabase
-      mentre carrega el JS, reduint latència de la primera petició de dades.
-      Canvia la URL pel teu projecte real.
+      PERF: preconnect obre TCP+TLS a Supabase MENTRE el navegador
+      carrega el JS → la primera petició de dades arriba ~200ms abans.
+      Substitueix <PROJECT_ID> pel teu ID real de Supabase.
     -->
-    <link rel="preconnect" href="https://supabase.co" />
+    <link rel="preconnect" href="https://supabase.co" crossorigin />
+    <link rel="preconnect" href="https://<PROJECT_ID>.supabase.co" crossorigin />
     <link rel="dns-prefetch" href="https://supabase.co" />
+    <!--
+      PERF: modulepreload del chunk principal accelera el TTI
+      (Vite afegirà automàticament els modulepreload del build,
+       però el main chunk es pot preindicar manualment)
+    -->
   </head>
   <body>
     <div id="root"></div>

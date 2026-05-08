@@ -11,6 +11,7 @@
 
 import {
   createContext,
+  startTransition,
   useCallback,
   useContext,
   useEffect,
@@ -168,9 +169,13 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       if (errs.length > 0) {
         setError(errs[0]!.message);
       } else {
-        setEquipments((equipRes.data ?? []).map(toEquip));
-        setRawFields((fieldsRes.data ?? []).map(toMeta));
-        setGubimRaw((gubimRes.data ?? []).map(toNode));
+        // PERF: startTransition marca aquestes actualitzacions com a no urgents
+        // React pot interrompre el render si hi ha interaccions pendents (p.ex. click)
+        startTransition(() => {
+          setEquipments((equipRes.data ?? []).map(toEquip));
+          setRawFields((fieldsRes.data ?? []).map(toMeta));
+          setGubimRaw((gubimRes.data ?? []).map(toNode));
+        });
       }
     } catch (e: any) {
       setError(e?.message ?? "Error de xarxa");

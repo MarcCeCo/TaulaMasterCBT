@@ -10,9 +10,8 @@ import { EquipmentsTable } from "./EquipmentsTable";
 const GubimClassManager    = lazy(() => import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager })));
 const FieldsDictionaryDialog = lazy(() => import("./FieldsDictionaryDialog").then((m) => ({ default: m.FieldsDictionaryDialog })));
 const UserManagerDialog    = lazy(() => import("@/components/auth/UserManagerDialog").then((m) => ({ default: m.UserManagerDialog })));
-import { useFields } from "@/hooks/useFields";
-import { useEquipments } from "@/hooks/useEquipments";
 import { isClassifier } from "@/lib/fields";
+import { useDataStore } from "@/lib/dataStore";
 import { useAuth } from "@/lib/auth";
 import {
   Database,
@@ -40,8 +39,19 @@ function StatCardSkeleton() {
 }
 
 export function TaulaMasterMain() {
-  const { fields, fieldMap, loading: fieldsLoading, error: fieldsError, retry: retryFields } = useFields();
-  const { items, loading: equipLoading, error: equipError, retry: retryEquip } = useEquipments();
+  // PERF FIX: una sola subscripció al DataStore centralitzat
+  // Eliminem 2 hooks separats (useFields + useEquipments) que causaven doble re-render
+  const {
+    fields, fieldMap,
+    equipments: items,
+    loading, error, retry,
+  } = useDataStore();
+  const fieldsLoading = loading;
+  const equipLoading  = loading;
+  const fieldsError   = error;
+  const equipError    = error;
+  const retryFields   = retry;
+  const retryEquip    = retry;
   const { canSeeView, profile, user } = useAuth();
   const [gubim, setGubim] = useState(false);
   const [dict, setDict] = useState(false);
