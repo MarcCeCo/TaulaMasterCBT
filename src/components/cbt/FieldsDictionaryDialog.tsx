@@ -67,7 +67,20 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const debouncedQ = useDebounce(q, 180);
 
   const classifiers = useMemo(() => fields.filter(isClassifier), [fields]);
-  const filtered    = useMemo(() => filterWithClassifiers(fields, debouncedQ, grp, cls), [fields, debouncedQ, grp, cls]);
+  const sortedFields = useMemo(() => {
+    const classifierSet = new Set(fields.filter(isClassifier).map(f => f.col));
+    return [...fields].sort((a, b) => {
+      // Classificadors mantenen la seva posició relativa (no es mouen)
+      if (isClassifier(a) || isClassifier(b)) return 0;
+      const ca = a.codi ?? "";
+      const cb = b.codi ?? "";
+      if (!ca && !cb) return 0;
+      if (!ca) return 1;
+      if (!cb) return -1;
+      return ca.localeCompare(cb, undefined, { numeric: true, sensitivity: "base" });
+    });
+  }, [fields]);
+  const filtered    = useMemo(() => filterWithClassifiers(sortedFields, debouncedQ, grp, cls), [sortedFields, debouncedQ, grp, cls]);
 
   // Reset scroll when filters change
   useEffect(() => { setScrollTop(0); containerRef.current?.scrollTo(0, 0); }, [debouncedQ, grp, cls]);
@@ -185,15 +198,15 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
             <thead className="bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
               <tr className="text-left">
                 <th className="p-2 font-semibold text-xs">Nom</th>
+                <th className="p-2 font-semibold text-xs text-violet-600 border-l-2 border-violet-200">Codi</th>
+                <th className="p-2 font-semibold text-xs text-violet-600">Taula assoc.</th>
+                <th className="p-2 font-semibold text-xs text-violet-600">Tipus dada</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8] border-l-2 border-[#0099A8]/30">CBT</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Format par.</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació Revit</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Grup .txt</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Instància Revit</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8]">Disciplina</th>
-                <th className="p-2 font-semibold text-xs text-violet-600 border-l-2 border-violet-200">Codi</th>
-                <th className="p-2 font-semibold text-xs text-violet-600">Taula assoc.</th>
-                <th className="p-2 font-semibold text-xs text-violet-600">Tipus dada</th>
                 <th className="p-2 w-20 font-semibold text-xs">Accions</th>
               </tr>
             </thead>
@@ -220,15 +233,15 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                             <div className="truncate">{f.col}</div>
                             {c && <Badge variant="outline" className="mt-0.5 text-[10px] uppercase tracking-wide">Classificador</Badge>}
                           </td>
+                          <td className="p-2 font-mono text-xs border-l-2 border-violet-100 truncate">{c ? "—" : (f.codi ?? "—")}</td>
+                          <td className="p-2 text-xs truncate">{f.taula_assoc ?? "—"}</td>
+                          <td className="p-2 text-xs truncate">{f.tipus_dada ?? "—"}</td>
                           <td className="p-2 font-mono text-xs text-muted-foreground border-l-2 border-[#0099A8]/20 truncate">{f.cbt ?? "—"}</td>
                           <td className="p-2 text-xs truncate">{f.format_param ?? "—"}</td>
                           <td className="p-2 text-xs truncate">{f.agrupacio_revit ?? "—"}</td>
                           <td className="p-2 text-xs truncate">{f.grup_txt ?? "—"}</td>
                           <td className="p-2 text-xs font-mono truncate">{c ? "—" : (f.instancia_revit ?? "—")}</td>
                           <td className="p-2 text-xs truncate">{f.disciplina ?? "—"}</td>
-                          <td className="p-2 font-mono text-xs border-l-2 border-violet-100 truncate">{c ? "—" : (f.codi ?? "—")}</td>
-                          <td className="p-2 text-xs truncate">{f.taula_assoc ?? "—"}</td>
-                          <td className="p-2 text-xs truncate">{f.tipus_dada ?? "—"}</td>
                           <td className="p-2">
                             {isCustom(f.col) && (
                               <div className="flex gap-1">

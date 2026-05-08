@@ -68,7 +68,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   };
 
   const exportXlsx = () => {
-    const rows = [...nodes].sort((a, b) => a.code.localeCompare(b.code)).map((n) => ({
+    const rows = [...nodes].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" })).map((n) => ({
       Codi: n.code, Nom: n.name, Nivell: codeLevel(n.code), Pare: parentCode(n.code) ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -110,7 +110,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   const [scrollTop, setScrollTop] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const sorted = useMemo(() => [...nodes].sort((a, b) => a.code.localeCompare(b.code)), [nodes]);
+  const sorted = useMemo(() => [...nodes].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" })), [nodes]);
 
   const filtered = useMemo(() => {
     const t = debouncedQ.trim().toLowerCase();

@@ -47,7 +47,7 @@ const EquipmentRow = memo(function EquipmentRow({
 }) {
   // N1-N3: indentació per nivell al GuBIMClass. N4: sempre alineats (pl-11 fix)
   const gubimIndent = level < 4 ? ["pl-2", "pl-5", "pl-8"][level - 1] : "pl-11";
-  const childIndentPx = childDepth * 20;
+  const childIndentPx = childDepth * 32;
   const hasOrphans = orphanCols.length > 0;
   const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
   return (
@@ -88,15 +88,12 @@ const EquipmentRow = memo(function EquipmentRow({
         </div>
       </td>
       <td className="p-2 font-medium text-sm">
-        <div className="flex items-center gap-1" style={{ paddingLeft: childIndentPx }}>
-          {childDepth > 0 && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
+        <div className="flex items-center gap-1.5" style={{ paddingLeft: childIndentPx }}>
+          {childDepth > 0 && (
+            <span className="shrink-0 inline-flex items-end" style={{ width: 12, height: 14, borderLeft: "2px solid #cbd5e1", borderBottom: "2px solid #cbd5e1", borderBottomLeftRadius: 2, marginBottom: 1 }} />
+          )}
           {e.equipName}
         </div>
-        {childDepth > 0 && e.parentEquipCode && (
-          <div className="text-[10px] text-muted-foreground font-normal" style={{ paddingLeft: childIndentPx + 16 }}>
-            ↳ {e.parentEquipCode}
-          </div>
-        )}
       </td>
       <td className="p-2">
         {e.needsTable
@@ -184,8 +181,9 @@ export function EquipmentsTable() {
 
   const sorted = useMemo(() => {
     const base = [...items].sort((a, b) => {
-      if (a.gubimCode !== b.gubimCode) return a.gubimCode.localeCompare(b.gubimCode);
-      return a.equipCode.localeCompare(b.equipCode);
+      const gc = a.gubimCode.localeCompare(b.gubimCode, undefined, { numeric: true, sensitivity: "base" });
+      if (gc !== 0) return gc;
+      return a.equipCode.localeCompare(b.equipCode, undefined, { numeric: true, sensitivity: "base" });
     });
 
     const result: { equip: Equipment; depth: number }[] = [];

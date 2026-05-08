@@ -123,30 +123,30 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
               <thead className="bg-muted/60 sticky top-0 z-10">
                 <tr className="text-left">
                   <th className="px-4 py-2 font-semibold text-xs text-muted-foreground uppercase tracking-wide">Nom del paràmetre</th>
+                  {/* Columnes Rosmiman */}
+                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide border-l-2 border-violet-200">Codi</th>
+                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Taula assoc.</th>
+                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Tipus dada</th>
                   {/* Columnes Revit (.txt) */}
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide border-l-2 border-[#0099A8]/30">Nom CBT</th>
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Format</th>
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Disciplina</th>
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Instància</th>
                   <th className="px-4 py-2 font-semibold text-xs text-[#0099A8] uppercase tracking-wide">Agrupació CBT</th>
-                  {/* Columnes Rosmiman */}
-                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide border-l-2 border-violet-200">Codi</th>
-                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Taula assoc.</th>
-                  <th className="px-4 py-2 font-semibold text-xs text-violet-600 uppercase tracking-wide">Tipus dada</th>
                 </tr>
                 {/* Llegenda de colors */}
                 <tr className="bg-muted/30 border-t border-muted">
                   <td colSpan={1} />
-                  <td colSpan={5} className="px-4 py-1 border-l-2 border-[#0099A8]/30">
-                    <span className="text-[10px] font-medium text-[#0099A8] flex items-center gap-1">
-                      <span className="inline-block w-2 h-2 rounded-full bg-[#0099A8]" />
-                      Configuració paràmetre Revit (.txt)
-                    </span>
-                  </td>
                   <td colSpan={3} className="px-4 py-1 border-l-2 border-violet-200">
                     <span className="text-[10px] font-medium text-violet-600 flex items-center gap-1">
                       <span className="inline-block w-2 h-2 rounded-full bg-violet-400" />
                       Configuració camp Rosmiman
+                    </span>
+                  </td>
+                  <td colSpan={5} className="px-4 py-1 border-l-2 border-[#0099A8]/30">
+                    <span className="text-[10px] font-medium text-[#0099A8] flex items-center gap-1">
+                      <span className="inline-block w-2 h-2 rounded-full bg-[#0099A8]" />
+                      Configuració paràmetre Revit (.txt)
                     </span>
                   </td>
                 </tr>
@@ -166,16 +166,16 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
                   return (
                     <tr key={f.col} className="border-t hover:bg-muted/30">
                       <td className="px-4 py-2 font-medium">{f.col}</td>
+                      {/* Rosmiman */}
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground border-l-2 border-violet-100">{f.codi ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.taula_assoc ?? "—"}</td>
+                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.tipus_dada ?? "—"}</td>
                       {/* Revit */}
                       <td className="px-4 py-2 font-mono text-xs text-[#006E7A] border-l-2 border-[#0099A8]/20">{f.cbt ?? "—"}</td>
                       <td className="px-4 py-2 text-xs">{f.format_param ?? "—"}</td>
                       <td className="px-4 py-2 text-xs">{f.disciplina ?? "—"}</td>
                       <td className="px-4 py-2 font-mono text-xs">{f.instancia_revit ?? "—"}</td>
                       <td className="px-4 py-2 text-xs">{f.agrupacio_revit ?? "—"}</td>
-                      {/* Rosmiman */}
-                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground border-l-2 border-violet-100">{f.codi ?? "—"}</td>
-                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.taula_assoc ?? "—"}</td>
-                      <td className="px-4 py-2 text-xs text-muted-foreground">{f.tipus_dada ?? "—"}</td>
                     </tr>
                   );
                 })}
