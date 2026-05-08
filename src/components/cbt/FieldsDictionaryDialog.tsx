@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -17,6 +17,16 @@ import { useAuth } from "@/lib/auth";
 
 interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
 
+const ROW_H = 38;
+const OVERSCAN = 8;
+const CONTAINER_H = 480;
+
+function useDebounce<T>(value: T, ms = 180): T {
+  const [dv, setDv] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return dv;
+}
+
 function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls: string): FieldMeta[] {
   const t = q.trim().toLowerCase();
   const result: FieldMeta[] = [];
@@ -24,27 +34,20 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
   let classifierAdded = false;
   let currentChildren: FieldMeta[] = [];
 
-  const flushChildren = () => {
-    result.push(...currentChildren);
-    currentChildren = [];
-  };
+  const flush = () => { result.push(...currentChildren); currentChildren = []; };
 
   for (const f of fields) {
     if (isClassifier(f)) {
-      flushChildren();
+      flush();
       currentClassifier = f; classifierAdded = false; continue;
     }
     if (grp !== "__all__" && f.agrupacio_revit !== grp) continue;
     if (cls !== "__all__" && currentClassifier?.col !== cls) continue;
-    if (t && !(
-      (f.col ?? "").toLowerCase().includes(t) ||
-      (f.codi ?? "").toLowerCase().includes(t) ||
-      (f.cbt ?? "").toLowerCase().includes(t)
-    )) continue;
+    if (t && !((f.col ?? "").toLowerCase().includes(t) || (f.codi ?? "").toLowerCase().includes(t) || (f.cbt ?? "").toLowerCase().includes(t))) continue;
     if (currentClassifier && !classifierAdded) { result.push(currentClassifier); classifierAdded = true; }
     currentChildren.push(f);
   }
-  flushChildren();
+  flush();
   return result;
 }
 
@@ -52,28 +55,37 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const { fields, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines } = useFields();
   const { removeFieldColFromAll } = useEquipments();
   const { canEdit } = useAuth();
-  const [q, setQ] = useState("");
-  const [grp, setGrp] = useState("__all__");
-  const [cls, setCls] = useState("__all__");
+  const [q, setQ]             = useState("");
+  const [grp, setGrp]         = useState("__all__");
+  const [cls, setCls]         = useState("__all__");
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<FieldMeta | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const debouncedQ = useDebounce(q, 180);
+
   const classifiers = useMemo(() => fields.filter(isClassifier), [fields]);
-  const filtered    = useMemo(() => filterWithClassifiers(fields, q, grp, cls), [fields, q, grp, cls]);
+  const filtered    = useMemo(() => filterWithClassifiers(fields, debouncedQ, grp, cls), [fields, debouncedQ, grp, cls]);
+
+  // Reset scroll when filters change
+  useEffect(() => { setScrollTop(0); containerRef.current?.scrollTo(0, 0); }, [debouncedQ, grp, cls]);
+
+  // Virtualització
+  const startIdx   = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+  const endIdx     = Math.min(filtered.length - 1, Math.ceil((scrollTop + CONTAINER_H) / ROW_H) + OVERSCAN);
+  const visibleRows = filtered.slice(startIdx, endIdx + 1);
+  const padTop     = startIdx * ROW_H;
+  const padBot     = Math.max(0, (filtered.length - endIdx - 1) * ROW_H);
 
   const exportXlsx = () => {
-    const rows = fields.filter(f => !isClassifier(f)).map((f) => ({
-      "Nom":              f.col,
-      "Codi":             f.codi            ?? "",
-      "Taula associada":  f.taula_assoc     ?? "",
-      "Tipus dada":       f.tipus_dada      ?? "",
-      "CBT":              f.cbt             ?? "",
-      "Format paràmetre": f.format_param    ?? "",
-      "Agrupació Revit":  f.agrupacio_revit ?? "",
-      "Grup .txt":        f.grup_txt        ?? "",
-      "Instància Revit":  f.instancia_revit ?? "",
-      "Disciplina":       f.disciplina      ?? "",
+    const rows = fields.filter((f) => !isClassifier(f)).map((f) => ({
+      "Nom": f.col, "Codi": f.codi ?? "", "Taula associada": f.taula_assoc ?? "",
+      "Tipus dada": f.tipus_dada ?? "", "CBT": f.cbt ?? "",
+      "Format paràmetre": f.format_param ?? "", "Agrupació Revit": f.agrupacio_revit ?? "",
+      "Grup .txt": f.grup_txt ?? "", "Instància Revit": f.instancia_revit ?? "",
+      "Disciplina": f.disciplina ?? "",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -88,32 +100,21 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       const wb   = XLSX.read(buf);
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
-
       const toAdd: FieldMeta[] = rows.map((r) => {
-        const nom        = String(r["Nom"]              ?? "").trim().toUpperCase();
-        const codi       = String(r["Codi"]             ?? "").trim() || null;
-        const taulaAssoc = String(r["Taula associada"]  ?? "").trim() || null;
-        const tipusDada  = String(r["Tipus dada"]       ?? "").trim() || null;
-        const cbt        = String(r["CBT"]              ?? "").trim() || null;
-        const formatP    = String(r["Format paràmetre"] ?? "").trim() || null;
-        const agrupRevit = String(r["Agrupació Revit"]  ?? "").trim() || null;
-        const grupTxt    = String(r["Grup .txt"]        ?? "").trim() || null;
-        const instancia  = String(r["Instància Revit"]  ?? "").trim() || null;
-        const disciplina = String(r["Disciplina"]       ?? "").trim() || null;
-
+        const nom = String(r["Nom"] ?? "").trim().toUpperCase();
         if (!nom) return null;
-
         return {
-          col:             nom,
-          codi,
-          taula_assoc:     taulaAssoc,
-          tipus_dada:      tipusDada,
-          cbt,
-          format_param:    formatP,
-          agrupacio_revit: agrupRevit,
-          grup_txt:        grupTxt,
-          instancia_revit: instancia,
-          disciplina,
+          col: nom,
+          codi:            String(r["Codi"]             ?? "").trim() || null,
+          taula_assoc:     String(r["Taula associada"]  ?? "").trim() || null,
+          tipus_dada:      String(r["Tipus dada"]       ?? "").trim() || null,
+          cbt:             String(r["CBT"]              ?? "").trim() || null,
+          format_param:    String(r["Format paràmetre"] ?? "").trim() || null,
+          agrupacio_revit: String(r["Agrupació Revit"]  ?? "").trim() || null,
+          grup_txt:        String(r["Grup .txt"]        ?? "").trim() || null,
+          instancia_revit: String(r["Instància Revit"]  ?? "").trim() || null,
+          disciplina:      String(r["Disciplina"]       ?? "").trim() || null,
+          group: null, active: null,
         } as FieldMeta;
       }).filter(Boolean) as FieldMeta[];
 
@@ -169,21 +170,20 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
               <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Esborrar tots els camps?</AlertDialogTitle>
-                <AlertDialogDescription>S'eliminaran tots els camps del diccionari. Aquesta acció no es pot desfer.</AlertDialogDescription>
-              </AlertDialogHeader>
+              <AlertDialogHeader><AlertDialogTitle>Esborrar tots els camps?</AlertDialogTitle><AlertDialogDescription>S'eliminaran tots els camps del diccionari.</AlertDialogDescription></AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel·la</AlertDialogCancel>
                 <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("Tots els camps eliminats"); } catch { toast.error("Error esborrant camps"); } }}>Esborra</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
+          <div className="ml-auto text-xs text-muted-foreground self-center">{filtered.length} camps</div>
         </div>
 
-        <div className="border rounded-md flex-1 overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-background sticky top-0 z-10 shadow-[0_1px_0_0_hsl(var(--border))]">
+        {/* Capçalera fixa */}
+        <div className="border rounded-md flex-1 overflow-hidden flex flex-col">
+          <table className="w-full text-sm table-fixed">
+            <thead className="bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
               <tr className="text-left">
                 <th className="p-2 font-semibold text-xs">Nom</th>
                 <th className="p-2 font-semibold text-xs text-[#0099A8] border-l-2 border-[#0099A8]/30">CBT</th>
@@ -198,56 +198,66 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                 <th className="p-2 w-20 font-semibold text-xs">Accions</th>
               </tr>
             </thead>
-            <tbody>
-              {filtered.map((f) => {
-                const c = isClassifier(f);
-                return (
-                  <tr key={f.col} className={cn("border-t", c && "bg-accent/30 font-semibold")}>
-                    <td className="p-2">
-                      <div>{f.col}</div>
-                      {c && <Badge variant="outline" className="mt-0.5 text-[10px] uppercase tracking-wide">Classificador</Badge>}
-                    </td>
-                    <td className="p-2 font-mono text-xs text-muted-foreground border-l-2 border-[#0099A8]/20">{f.cbt ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.format_param ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.agrupacio_revit ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.grup_txt ?? "—"}</td>
-                    <td className="p-2 text-xs font-mono">{c ? "—" : (f.instancia_revit ?? "—")}</td>
-                    <td className="p-2 text-xs">{f.disciplina ?? "—"}</td>
-                    <td className="p-2 font-mono text-xs border-l-2 border-violet-100">{c ? "—" : (f.codi ?? "—")}</td>
-                    <td className="p-2 text-xs">{f.taula_assoc ?? "—"}</td>
-                    <td className="p-2 text-xs">{f.tipus_dada ?? "—"}</td>
-                    <td className="p-2">
-                      {isCustom(f.col) && (
-                        <div className="flex gap-1">
-                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditing(f); setAddOpen(true); }}>
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Esborrar camp?</AlertDialogTitle>
-                                <AlertDialogDescription>S'eliminarà «{f.col}» i les seves referències en equips.</AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteField(f.col)}>Esborra</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Cap camp al diccionari. Crea un camp nou o importa un Excel.</td></tr>
-              )}
-            </tbody>
           </table>
+          {/* Cos virtualitzat */}
+          <div
+            ref={containerRef}
+            className="flex-1 overflow-auto"
+            style={{ maxHeight: CONTAINER_H }}
+            onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+          >
+            <table className="w-full text-sm table-fixed">
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Cap camp al diccionari. Crea un camp nou o importa un Excel.</td></tr>
+                ) : (
+                  <>
+                    {padTop > 0 && <tr style={{ height: padTop }}><td colSpan={11} /></tr>}
+                    {visibleRows.map((f) => {
+                      const c = isClassifier(f);
+                      return (
+                        <tr key={f.col} style={{ height: ROW_H }} className={cn("border-t", c && "bg-accent/30 font-semibold")}>
+                          <td className="p-2 truncate">
+                            <div className="truncate">{f.col}</div>
+                            {c && <Badge variant="outline" className="mt-0.5 text-[10px] uppercase tracking-wide">Classificador</Badge>}
+                          </td>
+                          <td className="p-2 font-mono text-xs text-muted-foreground border-l-2 border-[#0099A8]/20 truncate">{f.cbt ?? "—"}</td>
+                          <td className="p-2 text-xs truncate">{f.format_param ?? "—"}</td>
+                          <td className="p-2 text-xs truncate">{f.agrupacio_revit ?? "—"}</td>
+                          <td className="p-2 text-xs truncate">{f.grup_txt ?? "—"}</td>
+                          <td className="p-2 text-xs font-mono truncate">{c ? "—" : (f.instancia_revit ?? "—")}</td>
+                          <td className="p-2 text-xs truncate">{f.disciplina ?? "—"}</td>
+                          <td className="p-2 font-mono text-xs border-l-2 border-violet-100 truncate">{c ? "—" : (f.codi ?? "—")}</td>
+                          <td className="p-2 text-xs truncate">{f.taula_assoc ?? "—"}</td>
+                          <td className="p-2 text-xs truncate">{f.tipus_dada ?? "—"}</td>
+                          <td className="p-2">
+                            {isCustom(f.col) && (
+                              <div className="flex gap-1">
+                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditing(f); setAddOpen(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader><AlertDialogTitle>Esborrar camp?</AlertDialogTitle><AlertDialogDescription>S'eliminarà «{f.col}» i les seves referències en equips.</AlertDialogDescription></AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                                      <AlertDialogAction onClick={() => handleDeleteField(f.col)}>Esborra</AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {padBot > 0 && <tr style={{ height: padBot }}><td colSpan={11} /></tr>}
+                  </>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <AddFieldDialog

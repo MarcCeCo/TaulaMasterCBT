@@ -1,4 +1,4 @@
-import { memo, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,12 @@ import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+
+function useDebounce<T>(value: T, ms = 200): T {
+  const [dv, setDv] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return dv;
+}
 
 // Colors per als grups de codi compartit (ciclics)
 const GROUP_COLORS = [
@@ -192,8 +198,10 @@ export function EquipmentsTable() {
     return result;
   }, [items]);
 
+  const debouncedQ = useDebounce(q, 200);
+
   const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase();
+    const t = debouncedQ.trim().toLowerCase();
     if (!t) return sorted;
     return sorted.filter(({ equip: e }) =>
       e.equipCode.toLowerCase().includes(t) ||
@@ -201,7 +209,7 @@ export function EquipmentsTable() {
       e.gubimCode.includes(t) ||
       e.tableName.toLowerCase().includes(t),
     );
-  }, [sorted, q]);
+  }, [sorted, debouncedQ]);
 
   const isCodeTaken = isCodeTakenHook;
 

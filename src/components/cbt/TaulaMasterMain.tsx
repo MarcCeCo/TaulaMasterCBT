@@ -1,14 +1,15 @@
 // src/components/cbt/TaulaMasterMain.tsx
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppHeader } from "./AppHeader";
 import { EquipmentsTable } from "./EquipmentsTable";
-import { GubimClassManager } from "./GubimClassManager";
-import { FieldsDictionaryDialog } from "./FieldsDictionaryDialog";
-import { UserManagerDialog } from "@/components/auth/UserManagerDialog";
+// Diàlegs pesats → lazy: no es descarreguen fins que s'obren per primera vegada
+const GubimClassManager    = lazy(() => import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager })));
+const FieldsDictionaryDialog = lazy(() => import("./FieldsDictionaryDialog").then((m) => ({ default: m.FieldsDictionaryDialog })));
+const UserManagerDialog    = lazy(() => import("@/components/auth/UserManagerDialog").then((m) => ({ default: m.UserManagerDialog })));
 import { useFields } from "@/hooks/useFields";
 import { useEquipments } from "@/hooks/useEquipments";
 import { isClassifier } from "@/lib/fields";
@@ -209,9 +210,11 @@ export function TaulaMasterMain() {
         )}
       </main>
 
-      <GubimClassManager open={gubim} onOpenChange={setGubim} />
-      <FieldsDictionaryDialog open={dict} onOpenChange={setDict} />
-      <UserManagerDialog open={users} onOpenChange={setUsers} />
+      <Suspense fallback={null}>
+        <GubimClassManager open={gubim} onOpenChange={setGubim} />
+        <FieldsDictionaryDialog open={dict} onOpenChange={setDict} />
+        <UserManagerDialog open={users} onOpenChange={setUsers} />
+      </Suspense>
     </div>
   );
 }

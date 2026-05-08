@@ -1,5 +1,11 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
+
+function useDebounce<T>(value: T, ms = 180): T {
+  const [dv, setDv] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return dv;
+}
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -100,14 +106,15 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     }
   };
 
+  const debouncedQ = useDebounce(q, 180);
+
   const sorted = useMemo(() => [...nodes].sort((a, b) => a.code.localeCompare(b.code)), [nodes]);
 
-  // Filtre de cerca
   const filtered = useMemo(() => {
-    const t = q.trim().toLowerCase();
+    const t = debouncedQ.trim().toLowerCase();
     if (!t) return sorted;
     return sorted.filter((n) => n.code.toLowerCase().includes(t) || n.name.toLowerCase().includes(t));
-  }, [sorted, q]);
+  }, [sorted, debouncedQ]);
 
   const levelCounts = useMemo(() => {
     const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
