@@ -171,9 +171,14 @@ export function EquipmentsTable() {
   const handleView   = useCallback((e: Equipment) => () => { setViewing(e); setDetailOpen(true); }, []);
   const handleEdit   = useCallback((e: Equipment) => () => { setEditing(e); setFormOpen(true); }, []);
   const handleDelete = useCallback((e: Equipment) => async () => {
-    try { await remove(e.id); toast.success("Equip esborrat"); }
+    try {
+      await remove(e.id);
+      toast.success("Equip esborrat");
+      setViewing((prev) => (prev?.id === e.id ? null : prev));
+      setDetailOpen((prev) => (prev && viewing?.id === e.id ? false : prev));
+    }
     catch { toast.error("Error esborrant equip"); }
-  }, [remove]);
+  }, [remove, viewing]);
 
   const sorted = useMemo(() => {
     const base = [...items].sort((a, b) => {
@@ -478,8 +483,10 @@ export function EquipmentsTable() {
             try {
               await upsert(e);
               toast.success(editing ? "Equip actualitzat" : "Equip creat");
-              setFormOpen(false);
               setEditing(null);
+              setFormOpen(false);
+              // Si estàvem veient el detall d'aquest equip, actualitzem la vista
+              if (viewing && viewing.id === e.id) setViewing(e);
             } catch {
               toast.error("Error desant equip");
             }
