@@ -36,7 +36,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
 
   const validateCode = (val: string) => {
     if (!val) { setCodeError(""); return; }
-    if (!isValidCode(val)) { setCodeError("Format invàlid (ex: 30, 30.50, 30.50.10)"); return; }
+    if (!isValidCode(val)) { setCodeError("Format invàlid (ex: 10, 10.20, 10.20.100, 90.40.10.390)"); return; }
     const p = parentCode(val);
     if (p && !nodeMap.has(p)) { setCodeError(`El pare ${p} no existeix`); return; }
     // Duplicats permesos per al nivell 4; bloquejats per als nivells 1-3

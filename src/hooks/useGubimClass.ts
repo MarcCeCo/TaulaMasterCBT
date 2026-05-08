@@ -5,7 +5,15 @@ import { useDataStore } from "@/lib/dataStore";
 
 export type GubimNode = { id: string; code: string; name: string };
 
-export const isValidCode = (code: string) => /^(\d{2})(\.(\d{2})){0,3}$/.test(code);
+// Cada segment pot ser:
+//   - "00"         → cas especial (category 00 de la classificació)
+//   - 1–4 dígits   → sense zero inicial (ex: 10, 100, 1000)
+// Màxim 4 nivells separats per punt.
+// Vàlid:   00 · 00.10 · 10 · 10.20 · 50.100 · 90.40.10.390
+// Invàlid: 0010 · 010 · 12345 · 10.20.30.40.50
+export const isValidCode = (code: string): boolean =>
+  /^(00|[1-9]\d{0,3})(\.(00|[1-9]\d{0,3})){0,3}$/.test(code);
+
 export const codeLevel   = (code: string) => code.split(".").length as 1 | 2 | 3 | 4;
 export const parentCode  = (code: string) => {
   const parts = code.split(".");
