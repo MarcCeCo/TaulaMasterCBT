@@ -24,7 +24,22 @@ export function isClassifier(f: FieldMeta): boolean {
   );
 }
 
-// Ordena mantenint cada camp sota el seu classificador pare
+// Ordena els camps d'un grup: sense codi primer, després per codi numèric ascending
+function sortGroupFields(groupFields: FieldMeta[]): FieldMeta[] {
+  const noCodi = groupFields.filter((f) => !f.codi);
+  const withCodi = groupFields
+    .filter((f) => !!f.codi)
+    .sort((a, b) => {
+      const na = parseFloat(a.codi!);
+      const nb = parseFloat(b.codi!);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return (a.codi!).localeCompare(b.codi!, undefined, { numeric: true });
+    });
+  return [...noCodi, ...withCodi];
+}
+
+// Ordena mantenint cada camp sota el seu classificador pare,
+// i dins de cada grup: sense codi primer, amb codi per ordre numèric
 export function sortByClassification(fields: FieldMeta[]): FieldMeta[] {
   const result: FieldMeta[] = [];
   const classifiers: FieldMeta[] = [];
@@ -49,8 +64,8 @@ export function sortByClassification(fields: FieldMeta[]): FieldMeta[] {
 
   for (const cls of classifiers) {
     result.push(cls);
-    result.push(...(fieldsByClassifier.get(cls.col) ?? []));
+    result.push(...sortGroupFields(fieldsByClassifier.get(cls.col) ?? []));
   }
-  result.push(...noClassifier);
+  result.push(...sortGroupFields(noClassifier));
   return result;
 }
