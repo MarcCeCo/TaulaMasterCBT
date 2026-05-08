@@ -373,38 +373,37 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
     if (p && !gubimNodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
-    // Duplicats permesos a tots els nivells: un codi duplicat indica equip mare + components
+    // Upsert per codi: evita fallada per constraint UNIQUE si el codi ja existeix a Supabase
     const row = { id: uid(), code: n.code, name: n.name };
-    const { error } = await supabase.from("gubim_class").insert(row);
+    const { error } = await supabase.from("gubim_class").upsert(row, { onConflict: "code" });
     handleSupabaseError(error);
-    setGubimRaw((prev) => [...prev, row]);
+    setGubimRaw((prev) => {
+      const idx = prev.findIndex((x) => x.code === n.code);
+      if (idx >= 0) { const next = [...prev]; next[idx] = { ...next[idx], name: n.name }; return next; }
+      return [...prev, row];
+    });
   }, [gubimNodeMap]);
 
   const addManyGubim = useCallback(async (
     arr: Omit<GubimNode, "id">[],
   ): Promise<{ inserted: number; autoCreated: number; duplicates: number }> => {
-    // seenCodes: tots els codis que ja existeixen (per validar pares)
-    // Ara els duplicats estan permesos a TOTS els nivells (equip mare + components)
-    const seenCodes    = new Set(gubimRaw.map((n) => n.code));
-    const seenCodeName = new Set(gubimRaw.map((n) => `${n.code}||${n.name}`));
+    // seenCodes: tots els codis que ja existeixen a Supabase (clau de deduplicació = code)
+    const seenCodes = new Set(gubimRaw.map((n) => n.code));
 
     const candidates = arr
       .map((n) => ({ ...n, code: n.code.trim() }))
       .filter((n) => n.code && n.name && isValidCode(n.code));
 
-    // Tots els nodes nous (inclosos nivells 1-3 duplicats) van a toInsert
-    const toInsert: GubimNode[] = [];
+    const toUpsert: GubimNode[] = [];
     let duplicates = 0;
     let remaining = candidates;
     let prevLength = -1;
 
     const processNode = (n: Omit<GubimNode, "id">) => {
-      const key = `${n.code}||${n.name}`;
-      if (seenCodeName.has(key)) { duplicates++; return; }
-      seenCodeName.add(key);
+      // Deduplicació per codi (coherent amb la constraint UNIQUE de Supabase)
+      if (seenCodes.has(n.code)) { duplicates++; return; }
       seenCodes.add(n.code);
-      // Tots els nivells usen insert (duplicats permesos)
-      toInsert.push({ id: uid(), code: n.code, name: n.name });
+      toUpsert.push({ id: uid(), code: n.code, name: n.name });
     };
 
     while (remaining.length > 0 && remaining.length !== prevLength) {
@@ -427,27 +426,33 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         cursor = parentCode(cursor);
       }
       for (const anc of ancestors) {
-        const k = `${anc.code}||${anc.name}`;
-        if (!seenCodeName.has(k)) {
-          seenCodeName.add(k);
+        if (!seenCodes.has(anc.code)) {
           seenCodes.add(anc.code);
-          toInsert.push({ id: uid(), code: anc.code, name: anc.name });
+          toUpsert.push({ id: uid(), code: anc.code, name: anc.name });
           autoCreated++;
         }
       }
       processNode(n);
     }
 
+    // Upsert per codi: si el codi ja existeix a Supabase (constraint UNIQUE),
+    // actualitza el nom en lloc de fer fallar tot el batch
     const BATCH = 50;
-    for (let i = 0; i < toInsert.length; i += BATCH) {
-      const { error } = await supabase.from("gubim_class").insert(toInsert.slice(i, i + BATCH));
+    for (let i = 0; i < toUpsert.length; i += BATCH) {
+      const { error } = await supabase
+        .from("gubim_class")
+        .upsert(toUpsert.slice(i, i + BATCH), { onConflict: "code" });
       handleSupabaseError(error);
     }
 
-    if (toInsert.length > 0) {
-      setGubimRaw((prev) => [...prev, ...toInsert]);
+    if (toUpsert.length > 0) {
+      setGubimRaw((prev) => {
+        const map = new Map(prev.map((n) => [n.code, n]));
+        toUpsert.forEach((n) => map.set(n.code, n));
+        return Array.from(map.values());
+      });
     }
-    return { inserted: toInsert.length - autoCreated, autoCreated, duplicates };
+    return { inserted: toUpsert.length - autoCreated, autoCreated, duplicates };
   }, [gubimRaw]);
 
   const updateGubimNode = useCallback(async (id: string, patch: Partial<GubimNode>) => {
