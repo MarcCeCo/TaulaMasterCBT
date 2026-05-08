@@ -217,8 +217,9 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const gubimNodeMap = useMemo(() => {
+    // Guarda el PRIMER node per codi (el "mare") — codis repetits = equip mare + components
     const m = new Map<string, GubimNode>();
-    gubimNodes.forEach((n) => m.set(n.code, n));
+    gubimNodes.forEach((n) => { if (!m.has(n.code)) m.set(n.code, n); });
     return m;
   }, [gubimNodes]);
 
@@ -249,11 +250,14 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addManyEquips = useCallback(async (arr: Equipment[]) => {
-    const seen  = new Set(equipments.map((e) => e.equipCode).filter(Boolean));
+    const seen = new Set(
+      equipments.map((e) => `${e.gubimCode}::${e.equipCode}`).filter((k) => !k.endsWith("::"))
+    );
     const toAdd = arr.filter((e) => {
       if (!e.equipCode) return true;
-      if (seen.has(e.equipCode)) return false;
-      seen.add(e.equipCode);
+      const key = `${e.gubimCode}::${e.equipCode}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     });
     if (toAdd.length === 0) return;
@@ -370,18 +374,22 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
     if (p && !gubimNodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
-    // Duplicats permesos a tots els nivells: un codi duplicat indica equip mare + components
+    // Permet codi repetit si el nom és diferent (equip mare + components)
+    // Duplicat = mateix codi I mateix nom → error
+    const alreadyExists = gubimRaw.some((x) => x.code === n.code && x.name === n.name);
+    if (alreadyExists) throw new Error("Aquest node (codi + nom) ja existeix");
     const row = { id: uid(), code: n.code, name: n.name };
     const { error } = await supabase.from("gubim_class").insert(row);
     handleSupabaseError(error);
     setGubimRaw((prev) => [...prev, row]);
-  }, [gubimNodeMap]);
+  }, [gubimNodeMap, gubimRaw]);
 
   const addManyGubim = useCallback(async (
     arr: Omit<GubimNode, "id">[],
   ): Promise<{ inserted: number; autoCreated: number; duplicates: number }> => {
-    // seenCodes: tots els codis que ja existeixen (per validar pares)
-    // Ara els duplicats estan permesos a TOTS els nivells (equip mare + components)
+    // seenCodes: codis existents (per validar que el pare existeix abans d'inserir el fill)
+    // seenCodeName: parells code||name existents (deduplicació real — mateix codi, mateix nom = duplicat)
+    // Un mateix codi amb nom diferent és VÀLID: representa equip mare + components
     const seenCodes    = new Set(gubimRaw.map((n) => n.code));
     const seenCodeName = new Set(gubimRaw.map((n) => `${n.code}||${n.name}`));
 
@@ -389,19 +397,18 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       .map((n) => ({ ...n, code: n.code.trim() }))
       .filter((n) => n.code && n.name && isValidCode(n.code));
 
-    // Tots els nodes nous (inclosos nivells 1-3 duplicats) van a toInsert
-    const toInsert: GubimNode[] = [];
+    const toUpsert: GubimNode[] = [];
     let duplicates = 0;
     let remaining = candidates;
     let prevLength = -1;
 
     const processNode = (n: Omit<GubimNode, "id">) => {
       const key = `${n.code}||${n.name}`;
+      // Duplicat = mateix codi I mateix nom
       if (seenCodeName.has(key)) { duplicates++; return; }
       seenCodeName.add(key);
-      seenCodes.add(n.code);
-      // Tots els nivells usen insert (duplicats permesos)
-      toInsert.push({ id: uid(), code: n.code, name: n.name });
+      seenCodes.add(n.code); // marca el codi com a "existent" per desbloquejar fills
+      toUpsert.push({ id: uid(), code: n.code, name: n.name });
     };
 
     while (remaining.length > 0 && remaining.length !== prevLength) {
@@ -428,23 +435,27 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         if (!seenCodeName.has(k)) {
           seenCodeName.add(k);
           seenCodes.add(anc.code);
-          toInsert.push({ id: uid(), code: anc.code, name: anc.name });
+          toUpsert.push({ id: uid(), code: anc.code, name: anc.name });
           autoCreated++;
         }
       }
       processNode(n);
     }
 
+    // Insert simple: els codis ja existents han estat filtrats per seenCodes
+    // No usem upsert perquè la taula pot no tenir constraint UNIQUE sobre code
     const BATCH = 50;
-    for (let i = 0; i < toInsert.length; i += BATCH) {
-      const { error } = await supabase.from("gubim_class").insert(toInsert.slice(i, i + BATCH));
+    for (let i = 0; i < toUpsert.length; i += BATCH) {
+      const { error } = await supabase
+        .from("gubim_class")
+        .insert(toUpsert.slice(i, i + BATCH));
       handleSupabaseError(error);
     }
 
-    if (toInsert.length > 0) {
-      setGubimRaw((prev) => [...prev, ...toInsert]);
+    if (toUpsert.length > 0) {
+      setGubimRaw((prev) => [...prev, ...toUpsert]);
     }
-    return { inserted: toInsert.length - autoCreated, autoCreated, duplicates };
+    return { inserted: toUpsert.length - autoCreated, autoCreated, duplicates };
   }, [gubimRaw]);
 
   const updateGubimNode = useCallback(async (id: string, patch: Partial<GubimNode>) => {
