@@ -16,8 +16,10 @@ export const supabase = createClient(url, key, {
   global: {
     fetch: (input, init) => {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000); // 15s timeout
-      return fetch(input, { ...init, keepalive: true, signal: controller.signal })
+      // keepalive:true és incompatible amb AbortController i té límit de 64KB —
+      // el combinar-los pot fer que la Promise quedi penjada indefinidament.
+      const timeout = setTimeout(() => controller.abort(), 20000); // 20s timeout
+      return fetch(input, { ...init, signal: controller.signal })
         .finally(() => clearTimeout(timeout));
     },
   },
