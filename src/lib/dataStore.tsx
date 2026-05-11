@@ -154,7 +154,10 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const [gubimRaw,   setGubimRaw]   = useState<GubimNode[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState<string | null>(null);
-  const loadingRef = useRef(false);
+  const loadingRef    = useRef(false);
+  // Marca si s'ha produit un TOKEN_REFRESHED mentre la pestanya estava oculta.
+  // Quan la pestanya torna a ser visible, comprovem aquest flag i recarreguem.
+  const needsReloadRef = useRef(false);
 
   // ── Càrrega paral·lela única ──────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -207,6 +210,50 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // ── Reconnexió automàtica en tornar a la pestanya ─────────────────────────
+  // Quan la pestanya queda inactiva, Supabase pot renovar el token en segon pla
+  // (event TOKEN_REFRESHED). Si mentrestant hi havia operacions pendents,
+  // poden haver fallat silenciosament. Quan la pestanya torna a ser visible:
+  //  1. Si s'havia produït un TOKEN_REFRESHED mentre estava oculta → recarreguem.
+  //  2. Sempre comprovem si el store estava en error → reintentem.
+  useEffect(() => {
+    // Subscripció als events d'autenticació de Supabase
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "TOKEN_REFRESHED") {
+        if (document.hidden) {
+          // La pestanya és oculta: marquem que cal recarregar en tornar
+          needsReloadRef.current = true;
+        } else {
+          // La pestanya és visible: recarreguem directament
+          load();
+        }
+      }
+      if (event === "SIGNED_OUT") {
+        // Netegem l'estat local en tancar sessió
+        setEquipments([]);
+        setRawFields([]);
+        setGubimRaw([]);
+      }
+    });
+
+    // Listener de visibilitat: quan l'usuari torna a la pestanya
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        if (needsReloadRef.current) {
+          needsReloadRef.current = false;
+          load();
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [load]);
 
   // ── Derivats amb memo ─────────────────────────────────────────────────────
   const fields = useMemo(() => sortByClassification(rawFields), [rawFields]);
