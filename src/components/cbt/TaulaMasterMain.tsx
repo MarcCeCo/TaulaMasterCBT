@@ -46,19 +46,13 @@ export function TaulaMasterMain() {
     equipments: items,
     loading, error, retry,
   } = useDataStore();
-  const fieldsLoading = loading;
-  const equipLoading  = loading;
-  const fieldsError   = error;
-  const equipError    = error;
-  const retryFields   = retry;
-  const retryEquip    = retry;
   const { canSeeView, profile, user } = useAuth();
   const [gubim, setGubim] = useState(false);
   const [dict, setDict] = useState(false);
   const [users, setUsers] = useState(false);
 
-  const isLoading = fieldsLoading || equipLoading;
-  const hasError  = !!fieldsError || !!equipError;
+  const isLoading = loading;
+  const hasError  = !!error;
 
   const stats = useMemo(() => {
     const nonClassifiers = fields.filter((f) => !isClassifier(f));
@@ -110,15 +104,13 @@ export function TaulaMasterMain() {
                 <WifiOff className="h-5 w-5 text-amber-600 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-amber-800">Error carregant dades</p>
-                  <p className="text-xs text-amber-700 truncate">
-                    {fieldsError ?? equipError}
-                  </p>
+                  <p className="text-xs text-amber-700 truncate">{error}</p>
                 </div>
                 <Button
                   size="sm"
                   variant="outline"
                   className="border-amber-300 text-amber-800 hover:bg-amber-100 shrink-0"
-                  onClick={() => { retryFields(); retryEquip(); }}
+                  onClick={retry}
                 >
                   <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
                   Reintenta

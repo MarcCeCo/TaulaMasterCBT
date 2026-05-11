@@ -5,6 +5,18 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
+ * ─── Colors de marca CBT ─────────────────────────────────────────────────────
+ * Consorci Besòs Tordera — colors corporatius.
+ * Ús: var(--cbt-primary), var(--cbt-primary-dark), var(--cbt-bg)
+ * Centralitzem aquí per no tenir hex hardcoded als components.
+ */
+:root {
+  --cbt-primary:      #0099A8;
+  --cbt-primary-dark: #006E7A;
+  --cbt-bg:           #F5F7F8;
+}
+
+/*
  * Design system definition.
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility
