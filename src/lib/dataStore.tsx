@@ -184,7 +184,7 @@ export const useDataStore = (): DataStoreValue => {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function DataStoreProvider({ children }: { children: ReactNode }) {
-  const { getToken } = useAuth();
+  const { getToken, loading: authLoading } = useAuth();
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [rawFields,  setRawFields]  = useState<FieldMeta[]>([]);
   const [gubimRaw,   setGubimRaw]   = useState<GubimNode[]>([]);
@@ -236,7 +236,11 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [getToken]);
 
-  useEffect(() => { load(); }, [load]);
+  // Esperem que AuthProvider hagi llegit la sessió del localStorage abans de
+  // carregar dades. Sense això, getToken() retorna "" i les crides fallen amb 401.
+  useEffect(() => {
+    if (!authLoading) load();
+  }, [authLoading, load]);
 
   // TOKEN_REFRESHED + visibilitychange — mateix patró que AuthProvider
   useEffect(() => {
