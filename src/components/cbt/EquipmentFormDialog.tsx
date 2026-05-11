@@ -99,9 +99,14 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{editing ? "Edita equip" : "Nou equip"}</DialogTitle></DialogHeader>
-        <div className="grid grid-cols-2 gap-3">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogHeader className="border-b pb-3">
+          <DialogTitle className="text-base font-semibold">
+            {editing ? "Edita equip" : "Nou equip"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="overflow-y-auto flex-1 pr-1">
+        <div className="grid grid-cols-2 gap-3 py-2">
           {/* GuBIMClass - ocupa tota l'amplada */}
           <div className="col-span-2 space-y-1.5">
             <Label>GuBIMClass *</Label>
@@ -171,9 +176,10 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
             </>
           )}
         </div>
-        <DialogFooter>
+        </div>
+        <DialogFooter className="border-t pt-3">
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel·la</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? "Desant…" : (editing ? "Desa" : "Crea")}</Button>
+          <Button onClick={submit} disabled={saving} className="bg-[#0099A8] hover:bg-[#006E7A]">{saving ? "Desant…" : (editing ? "Desa" : "Crea")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
