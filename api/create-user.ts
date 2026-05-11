@@ -2,9 +2,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
 
-const ALLOWED_ORIGIN = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:5173";
+const ALLOWED_ORIGIN = process.env.APP_URL ?? "http://localhost:5173";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
