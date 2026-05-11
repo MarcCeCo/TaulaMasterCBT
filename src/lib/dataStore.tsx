@@ -154,9 +154,10 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const [gubimRaw,   setGubimRaw]   = useState<GubimNode[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState<string | null>(null);
-  const loadingRef    = useRef(false);
-  // Marca si s'ha produit un TOKEN_REFRESHED mentre la pestanya estava oculta.
-  // Quan la pestanya torna a ser visible, comprovem aquest flag i recarreguem.
+  const loadingRef     = useRef(false);
+  // Mateix patró que AuthProvider/UserManagerDialog:
+  // quan el token es renova mentre la pestanya és oculta, marquem el flag
+  // i recarreguem en tornar — sense cridar mai getSession() que pot bloquejar.
   const needsReloadRef = useRef(false);
 
   // ── Càrrega paral·lela única ──────────────────────────────────────────────
@@ -211,39 +212,27 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Reconnexió automàtica en tornar a la pestanya ─────────────────────────
-  // Quan la pestanya queda inactiva, Supabase pot renovar el token en segon pla
-  // (event TOKEN_REFRESHED). Si mentrestant hi havia operacions pendents,
-  // poden haver fallat silenciosament. Quan la pestanya torna a ser visible:
-  //  1. Si s'havia produït un TOKEN_REFRESHED mentre estava oculta → recarreguem.
-  //  2. Sempre comprovem si el store estava en error → reintentem.
+  // Mateix patró que AuthProvider: Supabase dispara TOKEN_REFRESHED automàticament
+  // quan renova el token (inclús en tornar a una pestanya inactiva).
+  // En lloc de cridar getSession() — que pot bloquejar-se mentre el WebSocket reconnecta —
+  // llegim el token del ref (via getToken()) i recarreguem les dades.
   useEffect(() => {
-    // Subscripció als events d'autenticació de Supabase
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "TOKEN_REFRESHED") {
         if (document.hidden) {
-          // La pestanya és oculta: marquem que cal recarregar en tornar
+          // Pestanya oculta: no recarreguem ara per no consumir xarxa innecessàriament.
+          // Quan l'usuari torni, visibilitychange ho detectarà.
           needsReloadRef.current = true;
         } else {
-          // La pestanya és visible: recarreguem directament
           load();
         }
-      }
-      if (event === "SIGNED_OUT") {
-        // Netegem l'estat local en tancar sessió
-        setEquipments([]);
-        setRawFields([]);
-        setGubimRaw([]);
       }
     });
 
-    // Listener de visibilitat: quan l'usuari torna a la pestanya
     const handleVisibility = () => {
-      if (!document.hidden) {
-        if (needsReloadRef.current) {
-          needsReloadRef.current = false;
-          load();
-        }
+      if (!document.hidden && needsReloadRef.current) {
+        needsReloadRef.current = false;
+        load();
       }
     };
 
