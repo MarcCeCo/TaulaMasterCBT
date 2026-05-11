@@ -7,6 +7,12 @@
  *    i múltiples instàncies si el component es muntava en llocs diferents.
  *  - Ara: UNA sola càrrega paral·lela al inici, resultat compartit via Context.
  *    Tots els components llegeixen des d'aquí sense duplicar peticions ni estat.
+ *
+ * Token / reconnexió:
+ *  - TOTES les operacions (lectura i escriptura) usen fetch directe amb Bearer
+ *    token llegit del ref via getToken() — igual que UserManagerDialog.
+ *  - Això evita que el client supabase quedi bloquejat mentre reconecta el
+ *    WebSocket en tornar a una pestanya inactiva.
  */
 
 import {
@@ -21,19 +27,52 @@ import {
   type ReactNode,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
 import { uid } from "@/lib/storage";
 import { type FieldMeta, sortByClassification } from "@/lib/fields";
 import { type GubimNode, isValidCode, parentCode } from "@/hooks/useGubimClass";
 import { type Equipment } from "@/hooks/useEquipments";
 
-// ─── Helper: detecta errors d'autenticació i força renovació ─────────────────
-// Si Supabase retorna "JWT expired" o similar, recarreguem la pàgina per
-// forçar una nova sessió — és la solució més segura per a SPAs
-function handleSupabaseError(error: { message: string; code?: string } | null) {
-  if (!error) return;
-  // El client Supabase (autoRefreshToken: true) gestiona la renovació del token.
-  // No cridem refreshSession() manualment per evitar interferències.
-  throw new Error(error.message);
+// URL i clau anon — per construir les URLs de la REST API de Supabase
+const SUPA_URL = (import.meta.env.VITE_SUPABASE_URL as string).trim();
+const SUPA_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim();
+
+// ─── Helper: fetch directe a Supabase REST API ────────────────────────────────
+// Mateix patró que UserManagerDialog: token síncron del ref, mai getSession().
+// method: GET | POST | PATCH | DELETE
+// path: p.ex. "equipments?id=eq.xxx" (sense /rest/v1/)
+// body: objecte que es serialitza a JSON (opcional)
+// extraHeaders: capçaleres addicionals (p.ex. Prefer per a upsert)
+async function supa(
+  token: string,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<any[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
+  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
+    method,
+    signal: controller.signal,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "apikey": SUPA_KEY,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation",
+      ...extraHeaders,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  }).finally(() => clearTimeout(timeout));
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`[${method} ${path}] ${res.status}: ${text}`);
+  }
+
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
 }
 
 // ─── Conversors ──────────────────────────────────────────────────────────────
@@ -98,12 +137,10 @@ const toNode = (row: any): GubimNode => ({ id: row.id, code: row.code, name: row
 // ─── Tipus del Context ────────────────────────────────────────────────────────
 
 export interface DataStoreValue {
-  // Estat global
   loading: boolean;
   error:   string | null;
   retry:   () => void;
 
-  // ── Equipments ──
   equipments:    Equipment[];
   upsertEquip:   (e: Equipment) => Promise<void>;
   removeEquip:   (id: string) => Promise<void>;
@@ -112,9 +149,8 @@ export interface DataStoreValue {
   isEquipCodeTaken: (code: string, excludeId?: string) => boolean;
   removeFieldColFromAll: (col: string) => Promise<void>;
 
-  // ── Fields ──
   rawFields:    FieldMeta[];
-  fields:       FieldMeta[];       // ordenats per classificació
+  fields:       FieldMeta[];
   fieldMap:     Map<string, FieldMeta>;
   addField:     (f: FieldMeta) => Promise<void>;
   addManyFields:(arr: FieldMeta[]) => Promise<{ inserted: number; duplicates: number }>;
@@ -126,7 +162,6 @@ export interface DataStoreValue {
   fieldGroups:  string[];
   fieldDisciplines: string[];
 
-  // ── GubimClass ──
   gubimNodes:   GubimNode[];
   gubimNodeMap: Map<string, GubimNode>;
   addGubimNode: (n: Omit<GubimNode, "id">) => Promise<void>;
@@ -149,79 +184,65 @@ export const useDataStore = (): DataStoreValue => {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function DataStoreProvider({ children }: { children: ReactNode }) {
+  const { getToken } = useAuth();
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [rawFields,  setRawFields]  = useState<FieldMeta[]>([]);
   const [gubimRaw,   setGubimRaw]   = useState<GubimNode[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState<string | null>(null);
   const loadingRef     = useRef(false);
-  // Mateix patró que AuthProvider/UserManagerDialog:
-  // quan el token es renova mentre la pestanya és oculta, marquem el flag
-  // i recarreguem en tornar — sense cridar mai getSession() que pot bloquejar.
   const needsReloadRef = useRef(false);
 
-  // ── Càrrega paral·lela única ──────────────────────────────────────────────
+  // ── Càrrega ───────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
     setError(null);
 
+    const token = getToken();
+    console.log("[DataStore.load] token:", token ? "OK" : "BUIT");
+
     try {
-      // Les 3 peticions en PARAL·LEL — era el major coll d'ampolla
-      const [equipRes, fieldsRes, gubimRes] = await Promise.all([
-        supabase.from("equipments").select("*").order("equip_code"),
-        supabase.from("fields").select("*"),
-        (async () => {
-          // Supabase limita a 1000 files per defecte — paginació per carregar-ho tot
-          const all: any[] = [];
-          const PAGE = 1000;
-          let from = 0;
-          while (true) {
-            const { data, error } = await supabase
-              .from("gubim_class").select("*").order("code")
-              .range(from, from + PAGE - 1);
-            if (error) return { data: null, error };
-            all.push(...(data ?? []));
-            if ((data ?? []).length < PAGE) break;
-            from += PAGE;
-          }
-          return { data: all, error: null };
-        })(),
+      const [equipData, fieldsData] = await Promise.all([
+        supa(token, "GET", "equipments?select=*&order=equip_code.asc"),
+        supa(token, "GET", "fields?select=*"),
       ]);
 
-      const errs = [equipRes.error, fieldsRes.error, gubimRes.error].filter(Boolean);
-      if (errs.length > 0) {
-        setError(errs[0]!.message);
-      } else {
-        // PERF: startTransition marca aquestes actualitzacions com a no urgents
-        // React pot interrompre el render si hi ha interaccions pendents (p.ex. click)
-        startTransition(() => {
-          setEquipments((equipRes.data ?? []).map(toEquip));
-          setRawFields((fieldsRes.data ?? []).map(toMeta));
-          setGubimRaw((gubimRes.data ?? []).map(toNode));
-        });
+      // gubim_class: paginació (Supabase limita a 1000 files per defecte)
+      const all: any[] = [];
+      const PAGE = 1000;
+      let from = 0;
+      while (true) {
+        const page = await supa(
+          token, "GET",
+          `gubim_class?select=*&order=code.asc&offset=${from}&limit=${PAGE}`
+        );
+        all.push(...page);
+        if (page.length < PAGE) break;
+        from += PAGE;
       }
+
+      startTransition(() => {
+        setEquipments(equipData.map(toEquip));
+        setRawFields(fieldsData.map(toMeta));
+        setGubimRaw(all.map(toNode));
+      });
     } catch (e: any) {
       setError(e?.message ?? "Error de xarxa");
     } finally {
       setLoading(false);
       loadingRef.current = false;
     }
-  }, []);
+  }, [getToken]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Mateix patró que AuthProvider: Supabase dispara TOKEN_REFRESHED automàticament
-  // quan renova el token (inclús en tornar a una pestanya inactiva).
-  // En lloc de cridar getSession() — que pot bloquejar-se mentre el WebSocket reconnecta —
-  // llegim el token del ref (via getToken()) i recarreguem les dades.
+  // TOKEN_REFRESHED + visibilitychange — mateix patró que AuthProvider
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "TOKEN_REFRESHED") {
         if (document.hidden) {
-          // Pestanya oculta: no recarreguem ara per no consumir xarxa innecessàriament.
-          // Quan l'usuari torni, visibilitychange ho detectarà.
           needsReloadRef.current = true;
         } else {
           load();
@@ -237,14 +258,13 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
-
     return () => {
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [load]);
 
-  // ── Derivats amb memo ─────────────────────────────────────────────────────
+  // ── Derivats ──────────────────────────────────────────────────────────────
   const fields = useMemo(() => sortByClassification(rawFields), [rawFields]);
 
   const fieldMap = useMemo(() => {
@@ -259,7 +279,6 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const gubimNodeMap = useMemo(() => {
-    // Guarda el PRIMER node per codi (el "mare") — codis repetits = equip mare + components
     const m = new Map<string, GubimNode>();
     gubimNodes.forEach((n) => { if (!m.has(n.code)) m.set(n.code, n); });
     return m;
@@ -276,20 +295,23 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   );
 
   // ── Equipments: mutacions ─────────────────────────────────────────────────
+
   const upsertEquip = useCallback(async (e: Equipment) => {
-    const { error } = await supabase.from("equipments").upsert(equipToRow(e), { onConflict: "id" });
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "POST", "equipments?on_conflict=id", equipToRow(e), {
+      "Prefer": "return=representation,resolution=merge-duplicates",
+    });
     setEquipments((prev) => {
       const idx = prev.findIndex((p) => p.id === e.id);
       return idx >= 0 ? prev.map((p, i) => (i === idx ? e : p)) : [...prev, e];
     });
-  }, []);
+  }, [getToken]);
 
   const removeEquip = useCallback(async (id: string) => {
-    const { error } = await supabase.from("equipments").delete().eq("id", id);
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "DELETE", `equipments?id=eq.${id}`);
     setEquipments((prev) => prev.filter((e) => e.id !== id));
-  }, []);
+  }, [getToken]);
 
   const addManyEquips = useCallback(async (arr: Equipment[]) => {
     const seen = new Set(
@@ -303,22 +325,22 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       return true;
     });
     if (toAdd.length === 0) return;
+    const token = getToken();
     const BATCH = 50;
     for (let i = 0; i < toAdd.length; i += BATCH) {
-      const { error } = await supabase.from("equipments").upsert(
+      await supa(token, "POST", "equipments?on_conflict=id",
         toAdd.slice(i, i + BATCH).map(equipToRow),
-        { onConflict: "id" },
+        { "Prefer": "return=representation,resolution=merge-duplicates" },
       );
-      handleSupabaseError(error);
     }
     setEquipments((prev) => [...prev, ...toAdd]);
-  }, [equipments]);
+  }, [getToken, equipments]);
 
   const clearEquips = useCallback(async () => {
-    const { error } = await supabase.from("equipments").delete().neq("id", "");
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "DELETE", `equipments?id=neq.`);
     setEquipments([]);
-  }, []);
+  }, [getToken]);
 
   const isEquipCodeTaken = useCallback(
     (code: string, excludeId?: string) =>
@@ -329,13 +351,14 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const removeFieldColFromAll = useCallback(async (col: string) => {
     const affected = equipments.filter((e) => e.fieldCols.includes(col));
     if (affected.length === 0) return;
+    const token = getToken();
     const CONCURRENCY = 10;
     for (let i = 0; i < affected.length; i += CONCURRENCY) {
       await Promise.all(
         affected.slice(i, i + CONCURRENCY).map((e) =>
-          supabase.from("equipments")
-            .update({ field_cols: e.fieldCols.filter((c) => c !== col) })
-            .eq("id", e.id),
+          supa(token, "PATCH", `equipments?id=eq.${e.id}`,
+            { field_cols: e.fieldCols.filter((c) => c !== col) }
+          )
         ),
       );
     }
@@ -346,16 +369,19 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
           : e,
       ),
     );
-  }, [equipments]);
+  }, [getToken, equipments]);
 
   // ── Fields: mutacions ─────────────────────────────────────────────────────
+
   const addField = useCallback(async (f: FieldMeta) => {
     const col = f.col.toUpperCase();
     if (fieldMap.has(col)) throw new Error("El camp ja existeix");
-    const { error } = await supabase.from("fields").upsert(fieldToRow({ ...f, col }), { onConflict: "col" });
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "POST", "fields?on_conflict=col", fieldToRow({ ...f, col }), {
+      "Prefer": "return=representation,resolution=merge-duplicates",
+    });
     setRawFields((prev) => [...prev, { ...f, col }]);
-  }, [fieldMap]);
+  }, [getToken, fieldMap]);
 
   const addManyFields = useCallback(async (arr: FieldMeta[]): Promise<{ inserted: number; duplicates: number }> => {
     const existingCols  = new Set(rawFields.map((f) => f.col));
@@ -376,13 +402,13 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     }).filter(Boolean) as FieldMeta[];
 
     if (toAdd.length > 0) {
+      const token = getToken();
       const BATCH = 50;
       for (let i = 0; i < toAdd.length; i += BATCH) {
-        const { error } = await supabase.from("fields").upsert(
+        await supa(token, "POST", "fields?on_conflict=col",
           toAdd.slice(i, i + BATCH).map(fieldToRow),
-          { onConflict: "col" },
+          { "Prefer": "return=representation,resolution=merge-duplicates" },
         );
-        handleSupabaseError(error);
       }
       setRawFields((prev) => {
         const prevCols = new Set(prev.map((f) => f.col));
@@ -390,48 +416,44 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       });
     }
     return { inserted: toAdd.length, duplicates };
-  }, [rawFields]);
+  }, [getToken, rawFields]);
 
   const updateField = useCallback(async (col: string, patch: Partial<FieldMeta>) => {
     const merged = { ...fieldMap.get(col), ...patch, col } as FieldMeta;
-    const { error } = await supabase.from("fields").update(fieldToRow(merged)).eq("col", col);
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "PATCH", `fields?col=eq.${encodeURIComponent(col)}`, fieldToRow(merged));
     setRawFields((prev) => prev.map((f) => (f.col === col ? merged : f)));
-  }, [fieldMap]);
+  }, [getToken, fieldMap]);
 
   const removeField = useCallback(async (col: string) => {
-    const { error } = await supabase.from("fields").delete().eq("col", col);
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "DELETE", `fields?col=eq.${encodeURIComponent(col)}`);
     setRawFields((prev) => prev.filter((f) => f.col !== col));
-  }, []);
+  }, [getToken]);
 
   const clearFields = useCallback(async () => {
-    const { error } = await supabase.from("fields").delete().neq("col", "");
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "DELETE", `fields?col=neq.`);
     setRawFields([]);
-  }, []);
+  }, [getToken]);
 
   // ── GubimClass: mutacions ─────────────────────────────────────────────────
+
   const addGubimNode = useCallback(async (n: Omit<GubimNode, "id">) => {
     if (!isValidCode(n.code)) throw new Error("Format de codi invàlid");
     const p = parentCode(n.code);
     if (p && !gubimNodeMap.has(p)) throw new Error(`El node pare ${p} no existeix`);
-    // Permet codi repetit si el nom és diferent (equip mare + components)
-    // Duplicat = mateix codi I mateix nom → error
     const alreadyExists = gubimRaw.some((x) => x.code === n.code && x.name === n.name);
     if (alreadyExists) throw new Error("Aquest node (codi + nom) ja existeix");
     const row = { id: uid(), code: n.code, name: n.name };
-    const { error } = await supabase.from("gubim_class").insert(row);
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "POST", "gubim_class", row);
     setGubimRaw((prev) => [...prev, row]);
-  }, [gubimNodeMap, gubimRaw]);
+  }, [getToken, gubimNodeMap, gubimRaw]);
 
   const addManyGubim = useCallback(async (
     arr: Omit<GubimNode, "id">[],
   ): Promise<{ inserted: number; autoCreated: number; duplicates: number }> => {
-    // seenCodes: codis existents (per validar que el pare existeix abans d'inserir el fill)
-    // seenCodeName: parells code||name existents (deduplicació real — mateix codi, mateix nom = duplicat)
-    // Un mateix codi amb nom diferent és VÀLID: representa equip mare + components
     const seenCodes    = new Set(gubimRaw.map((n) => n.code));
     const seenCodeName = new Set(gubimRaw.map((n) => `${n.code}||${n.name}`));
 
@@ -446,10 +468,9 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
     const processNode = (n: Omit<GubimNode, "id">) => {
       const key = `${n.code}||${n.name}`;
-      // Duplicat = mateix codi I mateix nom
       if (seenCodeName.has(key)) { duplicates++; return; }
       seenCodeName.add(key);
-      seenCodes.add(n.code); // marca el codi com a "existent" per desbloquejar fills
+      seenCodes.add(n.code);
       toUpsert.push({ id: uid(), code: n.code, name: n.name });
     };
 
@@ -484,21 +505,17 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       processNode(n);
     }
 
-    // Insert simple: els codis ja existents han estat filtrats per seenCodes
-    // No usem upsert perquè la taula pot no tenir constraint UNIQUE sobre code
+    const token = getToken();
     const BATCH = 50;
     for (let i = 0; i < toUpsert.length; i += BATCH) {
-      const { error } = await supabase
-        .from("gubim_class")
-        .insert(toUpsert.slice(i, i + BATCH));
-      handleSupabaseError(error);
+      await supa(token, "POST", "gubim_class", toUpsert.slice(i, i + BATCH));
     }
 
     if (toUpsert.length > 0) {
       setGubimRaw((prev) => [...prev, ...toUpsert]);
     }
     return { inserted: toUpsert.length - autoCreated, autoCreated, duplicates };
-  }, [gubimRaw]);
+  }, [getToken, gubimRaw]);
 
   const updateGubimNode = useCallback(async (id: string, patch: Partial<GubimNode>) => {
     const target = gubimRaw.find((n) => n.id === id);
@@ -506,35 +523,38 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     const oldCode = target.code;
     const newCode = patch.code ?? oldCode;
     const newName = patch.name ?? target.name;
+    const token = getToken();
 
     if (newCode !== oldCode) {
       const descendants = gubimRaw.filter((n) => n.code.startsWith(oldCode + "."));
-      for (const d of descendants) {
-        const updatedCode = newCode + d.code.slice(oldCode.length);
-        await supabase.from("gubim_class").update({ code: updatedCode }).eq("id", d.id);
-      }
+      await Promise.all(
+        descendants.map((d) =>
+          supa(token, "PATCH", `gubim_class?id=eq.${d.id}`,
+            { code: newCode + d.code.slice(oldCode.length) }
+          )
+        )
+      );
     }
-    const { error } = await supabase.from("gubim_class").update({ code: newCode, name: newName }).eq("id", id);
-    handleSupabaseError(error);
+    await supa(token, "PATCH", `gubim_class?id=eq.${id}`, { code: newCode, name: newName });
     setGubimRaw((prev) => prev.map((n) => {
       if (n.id === id) return { ...n, code: newCode, name: newName };
       if (newCode !== oldCode && n.code.startsWith(oldCode + "."))
         return { ...n, code: newCode + n.code.slice(oldCode.length) };
       return n;
     }));
-  }, [gubimRaw]);
+  }, [getToken, gubimRaw]);
 
   const removeGubimNode = useCallback(async (id: string) => {
-    const { error } = await supabase.from("gubim_class").delete().eq("id", id);
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "DELETE", `gubim_class?id=eq.${id}`);
     setGubimRaw((prev) => prev.filter((n) => n.id !== id));
-  }, []);
+  }, [getToken]);
 
   const clearGubim = useCallback(async () => {
-    const { error } = await supabase.from("gubim_class").delete().neq("id", "");
-    handleSupabaseError(error);
+    const token = getToken();
+    await supa(token, "DELETE", `gubim_class?id=neq.`);
     setGubimRaw([]);
-  }, []);
+  }, [getToken]);
 
   const gubimExists      = useCallback((code: string) => gubimNodeMap.has(code), [gubimNodeMap]);
   const gubimHasChildren = useCallback(
@@ -546,14 +566,11 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
   const value: DataStoreValue = {
     loading, error, retry: load,
-    // Equipments
     equipments, upsertEquip, removeEquip, addManyEquips, clearEquips,
     isEquipCodeTaken, removeFieldColFromAll,
-    // Fields
     rawFields, fields, fieldMap,
     addField, addManyFields, updateField, removeField, clearFields,
     fieldExists, isCustomField, fieldGroups, fieldDisciplines,
-    // GubimClass
     gubimNodes, gubimNodeMap,
     addGubimNode, addManyGubim, updateGubimNode, removeGubimNode, clearGubim,
     gubimExists, gubimHasChildren,
