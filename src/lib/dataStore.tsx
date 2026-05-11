@@ -184,7 +184,7 @@ export const useDataStore = (): DataStoreValue => {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function DataStoreProvider({ children }: { children: ReactNode }) {
-  const { getToken, loading: authLoading } = useAuth();
+  const { getToken, loading: authLoading, user } = useAuth();
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [rawFields,  setRawFields]  = useState<FieldMeta[]>([]);
   const [gubimRaw,   setGubimRaw]   = useState<GubimNode[]>([]);
@@ -236,15 +236,22 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [getToken]);
 
-  // Esperem que AuthProvider hagi llegit la sessió del localStorage abans de
-  // carregar dades. Sense això, getToken() retorna "" i les crides fallen amb 401.
+  // Carreguem dades quan:
+  // 1. AuthProvider ha acabat de llegir la sessió (authLoading = false)
+  // 2. Hi ha un usuari logat (user != null)
+  // 3. El token és present al ref (getToken() != "")
+  // Sense aquesta guarda, load() s'executa amb token buit i falla amb 401.
   useEffect(() => {
-    if (!authLoading) load();
-  }, [authLoading, load]);
+    if (!authLoading && user && getToken()) load();
+  }, [authLoading, user, getToken, load]);
 
   // TOKEN_REFRESHED + visibilitychange — mateix patró que AuthProvider
+  // També escoltem SIGNED_IN per carregar dades quan l'usuari fa login.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        load();
+      }
       if (event === "TOKEN_REFRESHED") {
         if (document.hidden) {
           needsReloadRef.current = true;
