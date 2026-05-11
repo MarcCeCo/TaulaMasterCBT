@@ -58,6 +58,19 @@ const ROLE_COLORS: Record<UserRole, string> = {
   admin: "bg-violet-100 text-violet-700",
 };
 
+// Retorna sempre un token vàlid: refresca la sessió si el token caduca en menys de 5 min
+async function getFreshToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return "";
+  const expiresAt = session.expires_at ?? 0;
+  const nowSecs   = Math.floor(Date.now() / 1000);
+  if (expiresAt - nowSecs < 5 * 60) {
+    const { data } = await supabase.auth.refreshSession();
+    return data.session?.access_token ?? "";
+  }
+  return session.access_token;
+}
+
 export function UserManagerDialog({ open, onOpenChange }: Props) {
   const { profile: myProfile } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -78,25 +91,47 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
-      const res = await fetch("/api/list-users", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setUsers((json.users ?? []) as UserProfile[]);
-      } else {
+      const token = await getFreshToken();
+      console.log("[fetchUsers] token obtingut:", token ? "OK" : "BUIT");
+
+      // Timeout de 10s per si la funcio serverless tarda a despertar (cold start)
+      const controller = new AbortController();
+      const apiTimeout = setTimeout(() => controller.abort(), 10000);
+
+      let usedApi = false;
+      try {
+        const res = await fetch("/api/list-users", {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal,
+        });
+        clearTimeout(apiTimeout);
+        console.log("[fetchUsers] /api/list-users status:", res.status);
+        if (res.ok) {
+          const json = await res.json();
+          setUsers((json.users ?? []) as UserProfile[]);
+          usedApi = true;
+        }
+      } catch (apiErr) {
+        clearTimeout(apiTimeout);
+        console.warn("[fetchUsers] API fallback a Supabase directe:", apiErr);
+      }
+
+      // Fallback: si l'API no ha respost, llegim directament de Supabase
+      if (!usedApi) {
         const { data, error } = await supabase
           .from("user_profiles")
           .select("id, email, full_name, role, allowed_views")
           .order("email");
+        console.log("[fetchUsers] fallback supabase:", { count: data?.length, error });
         if (!error && data) setUsers(data as UserProfile[]);
         else toast.error("Error carregant usuaris");
       }
-    } catch {
+    } catch (err) {
+      console.error("[fetchUsers] error general:", err);
       toast.error("Error carregant usuaris");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -108,21 +143,27 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
     if (!email.trim()) return toast.error("El correu és obligatori");
     setSubmitting(true);
     try {
-      const res = await fetch("/api/create-user", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${
-            (await supabase.auth.getSession()).data.session?.access_token ?? ""
-          }`,
-        },
-        body: JSON.stringify({
-          email: email.trim(),
-          full_name: fullName.trim(),
-          role,
-          allowed_views: newUserViews,
-        }),
-      });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000); // 15s màxim
+      let res: Response;
+      try {
+        res = await fetch("/api/create-user", {
+          method: "POST",
+          signal: controller.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${await getFreshToken()}`,
+          },
+          body: JSON.stringify({
+            email: email.trim(),
+            full_name: fullName.trim(),
+            role,
+            allowed_views: newUserViews,
+          }),
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error convidant usuari");
       toast.success(`Invitació enviada a ${email}`);
@@ -132,7 +173,11 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
       setNewUserViews([...ALL_VIEWS]);
       await fetchUsers();
     } catch (err: any) {
-      toast.error(err.message ?? "Error desconegut");
+      if (err.name === "AbortError") {
+        toast.error("La invitació ha trigat massa. Comprova la configuració SMTP de Supabase.");
+      } else {
+        toast.error(err.message ?? "Error desconegut");
+      }
     } finally {
       setSubmitting(false);
     }
@@ -157,7 +202,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
 
   const handleDelete = async (userId: string, userEmail: string) => {
     try {
-      const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+      const token = await getFreshToken();
       const res = await fetch("/api/delete-user", {
         method: "DELETE",
         headers: {
