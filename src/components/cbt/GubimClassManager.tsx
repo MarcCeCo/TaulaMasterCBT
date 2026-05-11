@@ -36,6 +36,12 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
 
   const reset = () => { setCode(""); setName(""); setEditing(null); setCodeError(""); setNameError(""); };
 
+  // Reset filtre quan es tanca el diàleg
+  const handleOpenChange = (val: boolean) => {
+    if (!val) { setQ(""); setScrollTop(0); containerRef.current?.scrollTo(0, 0); }
+    onOpenChange(val);
+  };
+
   const validateName = (val: string) => {
     if (!val) { setNameError(""); return; }
     const existingName = nodes.find((n) => n.name.trim().toLowerCase() === val.trim().toLowerCase() && n.id !== editing?.id);
@@ -145,7 +151,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   }, [sorted]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <div className="flex items-center justify-between">
@@ -228,7 +234,14 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
           {/* PERF: TooltipProvider hoisted aquí (1 instància), no dins de cada fila */}
           <TooltipProvider>
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-muted border-b">
+              <colgroup>
+                <col style={{ width: 120 }} />
+                <col />
+                <col style={{ width: 80 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 90 }} />
+              </colgroup>
+            <thead className="sticky top-0 z-10 bg-white border-b shadow-sm">
               <tr className="text-left">
                 <th className="p-2 text-xs font-semibold">Codi</th>
                 <th className="p-2 text-xs font-semibold">Nom</th>
@@ -271,8 +284,8 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                       return (
                         <tr key={n.id} className={cn("border-t hover:bg-muted/30", isEditing && "bg-accent/40")}>
                           <td className={cn("p-2 font-mono text-xs", indent)}>{n.code}</td>
-                          <td className="p-2">
-                            <div className={cn("flex items-center gap-1", isComponent && "pl-5")}>
+                          <td className="p-2 break-words">
+                            <div className={cn("flex items-center gap-1 min-w-0", isComponent && "pl-5")}>
                               {isComponent && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
                               {n.name}
                             </div>
