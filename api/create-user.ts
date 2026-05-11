@@ -56,7 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     email,
     {
       data: { full_name, role },
-      redirectTo: `${process.env.VITE_APP_URL ?? ALLOWED_ORIGIN}/?invited=true`,
+      redirectTo: process.env.APP_URL ?? "https://taula-master-cbt.vercel.app",
     }
   );
 
