@@ -156,13 +156,23 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   };
 
   const handleDelete = async (userId: string, userEmail: string) => {
-    const { error } = await supabase
-      .from("user_profiles")
-      .update({ role: "viewer" })
-      .eq("id", userId);
-    if (error) return toast.error("Error desactivant usuari");
-    toast.success(`${userEmail} degradat a visualitzador`);
-    await fetchUsers();
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+      const res = await fetch("/api/delete-user", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Error eliminant usuari");
+      toast.success(`${userEmail} eliminat correctament`);
+      await fetchUsers();
+    } catch (err: any) {
+      toast.error(err.message ?? "Error eliminant usuari");
+    }
   };
 
   const toggleView = (
@@ -437,17 +447,19 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                   <AlertDialogHeader>
-                                    <AlertDialogTitle>Degradar usuari?</AlertDialogTitle>
+                                    <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      {u.email} perdrà els permisos actuals i passarà a ser
-                                      visualitzador. Per eliminar-lo completament cal accedir
-                                      al panell de Supabase.
+                                      S'eliminarà <strong>{u.email}</strong> de forma permanent.
+                                      Aquesta acció no es pot desfer.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                                    <AlertDialogAction onClick={() => handleDelete(u.id, u.email)}>
-                                      Degrada a visualitzador
+                                    <AlertDialogAction
+                                      className="bg-destructive hover:bg-destructive/90"
+                                      onClick={() => handleDelete(u.id, u.email)}
+                                    >
+                                      Elimina l'usuari
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
