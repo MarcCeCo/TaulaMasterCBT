@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -17,12 +17,7 @@ import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-
-function useDebounce<T>(value: T, ms = 200): T {
-  const [dv, setDv] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
-  return dv;
-}
+import { useDebounce } from "@/hooks/useDebounce";
 
 const GROUP_COLORS = [
   "border-l-violet-500 bg-violet-50/60 dark:bg-violet-950/30",

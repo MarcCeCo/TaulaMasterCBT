@@ -4,15 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="CBT TaulaMaster — Gestió d'actius i paràmetres tècnics BIM" />
+    <meta name="theme-color" content="#006E7A" />
+    <meta property="og:title" content="CBT · TaulaMaster" />
+    <meta property="og:description" content="Gestió d'actius BIM i paràmetres tècnics segons GuBIMClass" />
+    <meta property="og:type" content="website" />
     <title>CBT · TaulaMaster</title>
     <link rel="icon" type="image/png" href="/src/assets/Simbol_Web2.png" />
     <!--
       PERF: preconnect obre TCP+TLS a Supabase MENTRE el navegador
       carrega el JS → la primera petició de dades arriba ~200ms abans.
-      Substitueix <PROJECT_ID> pel teu ID real de Supabase.
     -->
     <link rel="preconnect" href="https://supabase.co" crossorigin />
-    <link rel="preconnect" href="https://<PROJECT_ID>.supabase.co" crossorigin />
     <link rel="dns-prefetch" href="https://supabase.co" />
     <!--
       PERF: modulepreload del chunk principal accelera el TTI
