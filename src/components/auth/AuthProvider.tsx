@@ -1,5 +1,5 @@
 // src/components/auth/AuthProvider.tsx
-import { useEffect, useState, useRef, type ReactNode } from "react";
+import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import {
@@ -38,19 +38,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  // Ref per evitar fetchProfile concurrent si onAuthStateChange dispara dues vegades seguit
   const fetchingProfileRef    = useRef(false);
+  // Token guardat en memòria — s'actualitza via onAuthStateChange
+  // Llegir-lo és SÍNCRON i mai bloqueja, a diferència de getSession()
+  const tokenRef              = useRef<string>("");
+
+  const getToken = useCallback(() => tokenRef.current, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    // ── Inicialització: llegim la sessió cached del localStorage ──────────────
-    // getSession() NO fa cap petició de xarxa — llegeix del storage local.
-    // El client Supabase (autoRefreshToken: true) ja s'encarrega de renovar el
-    // token quan cal, sense cap lògica manual nostra.
     async function init() {
+      // Inicialització: llegim la sessió del localStorage (operació local, no xarxa)
       const { data: { session } } = await supabase.auth.getSession();
       const u = session?.user ?? null;
+      tokenRef.current = session?.access_token ?? "";
 
       if (!cancelled) {
         setUser(u);
@@ -63,16 +65,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setLoading(false);
       }
 
-      // ── Listener d'events d'autenticació ─────────────────────────────────
-      // Supabase dispara TOKEN_REFRESHED automàticament quan el token caduca.
-      // SIGNED_IN: login o refresc inicial.
-      // SIGNED_OUT: logout o sessió invàlida detectada pel servidor.
-      // TOKEN_REFRESHED: el client ha renovat el token sol — no cal fer res més.
+      // onAuthStateChange és l'únic lloc on actualitzem el token.
+      // Supabase dispara TOKEN_REFRESHED automàticament quan el token caduca
+      // (inclús quan tornem a una pestanya inactiva) — aquí el capturem
+      // i actualitzem tokenRef sense cap lògica manual addicional.
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
           if (cancelled) return;
+
+          // Sempre actualitzem el token en memòria, sigui quin sigui l'event
+          tokenRef.current = session?.access_token ?? "";
+
           if (event === "INITIAL_SESSION") return;
-          if (event === "TOKEN_REFRESHED") return; // el client ja ho gestiona
 
           const u2 = session?.user ?? null;
           setUser(u2);
@@ -98,7 +102,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const cleanup = init();
-    // Fallback: si init() triga molt (xarxa lenta), desbloquegem la UI als 5s
     const timeout = setTimeout(() => { if (!cancelled) setLoading(false); }, 5000);
 
     return () => {
@@ -114,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    tokenRef.current = "";
     setUser(null);
     setProfile(null);
     setLoading(false);
@@ -132,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canEdit:    canEditRole(role),
         isAdmin:    isAdminRole(role),
         canSeeView: canSeeViewFn(profile, user),
+        getToken,
         signIn,
         signOut,
       }}

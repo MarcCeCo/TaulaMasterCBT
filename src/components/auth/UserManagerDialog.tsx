@@ -58,21 +58,10 @@ const ROLE_COLORS: Record<UserRole, string> = {
   admin: "bg-violet-100 text-violet-700",
 };
 
-// Retorna sempre un token vàlid: refresca la sessió si el token caduca en menys de 5 min
-async function getFreshToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return "";
-  const expiresAt = session.expires_at ?? 0;
-  const nowSecs   = Math.floor(Date.now() / 1000);
-  if (expiresAt - nowSecs < 5 * 60) {
-    const { data } = await supabase.auth.refreshSession();
-    return data.session?.access_token ?? "";
-  }
-  return session.access_token;
-}
+
 
 export function UserManagerDialog({ open, onOpenChange }: Props) {
-  const { profile: myProfile } = useAuth();
+  const { profile: myProfile, getToken } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -91,7 +80,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const token = await getFreshToken();
+      const token = getToken();
       console.log("[fetchUsers] token obtingut:", token ? "OK" : "BUIT");
 
       // Timeout de 10s per si la funcio serverless tarda a despertar (cold start)
@@ -143,8 +132,12 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
     if (!email.trim()) return toast.error("El correu és obligatori");
     setSubmitting(true);
     try {
+      console.log("[handleInvite] obtenint token...");
+      const token = getToken();
+      console.log("[handleInvite] token obtingut:", token ? "OK" : "BUIT");
+
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000); // 15s màxim
+      const timeout = setTimeout(() => controller.abort(), 15000); // 15s maxim
       let res: Response;
       try {
         res = await fetch("/api/create-user", {
@@ -152,7 +145,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
           signal: controller.signal,
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${await getFreshToken()}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
             email: email.trim(),
@@ -202,7 +195,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
 
   const handleDelete = async (userId: string, userEmail: string) => {
     try {
-      const token = await getFreshToken();
+      const token = getToken();
       const res = await fetch("/api/delete-user", {
         method: "DELETE",
         headers: {

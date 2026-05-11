@@ -30,6 +30,8 @@ export interface AuthContextValue {
   canEdit: boolean;
   isAdmin: boolean;
   canSeeView: (view: AppView) => boolean;
+  // Token en memòria — sempre síncron, mai bloqueja
+  getToken: () => string;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -42,6 +44,7 @@ export const AuthContext = createContext<AuthContextValue>({
   canEdit: false,
   isAdmin: false,
   canSeeView: () => true,
+  getToken: () => "",
   signIn: async () => {},
   signOut: async () => {},
 });
@@ -56,29 +59,13 @@ export const canEditRole = (role: UserRole) =>
 
 export const isAdminRole = (role: UserRole) => role === "admin";
 
-/**
- * Retorna true si l'usuari pot veure la vista donada.
- *
- * Lògica de fallback segura:
- * - Si no hi ha perfil PERÒ hi ha user (perfil encara carregant o error de BD):
- *   retorna TRUE per defecte — mai bloquejem per error tècnic.
- * - Si no hi ha ni user ni perfil: retorna false (no autenticat).
- * - Admin: sempre true.
- * - allowed_views === null: true (accés total, comportament per defecte).
- * - allowed_views array: comprova si la vista hi és.
- */
 export const canSeeViewFn =
   (profile: UserProfile | null, user: User | null = null) =>
   (view: AppView): boolean => {
-    // No autenticat
     if (!profile && !user) return false;
-    // Autenticat però perfil no carregat (error de BD, columna inexistent, etc.)
-    // → permetem accés per no bloquejar per raons tècniques
     if (!profile && user) return true;
     if (!profile) return false;
-    // Admin veu tot sempre
     if (profile.role === "admin") return true;
-    // null = totes les vistes
     if (profile.allowed_views === null) return true;
     return profile.allowed_views.includes(view);
   };
