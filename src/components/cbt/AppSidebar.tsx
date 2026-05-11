@@ -218,7 +218,7 @@ export function AppSidebar({
         <div className="flex items-center gap-2 mb-2">
           <div className="h-8 w-8 rounded-full bg-[#0099A8]/15 flex items-center justify-center shrink-0">
             <span className="text-xs font-bold text-[#006E7A]">
-              {(profile?.full_name ?? profile?.email ?? "?")[0].toUpperCase()}
+              {((profile?.full_name ?? profile?.email ?? "")[0] ?? "?").toUpperCase()}
             </span>
           </div>
           <div className="flex-1 min-w-0">
