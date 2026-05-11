@@ -37,7 +37,7 @@ import {
   ALL_VIEWS,
   VIEW_LABELS,
 } from "@/lib/auth";
-import { Pencil, Trash2, UserPlus, RefreshCw, Mail, Check, X } from "lucide-react";
+import { Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X, Info } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -63,10 +63,9 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Formulari nou usuari
+  // Formulari nou usuari (sense contrasenya)
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
-  const [password, setPassword] = useState("");
   const [role, setRole] = useState<UserRole>("viewer");
   const [newUserViews, setNewUserViews] = useState<AppView[]>([...ALL_VIEWS]);
   const [submitting, setSubmitting] = useState(false);
@@ -87,7 +86,6 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
         const json = await res.json();
         setUsers((json.users ?? []) as UserProfile[]);
       } else {
-        // Fallback: consulta directa (pot estar limitada per RLS)
         const { data, error } = await supabase
           .from("user_profiles")
           .select("id, email, full_name, role, allowed_views")
@@ -107,8 +105,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim())
-      return toast.error("Correu i contrasenya obligatoris");
+    if (!email.trim()) return toast.error("El correu és obligatori");
     setSubmitting(true);
     try {
       const res = await fetch("/api/create-user", {
@@ -121,18 +118,16 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
         },
         body: JSON.stringify({
           email: email.trim(),
-          password,
           full_name: fullName.trim(),
           role,
           allowed_views: newUserViews,
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Error creant usuari");
-      toast.success(`Usuari ${email} creat correctament`);
+      if (!res.ok) throw new Error(json.error ?? "Error convidant usuari");
+      toast.success(`Invitació enviada a ${email}`);
       setEmail("");
       setFullName("");
-      setPassword("");
       setRole("viewer");
       setNewUserViews([...ALL_VIEWS]);
       await fetchUsers();
@@ -146,7 +141,6 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   const startEditing = (u: UserProfile) => {
     setEditingId(u.id);
     setEditRole(u.role as UserRole);
-    // null = totes les vistes
     setEditViews(u.allowed_views ?? [...ALL_VIEWS]);
   };
 
@@ -162,13 +156,23 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   };
 
   const handleDelete = async (userId: string, userEmail: string) => {
-    const { error } = await supabase
-      .from("user_profiles")
-      .update({ role: "viewer" })
-      .eq("id", userId);
-    if (error) return toast.error("Error desactivant usuari");
-    toast.success(`${userEmail} degradat a visualitzador`);
-    await fetchUsers();
+    try {
+      const token = (await supabase.auth.getSession()).data.session?.access_token ?? "";
+      const res = await fetch("/api/delete-user", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ user_id: userId }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Error eliminant usuari");
+      toast.success(`${userEmail} eliminat correctament`);
+      await fetchUsers();
+    } catch (err: any) {
+      toast.error(err.message ?? "Error eliminant usuari");
+    }
   };
 
   const toggleView = (
@@ -191,13 +195,25 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        {/* Formulari invitació */}
+        {/* Formulari invitació — sense contrasenya */}
         <div className="border rounded-md p-4 bg-muted/30 space-y-3">
-          <p className="text-sm font-medium text-[#006E7A]">Convidar nou usuari</p>
+          <div className="flex items-start gap-2">
+            <p className="text-sm font-medium text-[#006E7A]">Convidar nou usuari</p>
+          </div>
+
+          {/* Nota informativa */}
+          <div className="flex items-start gap-2 p-2.5 rounded-md bg-[#0099A8]/5 border border-[#0099A8]/15 text-xs text-[#006E7A]">
+            <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+            <span>
+              L'usuari rebrà un correu d'invitació per establir la seva pròpia contrasenya.
+              Tu només has de configurar el rol i les vistes accessibles.
+            </span>
+          </div>
+
           <form onSubmit={handleInvite} className="space-y-3">
             <div className="flex flex-wrap gap-2 items-end">
-              <div className="space-y-1 flex-1 min-w-[180px]">
-                <label className="text-xs font-medium">Correu *</label>
+              <div className="space-y-1 flex-1 min-w-[200px]">
+                <label className="text-xs font-medium">Correu electrònic *</label>
                 <Input
                   type="email"
                   value={email}
@@ -206,23 +222,12 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                   required
                 />
               </div>
-              <div className="space-y-1 flex-1 min-w-[140px]">
+              <div className="space-y-1 flex-1 min-w-[160px]">
                 <label className="text-xs font-medium">Nom complet</label>
                 <Input
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="Nom i cognoms"
-                />
-              </div>
-              <div className="space-y-1 min-w-[160px]">
-                <label className="text-xs font-medium">Contrasenya inicial *</label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="mínim 6 caràcters"
-                  required
-                  minLength={6}
                 />
               </div>
               <div className="space-y-1 w-40">
@@ -240,7 +245,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
 
-            {/* Vistes accessibles per al nou usuari */}
+            {/* Vistes accessibles */}
             <div className="space-y-1.5">
               <label className="text-xs font-medium">Vistes accessibles</label>
               <div className="flex flex-wrap gap-3">
@@ -266,10 +271,11 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
               disabled={submitting}
               className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5"
             >
-              <Mail className="h-4 w-4" />
-              {submitting ? "Creant…" : "Crea usuari"}
+              <Send className="h-4 w-4" />
+              {submitting ? "Enviant invitació…" : "Envia invitació"}
             </Button>
           </form>
+
           <p className="text-xs text-muted-foreground">
             <strong>Visualitzador:</strong> només pot consultar dades.&nbsp;
             <strong>Editor:</strong> pot crear, editar i esborrar registres.&nbsp;
@@ -322,7 +328,6 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                       isMe && "bg-[#0099A8]/5"
                     )}
                   >
-                    {/* Correu */}
                     <td className="p-2 font-mono text-xs">
                       {u.email}
                       {isMe && (
@@ -331,11 +336,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                         </Badge>
                       )}
                     </td>
-
-                    {/* Nom */}
                     <td className="p-2 text-xs">{u.full_name ?? "—"}</td>
-
-                    {/* Rol */}
                     <td className="p-2">
                       {isEditing ? (
                         <Select
@@ -362,8 +363,6 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                         </Badge>
                       )}
                     </td>
-
-                    {/* Vistes */}
                     <td className="p-2">
                       {isEditing ? (
                         <div className="flex flex-wrap gap-2">
@@ -376,9 +375,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                               )}
                             >
                               <Checkbox
-                                checked={
-                                  editRole === "admin" || editViews.includes(v)
-                                }
+                                checked={editRole === "admin" || editViews.includes(v)}
                                 onCheckedChange={() =>
                                   toggleView(v, editViews, setEditViews)
                                 }
@@ -396,9 +393,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                       ) : (
                         <div className="flex flex-wrap gap-1">
                           {u.role === "admin" ? (
-                            <span className="text-[10px] text-muted-foreground italic">
-                              Totes
-                            </span>
+                            <span className="text-[10px] text-muted-foreground italic">Totes</span>
                           ) : (
                             effectiveViews.map((v) => (
                               <Badge
@@ -410,18 +405,12 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                               </Badge>
                             ))
                           )}
-                          {!isEditing &&
-                            u.role !== "admin" &&
-                            effectiveViews.length === 0 && (
-                              <span className="text-[10px] text-destructive">
-                                Cap vista
-                              </span>
-                            )}
+                          {!isEditing && u.role !== "admin" && effectiveViews.length === 0 && (
+                            <span className="text-[10px] text-destructive">Cap vista</span>
+                          )}
                         </div>
                       )}
                     </td>
-
-                    {/* Accions */}
                     <td className="p-2">
                       <div className="flex gap-1">
                         {isEditing ? (
@@ -431,56 +420,46 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                               className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] gap-1"
                               onClick={() => handleUpdateUser(u.id)}
                             >
-                              <Check className="h-3 w-3" />
-                              Desa
+                              <Check className="h-3 w-3" /> Desa
                             </Button>
                             <Button
-                              size="sm"
-                              variant="outline"
+                              size="sm" variant="outline"
                               className="h-7 text-xs gap-1"
                               onClick={() => setEditingId(null)}
                             >
-                              <X className="h-3 w-3" />
-                              Cancel·la
+                              <X className="h-3 w-3" /> Cancel·la
                             </Button>
                           </>
                         ) : (
                           <>
                             <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              disabled={isMe}
-                              onClick={() => startEditing(u)}
+                              size="icon" variant="ghost" className="h-7 w-7"
+                              disabled={isMe} onClick={() => startEditing(u)}
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </Button>
                             {!isMe && (
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-7 w-7 text-destructive"
-                                  >
+                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive">
                                     <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                   <AlertDialogHeader>
-                                    <AlertDialogTitle>Degradar usuari?</AlertDialogTitle>
+                                    <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
                                     <AlertDialogDescription>
-                                      {u.email} perdrà els permisos actuals i passarà a ser
-                                      visualitzador. Per eliminar-lo completament cal accedir
-                                      al panell de Supabase.
+                                      S'eliminarà <strong>{u.email}</strong> de forma permanent.
+                                      Aquesta acció no es pot desfer.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
                                     <AlertDialogCancel>Cancel·la</AlertDialogCancel>
                                     <AlertDialogAction
+                                      className="bg-destructive hover:bg-destructive/90"
                                       onClick={() => handleDelete(u.id, u.email)}
                                     >
-                                      Degrada a visualitzador
+                                      Elimina l'usuari
                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
