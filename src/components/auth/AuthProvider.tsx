@@ -89,6 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (!cancelled) setProfile(p);
             }
           } else {
+            // SIGNED_OUT: netejar tota la sessió
+            setUser(null);
             setProfile(null);
           }
           if (!cancelled) setLoading(false);
@@ -117,10 +119,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    // No buidem l'estat manualment: onAuthStateChange(SIGNED_OUT) ho farà
+    // de forma coherent i en el moment correcte.
     tokenRef.current = "";
-    setUser(null);
-    setProfile(null);
-    setLoading(false);
     await supabase.auth.signOut();
   }
 

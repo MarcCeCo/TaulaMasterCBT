@@ -64,6 +64,12 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Reset filtres quan es tanca el diàleg
+  const handleOpenChange = (val: boolean) => {
+    if (!val) { setQ(""); setGrp("__all__"); setCls("__all__"); setScrollTop(0); containerRef.current?.scrollTo(0, 0); }
+    onOpenChange(val);
+  };
+
   const debouncedQ = useDebounce(q, 180);
 
   const classifiers = useMemo(() => fields.filter(isClassifier), [fields]);
@@ -138,7 +144,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-7xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader><DialogTitle>Diccionari de camps</DialogTitle></DialogHeader>
 
@@ -180,33 +186,43 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           <div className="ml-auto text-xs text-muted-foreground self-center">{filtered.length} camps</div>
         </div>
 
-        {/* Capçalera fixa */}
-        <div className="border rounded-md flex-1 overflow-hidden flex flex-col">
-          <table className="w-full text-sm table-fixed">
-            <thead className="bg-background shadow-[0_1px_0_0_hsl(var(--border))]">
-              <tr className="text-left">
-                <th className="p-2 font-semibold text-xs">Nom</th>
-                <th className="p-2 font-semibold text-xs text-violet-600 border-l-2 border-violet-200">Codi</th>
-                <th className="p-2 font-semibold text-xs text-violet-600">Taula assoc.</th>
-                <th className="p-2 font-semibold text-xs text-violet-600">Tipus dada</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8] border-l-2 border-[#0099A8]/30">CBT</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Format par.</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació Revit</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Grup .txt</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Instància Revit</th>
-                <th className="p-2 font-semibold text-xs text-[#0099A8]">Disciplina</th>
-                <th className="p-2 w-20 font-semibold text-xs">Accions</th>
-              </tr>
-            </thead>
-          </table>
-          {/* Cos virtualitzat */}
+        {/* Taula unificada: capçalera sticky dins el scroll container */}
+        <div className="border rounded-md flex-1 overflow-hidden flex flex-col min-h-0">
           <div
             ref={containerRef}
             className="flex-1 overflow-auto"
             style={{ maxHeight: CONTAINER_H }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
           >
-            <table className="w-full text-sm table-fixed">
+            <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: 1100 }}>
+              <colgroup>
+                <col style={{ width: 200 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 130 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 140 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 80 }} />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-white border-b shadow-sm">
+                <tr className="text-left">
+                  <th className="p-2 font-semibold text-xs">Nom</th>
+                  <th className="p-2 font-semibold text-xs text-violet-600 border-l-2 border-violet-200">Codi</th>
+                  <th className="p-2 font-semibold text-xs text-violet-600">Taula assoc.</th>
+                  <th className="p-2 font-semibold text-xs text-violet-600">Tipus dada</th>
+                  <th className="p-2 font-semibold text-xs text-[#0099A8] border-l-2 border-[#0099A8]/30">CBT</th>
+                  <th className="p-2 font-semibold text-xs text-[#0099A8]">Format par.</th>
+                  <th className="p-2 font-semibold text-xs text-[#0099A8]">Agrupació Revit</th>
+                  <th className="p-2 font-semibold text-xs text-[#0099A8]">Grup .txt</th>
+                  <th className="p-2 font-semibold text-xs text-[#0099A8]">Instància Revit</th>
+                  <th className="p-2 font-semibold text-xs text-[#0099A8]">Disciplina</th>
+                  <th className="p-2 font-semibold text-xs">Accions</th>
+                </tr>
+              </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr><td colSpan={11} className="p-8 text-center text-muted-foreground">Cap camp al diccionari. Crea un camp nou o importa un Excel.</td></tr>
@@ -216,20 +232,20 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
                     {visibleRows.map((f) => {
                       const c = isClassifier(f);
                       return (
-                        <tr key={f.col} style={{ height: ROW_H }} className={cn("border-t", c && "bg-accent/30 font-semibold")}>
-                          <td className="p-2 truncate">
-                            <div className="truncate">{f.col}</div>
+                        <tr key={f.col} className={cn("border-t align-top", c && "bg-accent/30 font-semibold")}>
+                          <td className="p-2 break-words">
+                            <div className="break-words min-w-0">{f.col}</div>
                             {c && <Badge variant="outline" className="mt-0.5 text-[10px] uppercase tracking-wide">Classificador</Badge>}
                           </td>
-                          <td className="p-2 font-mono text-xs border-l-2 border-violet-100 truncate">{c ? "—" : (f.codi ?? "—")}</td>
-                          <td className="p-2 text-xs truncate">{f.taula_assoc ?? "—"}</td>
-                          <td className="p-2 text-xs truncate">{f.tipus_dada ?? "—"}</td>
-                          <td className="p-2 font-mono text-xs text-muted-foreground border-l-2 border-[#0099A8]/20 truncate">{f.cbt ?? "—"}</td>
-                          <td className="p-2 text-xs truncate">{f.format_param ?? "—"}</td>
-                          <td className="p-2 text-xs truncate">{f.agrupacio_revit ?? "—"}</td>
-                          <td className="p-2 text-xs truncate">{f.grup_txt ?? "—"}</td>
-                          <td className="p-2 text-xs font-mono truncate">{c ? "—" : (f.instancia_revit ?? "—")}</td>
-                          <td className="p-2 text-xs truncate">{f.disciplina ?? "—"}</td>
+                          <td className="p-2 font-mono text-xs border-l-2 border-violet-100 break-words">{c ? "—" : (f.codi ?? "—")}</td>
+                          <td className="p-2 text-xs break-words">{f.taula_assoc ?? "—"}</td>
+                          <td className="p-2 text-xs break-words">{f.tipus_dada ?? "—"}</td>
+                          <td className="p-2 font-mono text-xs text-muted-foreground border-l-2 border-[#0099A8]/20 break-words">{f.cbt ?? "—"}</td>
+                          <td className="p-2 text-xs break-words">{f.format_param ?? "—"}</td>
+                          <td className="p-2 text-xs break-words">{f.agrupacio_revit ?? "—"}</td>
+                          <td className="p-2 text-xs break-words">{f.grup_txt ?? "—"}</td>
+                          <td className="p-2 text-xs font-mono break-words">{c ? "—" : (f.instancia_revit ?? "—")}</td>
+                          <td className="p-2 text-xs break-words">{f.disciplina ?? "—"}</td>
                           <td className="p-2">
                             {isCustom(f.col) && (
                               <div className="flex gap-1">

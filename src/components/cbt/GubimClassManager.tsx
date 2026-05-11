@@ -32,14 +32,31 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   const [q, setQ] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const reset = () => { setCode(""); setName(""); setEditing(null); setCodeError(""); };
+  const [nameError, setNameError] = useState("");
+
+  const reset = () => { setCode(""); setName(""); setEditing(null); setCodeError(""); setNameError(""); };
+
+  // Reset filtre quan es tanca el diàleg
+  const handleOpenChange = (val: boolean) => {
+    if (!val) { setQ(""); setScrollTop(0); containerRef.current?.scrollTo(0, 0); }
+    onOpenChange(val);
+  };
+
+  const validateName = (val: string) => {
+    if (!val) { setNameError(""); return; }
+    const existingName = nodes.find((n) => n.name.trim().toLowerCase() === val.trim().toLowerCase() && n.id !== editing?.id);
+    if (existingName) { setNameError(`Nom duplicat (codi ${existingName.code})`); return; }
+    setNameError("");
+  };
 
   const validateCode = (val: string) => {
     if (!val) { setCodeError(""); return; }
     if (!isValidCode(val)) { setCodeError("Format invàlid (ex: 10, 10.20, 10.20.100, 90.40.10.390)"); return; }
     const p = parentCode(val);
     if (p && !nodeMap.has(p)) { setCodeError(`El pare ${p} no existeix`); return; }
-    // Duplicats permesos a tots els nivells (equip mare + components)
+    // Validació de codi duplicat (excepte si estem editant el mateix node)
+    const existingWithCode = nodes.find((n) => n.code === val && n.id !== editing?.id);
+    if (existingWithCode) { setCodeError(`El codi ${val} ja existeix (${existingWithCode.name})`); return; }
     setCodeError("");
   };
 
@@ -50,6 +67,12 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
     if (!N) return toast.error("El nom és obligatori");
     const p = parentCode(C);
     if (p && !nodeMap.has(p)) return toast.error(`El node pare ${p} no existeix`);
+    // Validació de codi duplicat
+    const existingCode = nodes.find((n) => n.code === C && n.id !== editing?.id);
+    if (existingCode) return toast.error(`El codi ${C} ja existeix (${existingCode.name})`);
+    // Validació de nom duplicat
+    const existingName = nodes.find((n) => n.name.trim().toLowerCase() === N.toLowerCase() && n.id !== editing?.id);
+    if (existingName) return toast.error(`El nom "${N}" ja existeix (codi ${existingName.code})`);
     setSaving(true);
     try {
       if (editing) {
@@ -128,7 +151,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   }, [sorted]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <div className="flex items-center justify-between">
@@ -160,13 +183,15 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
             <label className="text-xs font-medium">Nom</label>
             <Input
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => { setName(e.target.value); validateName(e.target.value); }}
               onKeyDown={(e) => { if (e.key === "Enter") save(); }}
               placeholder="Nom del node…"
+              className={cn(nameError && "border-destructive")}
             />
+            {nameError && <p className="text-xs text-destructive">{nameError}</p>}
           </div>
           <div className="flex gap-2 pt-6">
-            <Button onClick={save} disabled={!!codeError || !canEdit || saving} className="bg-[#0099A8] hover:bg-[#006E7A]">
+            <Button onClick={save} disabled={!!codeError || !!nameError || !canEdit || saving} className="bg-[#0099A8] hover:bg-[#006E7A]">
               {saving ? "Desant…" : (editing ? "Desa" : "Afegeix")}
             </Button>
             {editing && <Button variant="outline" onClick={reset}>Cancel·la</Button>}
@@ -209,7 +234,14 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
           {/* PERF: TooltipProvider hoisted aquí (1 instància), no dins de cada fila */}
           <TooltipProvider>
           <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-muted border-b">
+              <colgroup>
+                <col style={{ width: 120 }} />
+                <col />
+                <col style={{ width: 80 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 90 }} />
+              </colgroup>
+            <thead className="sticky top-0 z-10 bg-white border-b shadow-sm">
               <tr className="text-left">
                 <th className="p-2 text-xs font-semibold">Codi</th>
                 <th className="p-2 text-xs font-semibold">Nom</th>
@@ -252,8 +284,8 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
                       return (
                         <tr key={n.id} className={cn("border-t hover:bg-muted/30", isEditing && "bg-accent/40")}>
                           <td className={cn("p-2 font-mono text-xs", indent)}>{n.code}</td>
-                          <td className="p-2">
-                            <div className={cn("flex items-center gap-1", isComponent && "pl-5")}>
+                          <td className="p-2 break-words">
+                            <div className={cn("flex items-center gap-1 min-w-0", isComponent && "pl-5")}>
                               {isComponent && <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />}
                               {n.name}
                             </div>

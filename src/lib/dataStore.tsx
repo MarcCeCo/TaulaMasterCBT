@@ -200,8 +200,35 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
 
-    const token = getToken();
-    console.log("[DataStore.load] token:", token ? "OK" : "BUIT");
+    // Obtenim el token fresc directament de Supabase per evitar la condició
+    // de carrera entre AuthProvider.tokenRef i DataStore.load().
+    // Si el token no és disponible immediatament, esperem fins a 3s (amb retries).
+    let token = getToken();
+    if (!token) {
+      // Fallback: llegim la sessió directament de Supabase
+      const { data: { session } } = await supabase.auth.getSession();
+      token = session?.access_token ?? "";
+      console.log("[DataStore.load] token via getSession:", token ? "OK" : "BUIT");
+    } else {
+      console.log("[DataStore.load] token via ref:", token ? "OK" : "BUIT");
+    }
+
+    // Si encara no hi ha token, esperem fins a 3s en intervals de 500ms
+    if (!token) {
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token ?? "";
+        if (token) { console.log("[DataStore.load] token obtingut després de", (i + 1) * 500, "ms"); break; }
+      }
+    }
+
+    if (!token) {
+      setError("Sessió no disponible. Torneu a iniciar sessió.");
+      setLoading(false);
+      loadingRef.current = false;
+      return;
+    }
 
     try {
       const [equipData, fieldsData] = await Promise.all([
@@ -242,15 +269,29 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   // 3. El token és present al ref (getToken() != "")
   // Sense aquesta guarda, load() s'executa amb token buit i falla amb 401.
   useEffect(() => {
-    if (!authLoading && user && getToken()) load();
-  }, [authLoading, user, getToken, load]);
+    // Disparar load() quan auth ha acabat i hi ha usuari.
+    // load() internament obté el token fresc i fa retry si cal.
+    if (!authLoading && user) load();
+  }, [authLoading, user, load]);
 
   // TOKEN_REFRESHED + visibilitychange — mateix patró que AuthProvider
   // També escoltem SIGNED_IN per carregar dades quan l'usuari fa login.
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN") {
-        load();
+        // Donem un tick perquè AuthProvider actualitzi el tokenRef primer
+        setTimeout(() => load(), 50);
+      }
+      if (event === "SIGNED_OUT") {
+        // Netejar totes les dades quan l'usuari tanca sessió
+        startTransition(() => {
+          setEquipments([]);
+          setRawFields([]);
+          setGubimRaw([]);
+        });
+        setLoading(false);
+        setError(null);
+        loadingRef.current = false;
       }
       if (event === "TOKEN_REFRESHED") {
         if (document.hidden) {

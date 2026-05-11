@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -156,6 +156,9 @@ export function EquipmentsTable() {
 
   const { canEdit } = useAuth();
   const [q, setQ] = useState("");
+
+  // Reset filtre quan el component es desmunta (canvi de secció)
+  useEffect(() => { return () => setQ(""); }, []);
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Equipment | null>(null);
@@ -464,11 +467,21 @@ export function EquipmentsTable() {
           </div>
         )}
 
-        <div className="border rounded-md overflow-auto bg-card">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-muted border-b">
+        <div className="border rounded-md overflow-auto bg-card" style={{ maxHeight: "calc(100vh - 280px)" }}>
+          <table className="w-full text-sm" style={{ minWidth: 900 }}>
+              <colgroup>
+                <col style={{ width: 260 }} />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 180 }} />
+                <col style={{ width: 70 }} />
+                <col style={{ width: 100 }} />
+                <col style={{ width: 160 }} />
+                <col style={{ width: 70 }} />
+                <col style={{ width: 110 }} />
+              </colgroup>
+            <thead className="sticky top-0 z-10 bg-white border-b shadow-sm">
               <tr className="text-left">
-                <th className="p-2 min-w-[260px] text-xs font-semibold">GuBIMClass</th>
+                <th className="p-2 text-xs font-semibold">GuBIMClass</th>
                 <th className="p-2 text-xs font-semibold">Codi equip</th>
                 <th className="p-2 text-xs font-semibold">Nom equip</th>
                 <th className="p-2 text-xs font-semibold">Taula</th>
