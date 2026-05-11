@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, RefreshCw } from "lucide-react";
+import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, RefreshCw, X } from "lucide-react";
 import { useDataStore } from "@/lib/dataStore";
 import { codeLevel, parentCode } from "@/hooks/useGubimClass";
 import type { Equipment } from "@/hooks/useEquipments";
@@ -159,6 +159,16 @@ export function EquipmentsTable() {
 
   // Reset filtre quan el component es desmunta (canvi de secció)
   useEffect(() => { return () => setQ(""); }, []);
+
+  // ESC esborra el filtre de cerca
+  useEffect(() => {
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" && q) { setQ(""); ev.preventDefault(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [q]);
+
   const [formOpen, setFormOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Equipment | null>(null);
@@ -412,7 +422,8 @@ export function EquipmentsTable() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative flex-1 min-w-[240px] max-w-md">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca equips…" className="pl-8" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca equips…" className="pl-8 pr-8" />
+            {q && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6" onClick={() => setQ("")}><X className="h-3 w-3" /></Button>}
           </div>
           <div className="flex-1" />
           <Button size="sm" variant="outline" onClick={exportXlsx} disabled={loading}><Download className="h-4 w-4" /> Exporta</Button>
@@ -570,18 +581,7 @@ export function EquipmentsTable() {
           onEdit={() => { setDetailOpen(false); setEditing(viewing); setFormOpen(true); }}
         />
 
-        {Array.from(sharedCodeInfo.colorIdxByCode.entries()).length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground pt-1">
-            <Layers className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-medium">Codis GuBIMClass compartits (components d&apos;equip mare):</span>
-            {Array.from(sharedCodeInfo.colorIdxByCode.entries()).map(([code, idx]) => (
-              <span key={code} className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border-l-4 ${GROUP_COLORS[idx % GROUP_COLORS.length]}`}>
-                <span className="font-mono">{code}</span>
-                <span className="text-muted-foreground">({sharedCodeInfo.countByCode.get(code)} equips)</span>
-              </span>
-            ))}
-          </div>
-        )}
+
       </div>
     </TooltipProvider>
   );
