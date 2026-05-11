@@ -31,17 +31,8 @@ import { type Equipment } from "@/hooks/useEquipments";
 // forçar una nova sessió — és la solució més segura per a SPAs
 function handleSupabaseError(error: { message: string; code?: string } | null) {
   if (!error) return;
-  const msg = error.message?.toLowerCase() ?? "";
-  if (
-    msg.includes("jwt expired") ||
-    msg.includes("invalid claim") ||
-    msg.includes("not authenticated") ||
-    msg.includes("unauthorized")
-  ) {
-    supabase.auth.refreshSession().then(({ error: refreshErr }) => {
-      if (refreshErr) window.location.reload();
-    });
-  }
+  // El client Supabase (autoRefreshToken: true) gestiona la renovació del token.
+  // No cridem refreshSession() manualment per evitar interferències.
   throw new Error(error.message);
 }
 

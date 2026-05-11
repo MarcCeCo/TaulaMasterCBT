@@ -38,75 +38,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const initializedRef        = useRef(false);
-  const refreshingRef         = useRef(false);
-  // Ref per accedir a user dins dels listeners sense afegir-lo a les deps
-  const userRef               = useRef<User | null>(null);
+  const fetchingProfileRef    = useRef(false);
+  // Token guardat en memòria — s'actualitza via onAuthStateChange
+  // Llegir-lo és SÍNCRON i mai bloqueja, a diferència de getSession()
+  const tokenRef              = useRef<string>("");
 
-  const refreshSession = useCallback(async () => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
-    try {
-      const { data, error } = await supabase.auth.refreshSession();
-      if (error || !data.session) {
-        setUser(null);
-        setProfile(null);
-        userRef.current = null;
-      } else {
-        const u = data.session.user;
-        setUser(u);
-        userRef.current = u;
-        const p = await fetchProfile(u);
-        setProfile(p);
-      }
-    } catch {
-      // Sense xarxa: es reintentarà quan torni la connexió
-    } finally {
-      refreshingRef.current = false;
-    }
-  }, []);
+  const getToken = useCallback(() => tokenRef.current, []);
 
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
+      // Inicialització: llegim la sessió del localStorage (operació local, no xarxa)
       const { data: { session } } = await supabase.auth.getSession();
       const u = session?.user ?? null;
+      tokenRef.current = session?.access_token ?? "";
 
       if (!cancelled) {
         setUser(u);
-        userRef.current = u;
-        if (u) {
+        if (u && !fetchingProfileRef.current) {
+          fetchingProfileRef.current = true;
           const p = await fetchProfile(u);
+          fetchingProfileRef.current = false;
           if (!cancelled) setProfile(p);
         }
-        if (!cancelled) {
-          setLoading(false);
-          initializedRef.current = true;
-        }
+        if (!cancelled) setLoading(false);
       }
 
+      // onAuthStateChange és l'únic lloc on actualitzem el token.
+      // Supabase dispara TOKEN_REFRESHED automàticament quan el token caduca
+      // (inclús quan tornem a una pestanya inactiva) — aquí el capturem
+      // i actualitzem tokenRef sense cap lògica manual addicional.
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
-          if (event === "INITIAL_SESSION") return;
+          if (cancelled) return;
 
-          if (event === "TOKEN_REFRESHED") {
-            const u2 = session?.user ?? null;
-            setUser(u2);
-            userRef.current = u2;
-            return;
-          }
+          // Sempre actualitzem el token en memòria, sigui quin sigui l'event
+          tokenRef.current = session?.access_token ?? "";
+
+          if (event === "INITIAL_SESSION") return;
 
           const u2 = session?.user ?? null;
           setUser(u2);
-          userRef.current = u2;
+
           if (u2) {
-            const p = await fetchProfile(u2);
-            setProfile(p);
+            if (!fetchingProfileRef.current) {
+              fetchingProfileRef.current = true;
+              const p = await fetchProfile(u2);
+              fetchingProfileRef.current = false;
+              if (!cancelled) setProfile(p);
+            }
           } else {
             setProfile(null);
           }
-          setLoading(false);
+          if (!cancelled) setLoading(false);
         }
       );
 
@@ -117,42 +102,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const cleanup = init();
-    const timeout = setTimeout(() => setLoading(false), 5000);
-
-    // Reconnexió quan l'usuari torna a la pestanya
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible" && initializedRef.current) {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          if (!session && userRef.current) {
-            refreshSession();
-          } else if (session) {
-            const expiresAt  = session.expires_at ?? 0;
-            const nowSecs    = Math.floor(Date.now() / 1000);
-            if (expiresAt - nowSecs < 5 * 60) {
-              refreshSession();
-            }
-          }
-        });
-      }
-    };
-
-    // Reconnexió quan torna la xarxa
-    const handleOnline = () => {
-      if (initializedRef.current) refreshSession();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("online", handleOnline);
+    const timeout = setTimeout(() => { if (!cancelled) setLoading(false); }, 5000);
 
     return () => {
       cancelled = true;
       cleanup.then((fn) => fn?.());
       clearTimeout(timeout);
-      document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("online", handleOnline);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshSession]); // "user" fora de les deps — usem userRef per evitar bucle infinit
+  }, []);
 
   async function signIn(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -160,9 +117,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
+    tokenRef.current = "";
     setUser(null);
     setProfile(null);
-    userRef.current = null;
     setLoading(false);
     await supabase.auth.signOut();
   }
@@ -179,6 +136,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         canEdit:    canEditRole(role),
         isAdmin:    isAdminRole(role),
         canSeeView: canSeeViewFn(profile, user),
+        getToken,
         signIn,
         signOut,
       }}
