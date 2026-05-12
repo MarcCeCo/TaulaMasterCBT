@@ -9,6 +9,7 @@ import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
 import { ShieldOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
 
 // Lazy load dels diàlegs pesats (GuBIMClass i Camps segueixen com a diàlegs)
 const GubimClassManager = lazy(() =>
@@ -88,6 +89,9 @@ export function TaulaMasterMain() {
 
       case "canviapwd":
         return <ChangePasswordPage />;
+
+      case "projectes-equips":
+        return <ProjectesEquipsPage />;
 
       case "equips":
       default:

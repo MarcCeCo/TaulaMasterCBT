@@ -1,7 +1,9 @@
 // src/components/cbt/AppSidebar.tsx
 import { useState } from "react";
 import {
+  FolderOpen,
   GitBranch,
+  List,
   LogOut,
   Package,
   Settings2,
@@ -82,6 +84,20 @@ export function AppSidebar({
           section: "fields",
           view: "fields",
           isDialog: true,
+        },
+      ],
+    },
+    {
+      id: "projectes",
+      label: "Projectes",
+      icon: <FolderOpen className="h-4 w-4" />,
+      items: [
+        {
+          id: "projectes-equips",
+          label: "Llistat d'equips",
+          icon: <List className="h-4 w-4" />,
+          section: "projectes-equips",
+          view: "equips",
         },
       ],
     },
