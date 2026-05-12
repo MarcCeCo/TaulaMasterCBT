@@ -54,7 +54,7 @@ function buildCaracteristiques(
     // Agafem els camps de l'equip i els ordenem per codi numèric (com fa el full Excel original)
     const fieldsOfEquip = equip.fieldCols
       .map((col) => ({ col, meta: fieldMap.get(col) ?? null }))
-      .filter(({ meta }) => meta !== null) as { col: string; meta: FieldMeta }[];
+      .filter(({ meta }) => meta !== null && !!meta.codi) as { col: string; meta: FieldMeta }[];
 
     // Ordenació: camps sense codi primer, després per codi numèric ascending
     const sorted = [...fieldsOfEquip].sort((a, b) => {
