@@ -43,7 +43,7 @@ function PageSkeleton() {
 
 export function TaulaMasterMain() {
   const { canSeeView, profile, user } = useAuth();
-  const [activeSection, setActiveSection] = useState("dashboard");
+  const [activeSection, setActiveSection] = useState("equips");
   const [gubim, setGubim] = useState(false);
   const [dict, setDict] = useState(false);
   const [users, setUsers] = useState(false);
@@ -75,11 +75,20 @@ export function TaulaMasterMain() {
     }
 
     switch (activeSection) {
+      case "dashboard":
+        return (
+          <DashboardHome
+            onGoEquips={() => setActiveSection("equips")}
+            onOpenGubim={() => setGubim(true)}
+            onOpenFields={() => setDict(true)}
+          />
+        );
       case "equips":
+      default:
         return (
           <div className="space-y-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Equips</h1>
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Taula Master</h1>
               <p className="text-sm text-slate-500 mt-1">
                 Llista i gestió de tots els equips tècnics
               </p>
@@ -88,15 +97,6 @@ export function TaulaMasterMain() {
               <EquipmentsTable />
             </Card>
           </div>
-        );
-      case "dashboard":
-      default:
-        return (
-          <DashboardHome
-            onGoEquips={() => setActiveSection("equips")}
-            onOpenGubim={() => setGubim(true)}
-            onOpenFields={() => setDict(true)}
-          />
         );
     }
   };

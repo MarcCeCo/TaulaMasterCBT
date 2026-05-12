@@ -36,6 +36,7 @@ interface NavGroup {
   icon: React.ReactNode;
   items: NavItem[];
   adminOnly?: boolean;
+  topLevelView?: string; // si informat, la capçalera del grup és clicable i navega a aquesta secció
 }
 
 interface Props {
@@ -69,17 +70,12 @@ export function AppSidebar({
       id: "taulaMaster",
       label: "Taula Master",
       icon: <Database className="h-4 w-4" />,
+      topLevelView: "equips",
       items: [
         {
           id: "dashboard",
           label: "Resum",
           icon: <LayoutDashboard className="h-4 w-4" />,
-          view: "equips",
-        },
-        {
-          id: "equips",
-          label: "Equips",
-          icon: <Package className="h-4 w-4" />,
           view: "equips",
         },
         {
@@ -156,8 +152,17 @@ export function AppSidebar({
             <div key={group.id}>
               {/* Group header */}
               <button
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold uppercase tracking-wider text-[#006E7A] hover:bg-[#0099A8]/8 transition-colors"
-                onClick={() => toggleGroup(group.id)}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-2 rounded-md text-xs font-semibold uppercase tracking-wider text-[#006E7A] hover:bg-[#0099A8]/8 transition-colors",
+                  group.topLevelView && activeSection === group.topLevelView && "bg-[#0099A8]/12"
+                )}
+                onClick={() => {
+                  if (group.topLevelView) {
+                    onSectionChange(group.topLevelView);
+                    setMobileOpen(false);
+                  }
+                  toggleGroup(group.id);
+                }}
               >
                 <span className="text-[#0099A8]">{group.icon}</span>
                 <span className="flex-1 text-left">{group.label}</span>
