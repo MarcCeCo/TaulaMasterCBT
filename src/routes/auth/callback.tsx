@@ -8,9 +8,25 @@ import { Loader2 } from "lucide-react";
 type FlowType = "recovery" | "invite";
 
 // Guardem el resultat fora del component perquè persisteixi entre remuntatges.
-// Quan AuthProvider rep SIGNED_IN i re-renderitza __root, el component
+// Quan AuthProvider rep USER_UPDATED i re-renderitza __root, el component
 // es desmunta i remunta — sense això tornaria a cridar verifyOtp (→ 429).
 let cachedResult: { flowType: FlowType } | { error: string } | null = null;
+
+// Flag global per evitar que múltiples instàncies del component (per remuntatge)
+// llancin el redirect simultàniament.
+let redirectScheduled = false;
+
+async function doSignOutAndRedirect() {
+  if (redirectScheduled) return;
+  redirectScheduled = true;
+  try {
+    await supabase.auth.signOut({ scope: "global" });
+  } catch {
+    // Ignorem: updateUser ja ha invalidat la sessió al servidor.
+  }
+  localStorage.removeItem("cbt-taula-master-auth");
+  window.location.replace("/");
+}
 
 function AuthCallbackComponent() {
   const [flowType, setFlowType] = useState<FlowType | null>(
@@ -20,6 +36,20 @@ function AuthCallbackComponent() {
     cachedResult && "error" in cachedResult ? cachedResult.error : null
   );
   const verifying = useRef(false);
+
+  // Escolta USER_UPDATED a nivell de callback, no dins UpdatePasswordPage.
+  // Motiu: USER_UPDATED és l'event que Supabase emet quan updateUser() té èxit.
+  // Fer el redirect aquí garanteix que funciona independentment de quants
+  // remuntatges del component passin per culpa dels re-renders de l'AuthProvider.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "USER_UPDATED") {
+        // Petit delay perquè UpdatePasswordPage pugui mostrar el tick de confirmació
+        setTimeout(doSignOutAndRedirect, 800);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     // Si ja tenim resultat en cache (remuntatge), no cal tornar a verificar

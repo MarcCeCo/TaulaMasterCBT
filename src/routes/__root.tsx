@@ -42,13 +42,7 @@ function RootComponent() {
     return <Outlet />;
   }
 
-  // Mostrem el spinner NOMÉS si hi ha una sessió emmagatzemada i estem esperant
-  // que l'AuthProvider la validi. Si no hi ha sessió al localStorage (cas post-signOut),
-  // anem directament a LoginPage sense spinner — evita bloquejar la navegació
-  // quan el router de TanStack rep el canvi de ruta després del signOut.
-  const hasStoredSession = !!localStorage.getItem("cbt-taula-master-auth");
-
-  if (loading && hasStoredSession) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F5F7F8]">
         <Loader2 className="h-8 w-8 animate-spin text-[#0099A8]" />
