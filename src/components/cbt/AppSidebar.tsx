@@ -13,6 +13,8 @@ import {
   Users,
   X,
   Menu,
+  KeyRound,
+  Table2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,8 @@ interface Props {
   onOpenGubim: () => void;
   onOpenFields: () => void;
   onOpenUsers: () => void;
+  onOpenChangePwd: () => void;
+  onGoHome: () => void;
 }
 
 export function AppSidebar({
@@ -53,6 +57,8 @@ export function AppSidebar({
   onOpenGubim,
   onOpenFields,
   onOpenUsers,
+  onOpenChangePwd,
+  onGoHome,
 }: Props) {
   const { profile, isAdmin, canEdit, canSeeView, signOut } = useAuth();
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
@@ -68,16 +74,10 @@ export function AppSidebar({
   const groups: NavGroup[] = [
     {
       id: "taulaMaster",
-      label: "Taula Master",
-      icon: <Database className="h-4 w-4" />,
+      label: "Equips i Taules",
+      icon: <Table2 className="h-4 w-4" />,
       topLevelView: "equips",
       items: [
-        {
-          id: "dashboard",
-          label: "Resum",
-          icon: <LayoutDashboard className="h-4 w-4" />,
-          view: "equips",
-        },
         {
           id: "gubimclass",
           label: "GuBIMClass",
@@ -98,7 +98,7 @@ export function AppSidebar({
       id: "administracio",
       label: "Administració",
       icon: <Shield className="h-4 w-4" />,
-      adminOnly: true,
+      adminOnly: false,
       items: [
         {
           id: "usuaris",
@@ -106,6 +106,12 @@ export function AppSidebar({
           icon: <Users className="h-4 w-4" />,
           onClick: onOpenUsers,
           adminOnly: true,
+        },
+        {
+          id: "canviapwd",
+          label: "Canvia contrasenya",
+          icon: <KeyRound className="h-4 w-4" />,
+          onClick: onOpenChangePwd,
         },
       ],
     },
@@ -115,8 +121,10 @@ export function AppSidebar({
     <div className="flex flex-col h-full">
       {/* Logo + Title */}
       <div
-        className="px-4 py-5 flex items-center gap-3 border-b border-white/10"
+        className="px-4 py-5 flex items-center gap-3 border-b border-white/10 cursor-pointer"
         style={{ background: "linear-gradient(135deg, #006E7A 0%, #0099A8 100%)" }}
+        onClick={() => { onGoHome(); setMobileOpen(false); }}
+        title="Inici · Resum"
       >
         <div className="h-10 w-10 rounded-full overflow-hidden bg-white/15 flex items-center justify-center shadow-inner shrink-0">
           <img src={logo} alt="CBT" className="h-9 w-9 object-contain rounded-full" />

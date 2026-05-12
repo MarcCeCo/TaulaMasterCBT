@@ -3,6 +3,8 @@ import { lazy, Suspense, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppSidebar } from "./AppSidebar";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { UpdatePasswordPage } from "@/components/auth/UpdatePasswordPage";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
 import { ShieldOff } from "lucide-react";
@@ -43,10 +45,11 @@ function PageSkeleton() {
 
 export function TaulaMasterMain() {
   const { canSeeView, profile, user } = useAuth();
-  const [activeSection, setActiveSection] = useState("equips");
+  const [activeSection, setActiveSection] = useState("dashboard");
   const [gubim, setGubim] = useState(false);
   const [dict, setDict] = useState(false);
   const [users, setUsers] = useState(false);
+  const [changePwd, setChangePwd] = useState(false);
 
   const profileLoaded = !!profile || !user;
   const noAccessAtAll =
@@ -110,6 +113,8 @@ export function TaulaMasterMain() {
         onOpenGubim={() => setGubim(true)}
         onOpenFields={() => setDict(true)}
         onOpenUsers={() => setUsers(true)}
+        onOpenChangePwd={() => setChangePwd(true)}
+        onGoHome={() => setActiveSection("dashboard")}
       />
 
       {/* Main content */}
@@ -133,6 +138,11 @@ export function TaulaMasterMain() {
         <GubimClassManager open={gubim} onOpenChange={setGubim} />
         <FieldsDictionaryDialog open={dict} onOpenChange={setDict} />
         <UserManagerDialog open={users} onOpenChange={setUsers} />
+        <Dialog open={changePwd} onOpenChange={setChangePwd}>
+          <DialogContent className="max-w-md p-0 overflow-hidden">
+            <UpdatePasswordPage type="recovery" />
+          </DialogContent>
+        </Dialog>
       </Suspense>
     </div>
   );
