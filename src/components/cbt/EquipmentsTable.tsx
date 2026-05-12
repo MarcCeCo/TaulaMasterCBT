@@ -16,7 +16,6 @@ import { EquipmentDetailDialog } from "./EquipmentDetailDialog";
 import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { exportRosmiman } from "@/lib/exportRosmiman";
 import { useAuth } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
 
@@ -311,9 +310,6 @@ export function EquipmentsTable() {
     XLSX.utils.book_append_sheet(wb, ws, "Equips");
     XLSX.writeFile(wb, "equips.xlsx");
     toast.success("Equips exportats");
-    const exportRosimanXlsx = useCallback(() => {
-    exportRosmiman(items, fieldMap);
-    toast.success("Exportació Rosmiman generada");
   }, [items, fieldMap]);
 
   const importXlsx = useCallback(async (file: File) => {
@@ -431,7 +427,6 @@ export function EquipmentsTable() {
           </div>
           <div className="flex-1" />
           <Button size="sm" variant="outline" onClick={exportXlsx} disabled={loading}><Download className="h-4 w-4" /> Exporta</Button>
-          <Button size="sm" variant="outline" onClick={exportRosimanXlsx} disabled={loading}><Download className="h-4 w-4" /> Rosmiman</Button>
           {canEdit && (
             <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={loading}>
               <Upload className="h-4 w-4" /> Importa
