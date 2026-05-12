@@ -430,13 +430,12 @@ export function EquipmentsTable() {
             {q && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6" onClick={() => setQ("")}><X className="h-3 w-3" /></Button>}
           </div>
           <div className="flex-1" />
-          <Button size="sm" variant="outline" onClick={exportXlsx} disabled={loading}>
-  <Download className="h-4 w-4" /> Exporta
-</Button>
-<Button size="sm" variant="outline" onClick={exportRosimanXlsx} disabled={loading}>
-  <Download className="h-4 w-4" /> Rosmiman
-</Button>
-          
+            <Button size="sm" variant="outline" onClick={exportXlsx} disabled={loading}>
+              <Download className="h-4 w-4" /> Exporta
+            </Button>
+            <Button size="sm" variant="outline" onClick={exportRosimanXlsx} disabled={loading}>
+              <Download className="h-4 w-4" /> Rosmiman
+            </Button>
           {canEdit && (
             <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={loading}>
               <Upload className="h-4 w-4" /> Importa
