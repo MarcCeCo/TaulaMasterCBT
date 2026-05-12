@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FieldMeta } from "@/lib/fields";
+import { FieldMeta, AUTO_CLASSIFIERS, autoClassifierForCodi } from "@/lib/fields";
 import { toast } from "sonner";
 
 interface Props {
@@ -45,6 +45,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
   const [disciplinaCustom, setDisciplinaCustom] = useState("");
   // Rosmiman
   const [codi,           setCodi]           = useState("");
+  const [classificador,  setClassificador]  = useState("GENERAL");
   const [taulaAssoc,     setTaulaAssoc]     = useState("");
   const [tipusDada,      setTipusDada]      = useState("");
 
@@ -61,13 +62,14 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
       setInstancia(editing.instancia_revit ?? "Y");
       setDisciplina(editing.disciplina ?? ""); setDisciplinaCustom("");
       setCodi(editing.codi ?? "");
+      setClassificador(editing.classificador ?? autoClassifierForCodi(editing.codi));
       setTaulaAssoc(editing.taula_assoc ?? "");
       setTipusDada(editing.tipus_dada ?? "");
     } else {
       setNom(""); setIsCls(false); setCbt(""); setFormatParam("Text");
       setAgrupRevit(""); setAgrupRevitCustom(""); setGrupTxt("");
       setInstancia("Y"); setDisciplina(""); setDisciplinaCustom("");
-      setCodi(""); setTaulaAssoc(""); setTipusDada("");
+      setCodi(""); setTaulaAssoc(""); setTipusDada(""); setClassificador("GENERAL");
     }
   }, [open, editing]);
 
@@ -82,7 +84,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
     const col = nom.trim().toUpperCase();
     if (!col) return toast.error("El nom és obligatori");
     if (!/^[A-Z0-9_]+$/.test(col)) return toast.error("Nom no vàlid (només lletres, números i _)");
-    if (!editing && existsCol(col)) return toast.error("Aquest nom ja existeix");
+    if (existsCol(col) && col !== editing?.col.toUpperCase()) return toast.error("Aquest nom ja existeix");
     if (taulaRequired && !taulaAssoc.trim()) return toast.error("La taula associada és obligatòria quan el tipus dada és 'Taula Associada'");
 
     const f: FieldMeta = isCls
@@ -98,6 +100,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
           grup_txt:        grupTxt.trim() || null,
           instancia_revit: instancia || null,
           disciplina:      finalDisciplina || null,
+          classificador:   (() => { const auto = autoClassifierForCodi(codi.trim() || null); return classificador !== auto ? classificador : null; })(),
         };
     setSaving(true);
     try {
@@ -121,7 +124,6 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
             <Input
               value={nom}
               onChange={(e) => setNom(e.target.value.toUpperCase().replace(/\s/g, ""))}
-              disabled={!!editing}
               className="font-mono uppercase"
               placeholder="ex. TAG"
             />
@@ -194,7 +196,19 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
                 <div className="grid grid-cols-2 gap-3 pl-5 border-l-2 border-violet-200">
                   <div className="space-y-1.5">
                     <Label>Codi</Label>
-                    <Input value={codi} onChange={(e) => setCodi(e.target.value)} placeholder="ex. TAG" className="font-mono" />
+                    <Input value={codi} onChange={(e) => { setCodi(e.target.value); setClassificador(autoClassifierForCodi(e.target.value)); }} placeholder="ex. TAG" className="font-mono" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Classificador</Label>
+                    <Select value={classificador} onValueChange={setClassificador}>
+                      <SelectTrigger><SelectValue placeholder="Classificador automàtic per codi" /></SelectTrigger>
+                      <SelectContent>
+                        {AUTO_CLASSIFIERS.map((ac) => (
+                          <SelectItem key={ac.name} value={ac.name}>{ac.name} ({ac.min}–{ac.max})</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground">S'assigna automàticament pel codi, però es pot canviar manualment.</p>
                   </div>
                   <div className="space-y-1.5">
                     <Label>Tipus dada</Label>

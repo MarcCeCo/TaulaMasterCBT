@@ -117,6 +117,7 @@ const toMeta = (row: any): FieldMeta => ({
   grup_txt:        row.grup_txt        ?? null,
   instancia_revit: row.instancia_revit ?? null,
   disciplina:      row.disciplina      ?? null,
+  classificador:   row.classificador   ?? null,
 });
 
 const fieldToRow = (f: FieldMeta) => ({
@@ -130,6 +131,7 @@ const fieldToRow = (f: FieldMeta) => ({
   grup_txt:        f.grup_txt        || null,
   instancia_revit: f.instancia_revit || null,
   disciplina:      f.disciplina      || null,
+  classificador:   f.classificador   || null,
 });
 
 const toNode = (row: any): GubimNode => ({ id: row.id, code: row.code, name: row.name });
@@ -471,9 +473,18 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   }, [getToken, rawFields]);
 
   const updateField = useCallback(async (col: string, patch: Partial<FieldMeta>) => {
-    const merged = { ...fieldMap.get(col), ...patch, col } as FieldMeta;
+    const newCol = patch.col ? patch.col.toUpperCase() : col;
+    const merged = { ...fieldMap.get(col), ...patch, col: newCol } as FieldMeta;
     const token = getToken();
-    await supa(token, "PATCH", `fields?col=eq.${encodeURIComponent(col)}`, fieldToRow(merged));
+    // Si el nom (clau primària) canvia, cal esborrar l'antic i crear el nou
+    if (newCol !== col) {
+      await supa(token, "DELETE", `fields?col=eq.${encodeURIComponent(col)}`);
+      await supa(token, "POST", "fields?on_conflict=col", fieldToRow(merged), {
+        "Prefer": "return=representation,resolution=merge-duplicates",
+      });
+    } else {
+      await supa(token, "PATCH", `fields?col=eq.${encodeURIComponent(col)}`, fieldToRow(merged));
+    }
     setRawFields((prev) => prev.map((f) => (f.col === col ? merged : f)));
   }, [getToken, fieldMap]);
 
