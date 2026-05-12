@@ -34,13 +34,22 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
   }
 }
 
+// Detecta si la URL actual correspon a un callback d'autenticació de Supabase.
+// Supabase pot enviar tokens de dues maneres:
+//   - Implicit flow (antic): #access_token=...&type=recovery
+//   - PKCE flow (nou, per defecte): ?code=...  (sense type explícit a la URL)
+// En ambdós casos, la pàgina de destinació és /auth/callback.
+export function isAuthCallbackUrl(): boolean {
+  if (typeof window === "undefined") return false;
+  const path = window.location.pathname;
+  return path.startsWith("/auth/callback");
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const fetchingProfileRef    = useRef(false);
-  // Token guardat en memòria — s'actualitza via onAuthStateChange
-  // Llegir-lo és SÍNCRON i mai bloqueja, a diferència de getSession()
   const tokenRef              = useRef<string>("");
 
   const getToken = useCallback(() => tokenRef.current, []);
@@ -49,34 +58,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function init() {
-      // Inicialització: llegim la sessió del localStorage (operació local, no xarxa)
-      const { data: { session } } = await supabase.auth.getSession();
-      const u = session?.user ?? null;
-      tokenRef.current = session?.access_token ?? "";
+      // Si estem a /auth/callback, NO cridem getSession() aquí.
+      // Supabase bescanviarà el codi/token automàticament i dispararà
+      // onAuthStateChange. Cridar getSession() primer podria interferir
+      // amb el flux PKCE i netejar el ?code= abans que s'hagi bescanviat.
+      if (!isAuthCallbackUrl()) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const u = session?.user ?? null;
+        tokenRef.current = session?.access_token ?? "";
 
-      if (!cancelled) {
-        setUser(u);
-        if (u && !fetchingProfileRef.current) {
-          fetchingProfileRef.current = true;
-          const p = await fetchProfile(u);
-          fetchingProfileRef.current = false;
-          if (!cancelled) setProfile(p);
+        if (!cancelled) {
+          setUser(u);
+          if (u && !fetchingProfileRef.current) {
+            fetchingProfileRef.current = true;
+            const p = await fetchProfile(u);
+            fetchingProfileRef.current = false;
+            if (!cancelled) setProfile(p);
+          }
+          if (!cancelled) setLoading(false);
         }
-        if (!cancelled) setLoading(false);
       }
+      // Si som a /auth/callback, deixem loading=true fins que
+      // onAuthStateChange ens indiqui que el token s'ha processat.
 
-      // onAuthStateChange és l'únic lloc on actualitzem el token.
-      // Supabase dispara TOKEN_REFRESHED automàticament quan el token caduca
-      // (inclús quan tornem a una pestanya inactiva) — aquí el capturem
-      // i actualitzem tokenRef sense cap lògica manual addicional.
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
           if (cancelled) return;
 
-          // Sempre actualitzem el token en memòria, sigui quin sigui l'event
           tokenRef.current = session?.access_token ?? "";
 
-          if (event === "INITIAL_SESSION") return;
+          if (event === "INITIAL_SESSION") {
+            // Quan som a /auth/callback, INITIAL_SESSION pot arribar
+            // amb la sessió del recovery/invite ja activa. L'aprofitem.
+            if (isAuthCallbackUrl()) {
+              const u2 = session?.user ?? null;
+              setUser(u2);
+              if (u2 && !fetchingProfileRef.current) {
+                fetchingProfileRef.current = true;
+                const p = await fetchProfile(u2);
+                fetchingProfileRef.current = false;
+                if (!cancelled) setProfile(p);
+              }
+              if (!cancelled) setLoading(false);
+            }
+            return;
+          }
 
           const u2 = session?.user ?? null;
           setUser(u2);
@@ -89,7 +115,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (!cancelled) setProfile(p);
             }
           } else {
-            // SIGNED_OUT: netejar tota la sessió
             setUser(null);
             setProfile(null);
           }
@@ -119,8 +144,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signOut() {
-    // No buidem l'estat manualment: onAuthStateChange(SIGNED_OUT) ho farà
-    // de forma coherent i en el moment correcte.
     tokenRef.current = "";
     await supabase.auth.signOut();
   }

@@ -1,11 +1,10 @@
 // src/components/auth/LoginPage.tsx
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import logo from "@/assets/Simbol_Web2.png";
 import { supabase } from "@/lib/supabase";
-import { Eye, EyeOff, ArrowLeft, Loader2 } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 
 type Mode = "login" | "reset";
 
@@ -26,6 +25,10 @@ export function LoginPage() {
   const [resetDone, setResetDone] = useState(false);
   const [resetError, setResetError] = useState("");
 
+  // Detectem si venim d'un canvi de contrasenya exitós
+  const passwordJustUpdated =
+    new URLSearchParams(window.location.search).get("passwordUpdated") === "1";
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -44,8 +47,12 @@ export function LoginPage() {
     setResetError("");
     setResetLoading(true);
     try {
+      // redirectTo ha d'apuntar a /auth/callback perquè Supabase
+      // sàpiga on redirigir l'usuari després de clicar l'enllaç.
+      // IMPORTANT: aquesta URL ha d'estar a l'allowlist de Supabase:
+      //   Dashboard → Authentication → URL Configuration → Redirect URLs
       const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
-        redirectTo: window.location.origin,
+        redirectTo: `${window.location.origin}/auth/callback`,
       });
       if (error) throw error;
       setResetDone(true);
@@ -119,6 +126,28 @@ export function LoginPage() {
             </h1>
           </div>
         </div>
+
+        {/* Banner de confirmació de nova contrasenya */}
+        {passwordJustUpdated && mode === "login" && (
+          <div
+            style={{
+              display: "flex", alignItems: "flex-start", gap: "10px",
+              padding: "12px 14px", borderRadius: "10px", marginBottom: "20px",
+              background: "rgba(0,153,168,0.07)",
+              border: "1.5px solid rgba(0,153,168,0.25)",
+            }}
+          >
+            <CheckCircle2 size={18} style={{ color: "#0099A8", flexShrink: 0, marginTop: "1px" }} />
+            <div>
+              <p style={{ fontSize: "13px", fontWeight: 700, color: "#006E7A", marginBottom: "2px" }}>
+                Contrasenya actualitzada
+              </p>
+              <p style={{ fontSize: "12px", color: "#475569", lineHeight: "1.4" }}>
+                La teva contrasenya s'ha establert correctament. Inicia sessió per continuar.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── LOGIN ── */}
         {mode === "login" && (
