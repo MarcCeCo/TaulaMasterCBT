@@ -73,65 +73,80 @@ function sortGroupFields(groupFields: FieldMeta[]): FieldMeta[] {
 /**
  * Ordena els camps mantenint-los sota el seu classificador.
  *
- * Estratègia:
- *  1. Si la llista JA conté classificadors explícits (files amb isClassifier=true),
- *     s'usa el comportament original: cada camp queda sota el seu classificador pare.
- *  2. Si NO hi ha cap classificador explícit, s'aplica l'agrupació automàtica per rang
- *     de codi: es generen classificadors virtuals (AUTO_CLASSIFIERS) i s'hi col·loquen
- *     els camps corresponents.
- *  3. Si hi ha BARREJA (alguns classificadors explícits, alguns sense), els camps sense
- *     classificador explícit s'agrupen per rang automàticament i s'intercalen al final.
+ * Estratègia (dues passades per evitar problemes d'ordre a la BD):
+ *  PASSADA 1 — Classificació: cada camp no-classificador s'assigna al seu grup.
+ *    - Si és un classificador explícit (isClassifier=true), s'usa com a capçalera.
+ *    - Si és un camp normal sense classificador explícit, s'agrupa per rang de codi
+ *      (o pel camp `classificador` si té override manual).
+ *  PASSADA 2 — Construcció del resultat en ordre fix:
+ *    - Primer els classificadors explícits amb els seus camps.
+ *    - Després els classificadors automàtics (AUTO_CLASSIFIERS) amb els seus camps,
+ *      només els que tinguin membres, en l'ordre definit a AUTO_CLASSIFIERS.
  */
 export function sortByClassification(fields: FieldMeta[]): FieldMeta[] {
   const result: FieldMeta[] = [];
+
+  // Separa classificadors explícits i camps normals (passada 1)
   const explicitClassifiers: FieldMeta[] = [];
   const fieldsByExplicitCls = new Map<string, FieldMeta[]>();
-  const fieldsWithoutExplicitCls: FieldMeta[] = [];
+  const fieldsForAutoGroup: FieldMeta[] = [];
 
-  let currentCls: string | null = null;
+  // Primer recollim tots els classificadors explícits per saber quins existeixen
+  const explicitClsNames = new Set(fields.filter(isClassifier).map((f) => f.col));
 
+  // Assignació: cada camp normal va al seu classificador explícit o al grup automàtic
+  // Construïm el mapa de classificadors explícits i els seus fills
+  let currentExplicitCls: string | null = null;
   for (const f of fields) {
     if (isClassifier(f)) {
       explicitClassifiers.push(f);
-      currentCls = f.col;
+      currentExplicitCls = f.col;
       if (!fieldsByExplicitCls.has(f.col)) fieldsByExplicitCls.set(f.col, []);
     } else {
-      if (currentCls) {
-        fieldsByExplicitCls.get(currentCls)!.push(f);
+      if (currentExplicitCls) {
+        fieldsByExplicitCls.get(currentExplicitCls)!.push(f);
       } else {
-        fieldsWithoutExplicitCls.push(f);
+        fieldsForAutoGroup.push(f);
       }
     }
   }
 
-  // Camps amb classificadors explícits → comportament original
+  // Els camps que tenen un classificador explícit com a pare van amb ell,
+  // però els que han quedat sense pare (apareixien abans a la BD) els reassignem.
+  // Recollim tots els camps normals que NO van sota cap classificador explícit
+  // i els afegim a fieldsForAutoGroup si no hi son ja.
+  // (En el bucle anterior, si un camp apareixia DESPRÉS d'un cls explícit, ja és al mapa.
+  //  Si apareixia ABANS, ja va a fieldsForAutoGroup. Correcte.)
+
+  // Passada 2 — Construcció del resultat
+
+  // 2a. Classificadors explícits amb els seus camps
   for (const cls of explicitClassifiers) {
     result.push(cls);
     result.push(...sortGroupFields(fieldsByExplicitCls.get(cls.col) ?? []));
   }
 
-  // Camps sense classificador explícit → agrupació automàtica per rang de codi
-  if (fieldsWithoutExplicitCls.length > 0) {
-    // Agrupa per classificador automàtic
+  // 2b. Camps sense classificador explícit → agrupació automàtica per rang
+  if (fieldsForAutoGroup.length > 0) {
     const byAutoClass = new Map<string, FieldMeta[]>();
     for (const ac of AUTO_CLASSIFIERS) byAutoClass.set(ac.name, []);
 
-    for (const f of fieldsWithoutExplicitCls) {
+    for (const f of fieldsForAutoGroup) {
       const clsName = effectiveClassifier(f);
       if (!byAutoClass.has(clsName)) byAutoClass.set(clsName, []);
       byAutoClass.get(clsName)!.push(f);
     }
 
-    // Només mostra els classificadors automàtics que tinguin camps
+    // Construcció en l'ordre fix d'AUTO_CLASSIFIERS (no depèn de l'ordre de la BD)
     for (const ac of AUTO_CLASSIFIERS) {
       const members = byAutoClass.get(ac.name) ?? [];
       if (members.length === 0) continue;
-      // Classificador virtual: igual que un FieldMeta classificador
       const clsRow: FieldMeta = {
         col: ac.name,
         codi: null, taula_assoc: null, tipus_dada: null,
         cbt: null, format_param: null, agrupacio_revit: null,
         grup_txt: null, instancia_revit: null, disciplina: null,
+        classificador: null,
       };
       result.push(clsRow);
       result.push(...sortGroupFields(members));
