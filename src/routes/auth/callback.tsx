@@ -7,39 +7,10 @@ import { Loader2 } from "lucide-react";
 
 type FlowType = "recovery" | "invite";
 
-// ─── Estat de mòdul: persisteix entre remuntatges ─────────────────────────────
-
+// Guardem el resultat fora del component perquè persisteixi entre remuntatges.
+// Quan AuthProvider rep SIGNED_IN i re-renderitza __root, el component
+// es desmunta i remunta — sense això tornaria a cridar verifyOtp (→ 429).
 let cachedResult: { flowType: FlowType } | { error: string } | null = null;
-let redirectScheduled = false;
-
-// Listener de USER_UPDATED registrat A NIVELL DE MÒDUL, fora de React.
-//
-// Per què aquí i no dins un useEffect?
-//   - useEffect retorna un cleanup que fa unsubscribe quan el component es desmunta.
-//   - Quan updateUser() s'executa, Supabase emet USER_UPDATED → AuthProvider fa
-//     setLoading → __root re-renderitza → el component es pot desmuntar MENTRE
-//     l'event USER_UPDATED encara no ha arribat als listeners del useEffect.
-//   - Un listener de mòdul viu durant tota la sessió del navegador; cap
-//     desmuntatge de component el pot matar.
-//
-// Registrem el listener immediatament quan el mòdul es carrega (import time).
-supabase.auth.onAuthStateChange(async (event) => {
-  if (event !== "USER_UPDATED") return;
-  if (redirectScheduled) return;
-  redirectScheduled = true;
-
-  // signOut + reload dur. No depèn de cap estat React ni cicle de vida.
-  try {
-    await supabase.auth.signOut({ scope: "global" });
-  } catch {
-    // Ignorem: la contrasenya ja ha canviat, la sessió anterior és invàlida.
-  }
-  localStorage.removeItem("cbt-taula-master-auth");
-  // Reload dur: garanteix que AuthProvider arrenca des de zero sense sessió.
-  window.location.replace("/");
-});
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 function AuthCallbackComponent() {
   const [flowType, setFlowType] = useState<FlowType | null>(

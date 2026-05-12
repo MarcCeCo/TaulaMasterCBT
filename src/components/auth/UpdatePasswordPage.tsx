@@ -31,19 +31,68 @@ export function UpdatePasswordPage({ type }: Props) {
 
     setLoading(true);
 
-    const { error: updateError } = await supabase.auth.updateUser({ password });
+    try {
+      // Usem fetch directe a la REST API de Supabase Auth en lloc de
+      // supabase.auth.updateUser(). Motiu: updateUser() emet USER_UPDATED
+      // via el canal intern de Supabase, cosa que dispara onAuthStateChange
+      // a l'AuthProvider → re-renders → desmuntatge del component → el flux
+      // async queda orfè i el redirect mai s'executa.
+      //
+      // Amb fetch directe: cap event intern, cap re-render, cap desmuntatge.
+      // És el mateix patró que usa DataStore i UserManagerDialog per evitar
+      // desconnexions quan es canvia de pestanya.
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
 
-    if (updateError) {
-      setError(updateError.message ?? "Error actualitzant la contrasenya");
+      if (!token) {
+        setError("Sessió no disponible. Torna a obrir l'enllaç del correu.");
+        setLoading(false);
+        return;
+      }
+
+      const url = (import.meta.env.VITE_SUPABASE_URL as string).trim();
+      const res = await fetch(`${url}/auth/v1/user`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+          "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim(),
+        },
+        body: JSON.stringify({ password }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(body?.message ?? `Error ${res.status} actualitzant la contrasenya`);
+        setLoading(false);
+        return;
+      }
+
+      // Contrasenya canviada correctament. Ara tanquem sessió i redirigim.
+      // Fem signOut també via fetch directe per no disparar més events.
+      setDone(true);
+
+      try {
+        await fetch(`${url}/auth/v1/logout?scope=global`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim(),
+          },
+        });
+      } catch {
+        // Ignorem: la contrasenya ja ha canviat, la sessió és invàlida.
+      }
+
+      localStorage.removeItem("cbt-taula-master-auth");
+
+      // Reload dur: força AuthProvider a arrencar des de zero sense sessió.
+      window.location.replace("/");
+
+    } catch (err: any) {
+      setError(err?.message ?? "Error de xarxa. Torna-ho a intentar.");
       setLoading(false);
-      return;
     }
-
-    // updateUser() ha tingut èxit: emet USER_UPDATED internament a Supabase.
-    // El listener a callback.tsx rep USER_UPDATED i s'encarrega del signOut
-    // i el redirect — independent del cicle de vida d'aquest component.
-    // Aquí només actualitzem la UI per mostrar la confirmació visual.
-    setDone(true);
   };
 
   return (
