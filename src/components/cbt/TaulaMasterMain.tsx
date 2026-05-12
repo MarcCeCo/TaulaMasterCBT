@@ -3,22 +3,19 @@ import { lazy, Suspense, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AppSidebar } from "./AppSidebar";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { UpdatePasswordPage } from "@/components/auth/UpdatePasswordPage";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
+import { UserManagerPage } from "@/components/auth/UserManagerPage";
+import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
 import { ShieldOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
-// Lazy load dels diàlegs pesats
+// Lazy load dels diàlegs pesats (GuBIMClass i Camps segueixen com a diàlegs)
 const GubimClassManager = lazy(() =>
   import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager }))
 );
 const FieldsDictionaryDialog = lazy(() =>
   import("./FieldsDictionaryDialog").then((m) => ({ default: m.FieldsDictionaryDialog }))
-);
-const UserManagerDialog = lazy(() =>
-  import("@/components/auth/UserManagerDialog").then((m) => ({ default: m.UserManagerDialog }))
 );
 
 function PageSkeleton() {
@@ -44,12 +41,10 @@ function PageSkeleton() {
 }
 
 export function TaulaMasterMain() {
-  const { canSeeView, profile, user } = useAuth();
+  const { canSeeView, profile, user, isAdmin } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
   const [gubim, setGubim] = useState(false);
   const [dict, setDict] = useState(false);
-  const [users, setUsers] = useState(false);
-  const [changePwd, setChangePwd] = useState(false);
 
   const profileLoaded = !!profile || !user;
   const noAccessAtAll =
@@ -86,6 +81,14 @@ export function TaulaMasterMain() {
             onOpenFields={() => setDict(true)}
           />
         );
+
+      case "usuaris":
+        if (!isAdmin) return null;
+        return <UserManagerPage />;
+
+      case "canviapwd":
+        return <ChangePasswordPage />;
+
       case "equips":
       default:
         return (
@@ -112,8 +115,6 @@ export function TaulaMasterMain() {
         onSectionChange={setActiveSection}
         onOpenGubim={() => setGubim(true)}
         onOpenFields={() => setDict(true)}
-        onOpenUsers={() => setUsers(true)}
-        onOpenChangePwd={() => setChangePwd(true)}
         onGoHome={() => setActiveSection("dashboard")}
       />
 
@@ -133,16 +134,10 @@ export function TaulaMasterMain() {
         </footer>
       </div>
 
-      {/* Lazy dialogs */}
+      {/* GuBIMClass i Camps segueixen com a diàlegs flotants */}
       <Suspense fallback={null}>
         <GubimClassManager open={gubim} onOpenChange={setGubim} />
         <FieldsDictionaryDialog open={dict} onOpenChange={setDict} />
-        <UserManagerDialog open={users} onOpenChange={setUsers} />
-        <Dialog open={changePwd} onOpenChange={setChangePwd}>
-          <DialogContent className="max-w-md p-0 overflow-hidden">
-            <UpdatePasswordPage type="recovery" />
-          </DialogContent>
-        </Dialog>
       </Suspense>
     </div>
   );
