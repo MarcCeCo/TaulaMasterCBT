@@ -104,6 +104,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
+          // USER_UPDATED: Supabase l'emet quan updateUser() canvia la contrasenya.
+          // Si estem a /auth/callback, IGNOREM aquest event: el component
+          // UpdatePasswordPage ja gestiona el signOut i el redirect via useEffect.
+          // Processar USER_UPDATED aquí causaria un re-render que podria desmuntar
+          // UpdatePasswordPage i matar el seu flux de redirecció.
+          if (event === "USER_UPDATED" && isAuthCallbackUrl()) {
+            tokenRef.current = session?.access_token ?? "";
+            return;
+          }
+
           const u2 = session?.user ?? null;
           setUser(u2);
 

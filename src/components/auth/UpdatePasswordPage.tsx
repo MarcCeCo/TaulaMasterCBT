@@ -1,5 +1,5 @@
 // src/components/auth/UpdatePasswordPage.tsx
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import logo from "@/assets/Simbol_Web2.png";
@@ -16,11 +16,37 @@ export function UpdatePasswordPage({ type }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const redirectingRef = useRef(false);
 
   const title = type === "invite" ? "Crea la teva contrasenya" : "Nova contrasenya";
   const subtitle = type === "invite"
     ? "Benvingut/da! Estableix una contrasenya per accedir a la plataforma."
     : "Introdueix la nova contrasenya per al teu compte.";
+
+  // El redirect es gestiona en un useEffect independent del handleSubmit async.
+  // Motiu: updateUser() dispara USER_UPDATED → AuthProvider re-renderitza → el
+  // component es pot desmuntar i el flux async del handleSubmit queda orfè (mai
+  // arriba a les línies de signOut/redirect). El useEffect sobreviu als re-renders.
+  useEffect(() => {
+    if (!done || redirectingRef.current) return;
+    redirectingRef.current = true;
+
+    // Esperem un tick perquè el render de "Redirigint…" sigui visible,
+    // després fem signOut i reload dur.
+    const timer = setTimeout(async () => {
+      try {
+        await supabase.auth.signOut({ scope: "global" });
+      } catch {
+        // Ignorem: updateUser ja ha invalidat la sessió al servidor.
+      }
+      localStorage.removeItem("cbt-taula-master-auth");
+      // Reload dur: trenca qualsevol listener actiu del router de TanStack
+      // i força l'AuthProvider a arrencar des de zero sense sessió.
+      window.location.replace("/");
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [done]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,24 +65,10 @@ export function UpdatePasswordPage({ type }: Props) {
       return;
     }
 
+    // Marquem com a fet. El useEffect s'encarrega del signOut i el redirect.
+    // NO posem res més aquí: updateUser() pot haver disparat un re-render que
+    // desmunta el component i mata el flux async a partir d'aquest punt.
     setDone(true);
-
-    // Tanquem sessió directament amb el client principal.
-    try {
-      await supabase.auth.signOut({ scope: "global" });
-    } catch {
-      // Ignorem errors de signOut: updateUser ja ha invalidat la sessió al servidor.
-    }
-
-    // Esborrem manualment per si de cas
-    localStorage.removeItem("cbt-taula-master-auth");
-
-    // window.location.assign/href en una SPA pot ser interceptat pel router de TanStack.
-    // window.location.reload() + replace garanteix un reload dur real del navegador,
-    // trencant qualsevol listener actiu i forçant l'AuthProvider a arrencar des de zero.
-    window.location.replace("/");
-    // Safety fallback: si replace no fa reload complet (cache agresiva), forcem-lo.
-    setTimeout(() => window.location.reload(), 300);
   };
 
   return (
