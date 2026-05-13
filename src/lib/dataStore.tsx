@@ -133,7 +133,7 @@ const fieldToRow = (f: FieldMeta) => ({
   grup_txt:        f.grup_txt        || null,
   instancia_revit: f.instancia_revit || null,
   disciplina:      f.disciplina      || null,
-  classificador:   f.classificador   || null,
+  // Nota: classificador es calcula localment (autoClassifierForCodi) i NO s'envia a Supabase
 });
 
 const toNode = (row: any): GubimNode => ({ id: row.id, code: row.code, name: row.name });
