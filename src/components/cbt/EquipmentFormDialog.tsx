@@ -13,13 +13,60 @@ import { GubimClassPicker } from "./GubimClassPicker";
 import { FieldPickerDialog } from "./FieldPickerDialog";
 import { uid } from "@/lib/storage";
 import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const REVIT_CATEGORIES = [
-  "Mechanical equipment",
-  "Electrical equipment",
-  "Pipe accessories",
-] as const;
+// Categories Revit agrupades per disciplina
+// Clau: valor guardat a la BD  |  Valor: nom visible al selector
+export const REVIT_CATEGORIES_BY_GROUP: Record<string, string[]> = {
+  "Mecànica / MEP": [
+    "Mechanical Equipment",
+    "Specialty Equipment",
+    "Plumbing Fixtures",
+    "Mechanical Control Devices",
+    "Air Terminals",
+    "Fire Protection",
+    "Sprinklers",
+  ],
+  "Canonades": [
+    "Pipe Accessories",
+    "Pipe Fittings",
+    "Pipes",
+  ],
+  "Conductes": [
+    "Duct Accessories",
+    "Duct Fittings",
+    "Ducts",
+  ],
+  "Elèctrica": [
+    "Electrical Equipment",
+    "Electrical Fixtures",
+    "Lighting Fixtures",
+    "Lighting Devices",
+    "Communication Devices",
+    "Data Devices",
+    "Fire Alarm Devices",
+    "Security Devices",
+    "Cable Trays",
+    "Conduits",
+  ],
+  "Estructura": [
+    "Structural Columns",
+    "Structural Framing",
+    "Structural Foundations",
+  ],
+  "Arquitectura / General": [
+    "Generic Models",
+    "Vertical Circulation",
+    "Furniture",
+    "Casework",
+    "Walls",
+    "Doors",
+    "Windows",
+  ],
+};
+
+// Llista plana per a validació (valors únics)
+export const REVIT_CATEGORIES_FLAT: string[] = Object.values(REVIT_CATEGORIES_BY_GROUP).flat();
 
 interface Props {
   open: boolean;
@@ -154,8 +201,13 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
               <SelectTrigger><SelectValue placeholder="Selecciona categoria…" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__none__">— Sense categoria —</SelectItem>
-                {REVIT_CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                {Object.entries(REVIT_CATEGORIES_BY_GROUP).map(([group, cats]) => (
+                  <SelectGroup key={group}>
+                    <SelectLabel className="text-xs text-muted-foreground">{group}</SelectLabel>
+                    {cats.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectGroup>
                 ))}
               </SelectContent>
             </Select>

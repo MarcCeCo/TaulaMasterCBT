@@ -30,35 +30,269 @@ import {
   CheckCircle2,
   RefreshCw,
   Info,
+  Flame,
+  Wind,
+  Waves,
+  Radio,
+  Shield,
+  Lightbulb,
+  Cable,
+  Columns3,
+  Building2,
+  WrapText,
+  Droplets,
+  Thermometer,
+  Settings2,
 } from "lucide-react";
+import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
 
 // ─── Configuració de categories Revit ────────────────────────────────────────
 
 const CATEGORY_CONFIG: Record<
   string,
-  { label: string; template: string; color: string; icon: React.ReactNode }
+  { label: string; template: string; color: string; icon: React.ReactNode; group: string }
 > = {
-  "Mechanical equipment": {
+  // ── Mecànica / MEP ──────────────────────────────────────────────────────────
+  "Mechanical Equipment": {
     label: "Mechanical Equipment",
     template: "Metric Mechanical Equipment.rft",
     color: "bg-blue-50 text-blue-700 border-blue-200",
     icon: <Box className="h-3.5 w-3.5" />,
+    group: "Mecànica / MEP",
   },
-  "Electrical equipment": {
-    label: "Electrical Equipment",
-    template: "Metric Electrical Equipment.rft",
-    color: "bg-yellow-50 text-yellow-700 border-yellow-200",
-    icon: <Zap className="h-3.5 w-3.5" />,
+  "Specialty Equipment": {
+    label: "Specialty Equipment",
+    template: "Metric Specialty Equipment.rft",
+    color: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    icon: <Settings2 className="h-3.5 w-3.5" />,
+    group: "Mecànica / MEP",
   },
-  "Pipe accessories": {
+  "Plumbing Fixtures": {
+    label: "Plumbing Fixtures",
+    template: "Metric Plumbing Fixture.rft",
+    color: "bg-cyan-50 text-cyan-700 border-cyan-200",
+    icon: <Droplets className="h-3.5 w-3.5" />,
+    group: "Mecànica / MEP",
+  },
+  "Mechanical Control Devices": {
+    label: "Mechanical Control Devices",
+    template: "Metric Mechanical Control Device.rft",
+    color: "bg-sky-50 text-sky-700 border-sky-200",
+    icon: <Thermometer className="h-3.5 w-3.5" />,
+    group: "Mecànica / MEP",
+  },
+  "Air Terminals": {
+    label: "Air Terminals",
+    template: "Metric Air Terminal.rft",
+    color: "bg-teal-50 text-teal-700 border-teal-200",
+    icon: <Wind className="h-3.5 w-3.5" />,
+    group: "Mecànica / MEP",
+  },
+  "Fire Protection": {
+    label: "Fire Protection",
+    template: "Metric Fire Protection.rft",
+    color: "bg-red-50 text-red-700 border-red-200",
+    icon: <Flame className="h-3.5 w-3.5" />,
+    group: "Mecànica / MEP",
+  },
+  "Sprinklers": {
+    label: "Sprinklers",
+    template: "Metric Sprinkler.rft",
+    color: "bg-orange-50 text-orange-700 border-orange-200",
+    icon: <Waves className="h-3.5 w-3.5" />,
+    group: "Mecànica / MEP",
+  },
+  // ── Canonades ───────────────────────────────────────────────────────────────
+  "Pipe Accessories": {
     label: "Pipe Accessories",
     template: "Metric Pipe Accessory.rft",
     color: "bg-teal-50 text-teal-700 border-teal-200",
     icon: <Pipette className="h-3.5 w-3.5" />,
+    group: "Canonades",
+  },
+  "Pipe Fittings": {
+    label: "Pipe Fittings",
+    template: "Metric Pipe Fitting.rft",
+    color: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    icon: <WrapText className="h-3.5 w-3.5" />,
+    group: "Canonades",
+  },
+  "Pipes": {
+    label: "Pipes",
+    template: "Metric Pipe.rft",
+    color: "bg-green-50 text-green-700 border-green-200",
+    icon: <Waves className="h-3.5 w-3.5" />,
+    group: "Canonades",
+  },
+  // ── Conductes ───────────────────────────────────────────────────────────────
+  "Duct Accessories": {
+    label: "Duct Accessories",
+    template: "Metric Duct Accessory.rft",
+    color: "bg-violet-50 text-violet-700 border-violet-200",
+    icon: <Wind className="h-3.5 w-3.5" />,
+    group: "Conductes",
+  },
+  "Duct Fittings": {
+    label: "Duct Fittings",
+    template: "Metric Duct Fitting.rft",
+    color: "bg-purple-50 text-purple-700 border-purple-200",
+    icon: <WrapText className="h-3.5 w-3.5" />,
+    group: "Conductes",
+  },
+  "Ducts": {
+    label: "Ducts",
+    template: "Metric Duct.rft",
+    color: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200",
+    icon: <Wind className="h-3.5 w-3.5" />,
+    group: "Conductes",
+  },
+  // ── Elèctrica ────────────────────────────────────────────────────────────────
+  "Electrical Equipment": {
+    label: "Electrical Equipment",
+    template: "Metric Electrical Equipment.rft",
+    color: "bg-yellow-50 text-yellow-700 border-yellow-200",
+    icon: <Zap className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Electrical Fixtures": {
+    label: "Electrical Fixtures",
+    template: "Metric Electrical Fixture.rft",
+    color: "bg-amber-50 text-amber-700 border-amber-200",
+    icon: <Zap className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Lighting Fixtures": {
+    label: "Lighting Fixtures",
+    template: "Metric Lighting Fixture.rft",
+    color: "bg-yellow-50 text-yellow-600 border-yellow-200",
+    icon: <Lightbulb className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Lighting Devices": {
+    label: "Lighting Devices",
+    template: "Metric Lighting Device.rft",
+    color: "bg-lime-50 text-lime-700 border-lime-200",
+    icon: <Lightbulb className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Communication Devices": {
+    label: "Communication Devices",
+    template: "Metric Communication Device.rft",
+    color: "bg-slate-50 text-slate-600 border-slate-200",
+    icon: <Radio className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Data Devices": {
+    label: "Data Devices",
+    template: "Metric Data Device.rft",
+    color: "bg-slate-50 text-slate-600 border-slate-200",
+    icon: <Radio className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Fire Alarm Devices": {
+    label: "Fire Alarm Devices",
+    template: "Metric Fire Alarm Device.rft",
+    color: "bg-red-50 text-red-600 border-red-200",
+    icon: <Flame className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Security Devices": {
+    label: "Security Devices",
+    template: "Metric Security Device.rft",
+    color: "bg-slate-50 text-slate-700 border-slate-200",
+    icon: <Shield className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Cable Trays": {
+    label: "Cable Trays",
+    template: "Metric Cable Tray.rft",
+    color: "bg-zinc-50 text-zinc-600 border-zinc-200",
+    icon: <Cable className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  "Conduits": {
+    label: "Conduits",
+    template: "Metric Conduit.rft",
+    color: "bg-zinc-50 text-zinc-600 border-zinc-200",
+    icon: <Cable className="h-3.5 w-3.5" />,
+    group: "Elèctrica",
+  },
+  // ── Estructura ───────────────────────────────────────────────────────────────
+  "Structural Columns": {
+    label: "Structural Columns",
+    template: "Metric Structural Column.rft",
+    color: "bg-stone-50 text-stone-600 border-stone-200",
+    icon: <Columns3 className="h-3.5 w-3.5" />,
+    group: "Estructura",
+  },
+  "Structural Framing": {
+    label: "Structural Framing",
+    template: "Metric Structural Framing.rft",
+    color: "bg-stone-50 text-stone-600 border-stone-200",
+    icon: <Columns3 className="h-3.5 w-3.5" />,
+    group: "Estructura",
+  },
+  "Structural Foundations": {
+    label: "Structural Foundations",
+    template: "Metric Structural Foundation.rft",
+    color: "bg-stone-50 text-stone-700 border-stone-300",
+    icon: <Building2 className="h-3.5 w-3.5" />,
+    group: "Estructura",
+  },
+  // ── Arquitectura / General ───────────────────────────────────────────────────
+  "Generic Models": {
+    label: "Generic Models",
+    template: "Metric Generic Model.rft",
+    color: "bg-gray-50 text-gray-600 border-gray-200",
+    icon: <Box className="h-3.5 w-3.5" />,
+    group: "Arquitectura / General",
+  },
+  "Vertical Circulation": {
+    label: "Vertical Circulation",
+    template: "Metric Vertical Circulation.rft",
+    color: "bg-gray-50 text-gray-600 border-gray-200",
+    icon: <Building2 className="h-3.5 w-3.5" />,
+    group: "Arquitectura / General",
+  },
+  "Furniture": {
+    label: "Furniture",
+    template: "Metric Furniture.rft",
+    color: "bg-gray-50 text-gray-500 border-gray-200",
+    icon: <Box className="h-3.5 w-3.5" />,
+    group: "Arquitectura / General",
+  },
+  "Casework": {
+    label: "Casework",
+    template: "Metric Casework.rft",
+    color: "bg-gray-50 text-gray-500 border-gray-200",
+    icon: <Box className="h-3.5 w-3.5" />,
+    group: "Arquitectura / General",
+  },
+  "Walls": {
+    label: "Walls",
+    template: "Metric Wall.rft",
+    color: "bg-gray-50 text-gray-500 border-gray-200",
+    icon: <Building2 className="h-3.5 w-3.5" />,
+    group: "Arquitectura / General",
+  },
+  "Doors": {
+    label: "Doors",
+    template: "Metric Door.rft",
+    color: "bg-gray-50 text-gray-500 border-gray-200",
+    icon: <Building2 className="h-3.5 w-3.5" />,
+    group: "Arquitectura / General",
+  },
+  "Windows": {
+    label: "Windows",
+    template: "Metric Window.rft",
+    color: "bg-gray-50 text-gray-500 border-gray-200",
+    icon: <Building2 className="h-3.5 w-3.5" />,
+    group: "Arquitectura / General",
   },
 };
 
-const VALID_CATEGORIES = new Set(Object.keys(CATEGORY_CONFIG));
+// Usem la mateixa llista que el formulari per garantir consistència
+const VALID_CATEGORIES = new Set(REVIT_CATEGORIES_FLAT);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -111,11 +345,15 @@ export function RevitExportPage() {
     return { exportable, skipped };
   }, [equipments, fields]);
 
-  // ── Stats per categoria ──────────────────────────────────────────────────────
-  const statsByCat = useMemo(() => {
-    const stats: Record<string, number> = {};
+  // ── Stats per grup de categories ────────────────────────────────────────────
+  const statsByGroup = useMemo(() => {
+    const stats: Record<string, { count: number; cats: string[] }> = {};
     for (const eq of exportable) {
-      stats[eq.cat] = (stats[eq.cat] ?? 0) + 1;
+      const cfg = CATEGORY_CONFIG[eq.cat];
+      if (!cfg) continue;
+      if (!stats[cfg.group]) stats[cfg.group] = { count: 0, cats: [] };
+      stats[cfg.group].count++;
+      if (!stats[cfg.group].cats.includes(eq.cat)) stats[cfg.group].cats.push(eq.cat);
     }
     return stats;
   }, [exportable]);
@@ -203,30 +441,36 @@ export function RevitExportPage() {
         </Button>
       </div>
 
-      {/* Cards de resum per categoria */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {Object.entries(CATEGORY_CONFIG).map(([cat, cfg]) => (
-          <Card key={cat} className="border-0 shadow-sm bg-white">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-[#0099A8]/10 flex items-center justify-center text-[#006E7A]">
-                  {cfg.icon}
+      {/* Cards de resum per grup de disciplina */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {Object.entries(statsByGroup).map(([group, { count, cats }]) => {
+          // Icona del primer element del grup
+          const firstCat = cats[0];
+          const icon = firstCat ? CATEGORY_CONFIG[firstCat]?.icon : <Box className="h-3.5 w-3.5" />;
+          return (
+            <Card key={group} className="border-0 shadow-sm bg-white">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-lg bg-[#0099A8]/10 flex items-center justify-center text-[#006E7A] shrink-0">
+                    {icon}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[11px] text-slate-400 leading-tight truncate">{group}</p>
+                    <p className="text-xl font-bold text-slate-800">{count}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs text-slate-500 leading-tight">
-                    {cfg.label}
-                  </p>
-                  <p className="text-2xl font-bold text-slate-800">
-                    {statsByCat[cat] ?? 0}
-                  </p>
-                </div>
-              </div>
-              <p className="text-[10px] text-slate-400 mt-3 font-mono truncate">
-                {cfg.template}
-              </p>
+                <p className="text-[10px] text-slate-400 mt-2 truncate">{cats.length} categoria{cats.length !== 1 ? "s" : ""}</p>
+              </CardContent>
+            </Card>
+          );
+        })}
+        {Object.keys(statsByGroup).length === 0 && (
+          <Card className="border-0 shadow-sm bg-white col-span-full">
+            <CardContent className="p-4 text-center text-sm text-slate-400">
+              Cap equip exportable encara
             </CardContent>
           </Card>
-        ))}
+        )}
       </div>
 
       {/* Nota informativa */}

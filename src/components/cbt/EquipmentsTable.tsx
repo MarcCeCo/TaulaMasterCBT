@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { exportRosmiman } from "@/lib/exportRosmiman";
 import { useAuth } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
+import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
 
 const GROUP_COLORS = [
   "border-l-violet-500 bg-violet-50/60 dark:bg-violet-950/30",
@@ -363,7 +364,12 @@ export function EquipmentsTable() {
             tableName = name;
           }
         }
-        const revitCategory = String(r["Categoria Revit"] ?? "").trim();
+        const revitCategoryRaw = String(r["Categoria Revit"] ?? "").trim();
+        // Normalitzem: cerquem la categoria correcta (case-insensitive) per
+        // compatibilitat amb valors antics en minúscules (p.ex. "Mechanical equipment")
+        const revitCategory = REVIT_CATEGORIES_FLAT.find(
+          (c) => c.toLowerCase() === revitCategoryRaw.toLowerCase()
+        ) ?? revitCategoryRaw;
         return {
           id: uid(),
           gubimCode,
