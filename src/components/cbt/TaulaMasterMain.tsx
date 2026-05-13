@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
+import { RevitExportPage } from "./RevitExportPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
 import { ShieldOff } from "lucide-react";
@@ -88,6 +89,9 @@ export function TaulaMasterMain() {
 
       case "canviapwd":
         return <ChangePasswordPage />;
+
+      case "revit":
+        return <RevitExportPage />;
 
       case "equips":
       default:
