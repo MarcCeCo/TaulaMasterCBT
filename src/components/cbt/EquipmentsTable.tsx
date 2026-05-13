@@ -418,8 +418,14 @@ export function EquipmentsTable() {
         } else {
           toast.success(`${imported} equips importats correctament`);
         }
-      }).catch(() => toast.error("Error important equips"));
-    } catch { toast.error("Error en importar"); }
+      }).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`Error important equips: ${msg.slice(0, 120)}`);
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Error processant el fitxer: ${msg.slice(0, 120)}`);
+    }
   }, [items, addMany]);
 
   return (
