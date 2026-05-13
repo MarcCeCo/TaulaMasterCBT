@@ -20,21 +20,11 @@ Si s'interromp, pots tornar a executar-lo:
 import os
 import glob
 import json
+import io
 import clr
 clr.AddReference('RevitAPI')
 from Autodesk.Revit.DB import Transaction, SaveAsOptions
 from pyrevit import forms, script
-
-# ── Compatibilitat API Revit 2026+ ─────────────────────────────
-# BuiltInParameterGroup va desaparèixer a Revit 2026.
-# Usem GroupTypeId.Data com a equivalent modern.
-try:
-    from Autodesk.Revit.DB import BuiltInParameterGroup
-    _PARAM_GROUP = BuiltInParameterGroup.PG_DATA
-except ImportError:
-    from Autodesk.Revit.DB import GroupTypeId
-    _PARAM_GROUP = GroupTypeId.Data
-# ──────────────────────────────────────────────────────────────
 
 # ── CONFIGURACIÓ ──────────────────────────────────────────────
 JSON_FILENAME       = "CBT_Revit_Config.json"
@@ -293,6 +283,18 @@ try:
 except NameError:
     forms.alert("Aquest script s'ha d'executar des de pyRevit (dins Revit).", exitscript=True)
 
+# ── Compatibilitat API Revit 2026+ ─────────────────────────────
+# BuiltInParameterGroup va desaparèixer a Revit 2026.
+# Detectem la versió en temps d'execució per evitar ImportError a IronPython.
+_revit_version = int(app.VersionNumber)
+if _revit_version >= 2026:
+    from Autodesk.Revit.DB import GroupTypeId
+    _PARAM_GROUP = GroupTypeId.Data
+else:
+    from Autodesk.Revit.DB import BuiltInParameterGroup
+    _PARAM_GROUP = BuiltInParameterGroup.PG_DATA
+# ──────────────────────────────────────────────────────────────
+
 # ── Cerca automàtica del JSON de configuració ──
 output.print_md("## Cercant fitxers de configuració CBT...")
 
@@ -324,7 +326,7 @@ output.print_md("  ✅ Paràmetres compartits: `{}`".format(shared_params_path))
 
 # ── Llegeix JSON ──
 output.print_md("## Llegint configuració...")
-with open(json_path, "r", encoding="utf-8") as f:
+with io.open(json_path, "r", encoding="utf-8") as f:
     config = json.load(f)
 
 equips = config["equipments"]
