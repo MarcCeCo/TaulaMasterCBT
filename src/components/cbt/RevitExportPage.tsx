@@ -43,6 +43,11 @@ import {
   Droplets,
   Thermometer,
   Settings2,
+  FileCode2,
+  FolderOpen,
+  Terminal,
+  Copy,
+  Check,
 } from "lucide-react";
 import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
 
@@ -307,6 +312,9 @@ function toFileName(nom: string): string {
 export function RevitExportPage() {
   const { equipments, fields, loading, error, retry } = useDataStore();
   const [downloaded, setDownloaded] = useState(false);
+  const [scriptDownloaded, setScriptDownloaded] = useState<"FULL" | "TEST" | null>(null);
+  const [showScriptInstructions, setShowScriptInstructions] = useState(false);
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
   // Mapa ràpid equipCode → equipName per a la resolució de pares
   const equipByCode = useMemo(() => {
@@ -323,8 +331,9 @@ export function RevitExportPage() {
       nom: string;       // nom original per mostrar
       fileName: string;  // nom normalitzat per al fitxer .rfa
       cat: string;
-      params: string[];
+      params: { name: string; codi: string | null }[];
       fieldCols: string[];
+      tableCode: string;
     }[] = [];
     const skipped: { nom: string; reason: string }[] = [];
 
@@ -347,8 +356,8 @@ export function RevitExportPage() {
         .filter(Boolean) as typeof fields;
 
       const params = equipFields
-        .map((f) => f.cbt)
-        .filter(Boolean) as string[];
+        .map((f) => f.cbt ? { name: f.cbt, codi: f.codi ?? null } : null)
+        .filter(Boolean) as { name: string; codi: string | null }[];
 
       // Nom complet: "Nom pare Nom equip" si té pare, sinó sol el nom
       const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) : null;
@@ -360,6 +369,7 @@ export function RevitExportPage() {
         cat,
         params,
         fieldCols: eq.fieldCols,
+        tableCode: eq.tableCode ?? "",
       });
     }
 
@@ -383,15 +393,16 @@ export function RevitExportPage() {
   const handleDownload = () => {
     const config = {
       generated_at: new Date().toISOString(),
-      revit_version: "2026",
-      templates_folder: "C:\\ProgramData\\Autodesk\\RVT 2026\\Family Templates\\English",
+      // templates_folder omès intencionadament: el script detecta automàticament
+      // qualsevol versió de Revit instal·lada (2020–2030)
       output_folder: "%USERPROFILE%\\Documents\\Families_Output",
       shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
       total: exportable.length,
       equipments: exportable.map((eq) => ({
-        nom: eq.fileName,
+        nom: "CBT_" + eq.fileName,
         cat: eq.cat,
         template: CATEGORY_CONFIG[eq.cat].template,
+        table_code: eq.tableCode,
         params: eq.params,
       })),
     };
@@ -407,6 +418,44 @@ export function RevitExportPage() {
     URL.revokeObjectURL(url);
     setDownloaded(true);
     setTimeout(() => setDownloaded(false), 3000);
+  };
+
+  // ── Descàrrega scripts pyRevit ────────────────────────────────────────────────
+  const PYREVIT_SCRIPTS: Record<"FULL" | "TEST", { filename: string; pyRevitPath: string }> = {
+    FULL: {
+      filename: "script.py",
+      pyRevitPath:
+        "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families FULL.pushbutton\\script.py",
+    },
+    TEST: {
+      filename: "script.py",
+      pyRevitPath:
+        "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families TEST.pushbutton\\script.py",
+    },
+  };
+
+  const handleScriptDownload = (type: "FULL" | "TEST") => {
+    // Els scripts estan embedits com a text estàtic.
+    // En producció, podrien estar servits com a assets estàtics.
+    const scriptUrl =
+      type === "FULL"
+        ? "/scripts/FULL_script.py"
+        : "/scripts/TEST_script.py";
+
+    const a = document.createElement("a");
+    a.href = scriptUrl;
+    a.download = `CBT_${type}_script.py`;
+    a.click();
+    setScriptDownloaded(type);
+    setShowScriptInstructions(true);
+    setTimeout(() => setScriptDownloaded(null), 3000);
+  };
+
+  const handleCopyPath = (path: string) => {
+    navigator.clipboard.writeText(path).then(() => {
+      setCopiedPath(path);
+      setTimeout(() => setCopiedPath(null), 2000);
+    });
   };
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -440,26 +489,58 @@ export function RevitExportPage() {
             Exportació Revit
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            Famílies .rfa a generar per al model BIM · Revit 2026 Mètric
+            Famílies .rfa a generar per al model BIM · Compatible amb totes les versions de Revit
           </p>
         </div>
-        <Button
-          onClick={handleDownload}
-          disabled={exportable.length === 0}
-          className="bg-[#006E7A] hover:bg-[#005a64] text-white gap-2 shrink-0"
-        >
-          {downloaded ? (
-            <>
-              <CheckCircle2 className="h-4 w-4" />
-              Descarregat!
-            </>
-          ) : (
-            <>
-              <Download className="h-4 w-4" />
-              Descarregar config Revit
-            </>
-          )}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {/* Botons de scripts pyRevit */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => handleScriptDownload("TEST")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200"
+              title="Descarrega el script de TEST (1 família per categoria)"
+            >
+              {scriptDownloaded === "TEST" ? (
+                <Check className="h-3.5 w-3.5 text-emerald-500" />
+              ) : (
+                <Terminal className="h-3.5 w-3.5" />
+              )}
+              Script TEST
+            </button>
+            <button
+              onClick={() => handleScriptDownload("FULL")}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200"
+              title="Descarrega el script FULL (totes les famílies)"
+            >
+              {scriptDownloaded === "FULL" ? (
+                <Check className="h-3.5 w-3.5 text-emerald-500" />
+              ) : (
+                <FileCode2 className="h-3.5 w-3.5" />
+              )}
+              Script FULL
+            </button>
+          </div>
+          {/* Separador */}
+          <div className="h-7 w-px bg-slate-200" />
+          {/* Botó JSON */}
+          <button
+            onClick={handleDownload}
+            disabled={exportable.length === 0}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium bg-[#006E7A] hover:bg-[#005a64] text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {downloaded ? (
+              <>
+                <CheckCircle2 className="h-4 w-4" />
+                Descarregat!
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Config Revit (JSON)
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Cards de resum per grup de disciplina */}
@@ -494,16 +575,75 @@ export function RevitExportPage() {
         )}
       </div>
 
+      {/* Instruccions d'instal·lació dels scripts */}
+      {showScriptInstructions && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+            <span className="text-sm font-semibold text-emerald-800">Script descarregat — on col·locar-lo</span>
+            <button
+              onClick={() => setShowScriptInstructions(false)}
+              className="ml-auto text-emerald-500 hover:text-emerald-700 text-xs"
+            >
+              Tanca
+            </button>
+          </div>
+          <p className="text-xs text-emerald-700">
+            Copia el fitxer <code className="bg-emerald-100 px-1 rounded font-mono">script.py</code> a la ruta corresponent de pyRevit:
+          </p>
+          <div className="space-y-2">
+            {(["FULL", "TEST"] as const).map((type) => (
+              <div key={type} className="bg-white rounded-lg border border-emerald-200 p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">
+                    {type === "FULL" ? "Script FULL (totes les famílies)" : "Script TEST (1 per categoria)"}
+                  </span>
+                  <button
+                    onClick={() => handleCopyPath(PYREVIT_SCRIPTS[type].pyRevitPath)}
+                    className="inline-flex items-center gap-1 text-[10px] text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded transition-colors"
+                  >
+                    {copiedPath === PYREVIT_SCRIPTS[type].pyRevitPath ? (
+                      <><Check className="h-3 w-3" /> Copiat!</>
+                    ) : (
+                      <><Copy className="h-3 w-3" /> Copia ruta</>
+                    )}
+                  </button>
+                </div>
+                <code className="text-[11px] text-slate-600 font-mono break-all block bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
+                  {PYREVIT_SCRIPTS[type].pyRevitPath}
+                </code>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-start gap-2 text-xs text-emerald-700 bg-emerald-100/60 rounded-lg px-3 py-2">
+            <FolderOpen className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>
+              Si la carpeta <code className="font-mono text-[11px] bg-white/70 px-1 rounded">CBT.extension</code> no existeix, crea-la manualment o importa l'extensió des de pyRevit Settings → Extensions.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Nota informativa */}
       <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
         <Info className="h-4 w-4 shrink-0 mt-0.5" />
-        <div>
-          <span className="font-medium">Com funciona: </span>
-          Descarrega el JSON de configuració i posa'l a{" "}
-          <code className="bg-blue-100 px-1 rounded text-xs">
-            Documentos\CBT_Revit_Config.json
-          </code>
-          . El script de pyRevit el llegirà automàticament en lloc de l'Excel.
+        <div className="space-y-1">
+          <div>
+            <span className="font-medium">Com funciona: </span>
+            Descarrega el JSON i guarda'l com{" "}
+            <code className="bg-blue-100 px-1 rounded text-xs font-mono">CBT_Revit_Config.json</code>{" "}
+            a qualsevol d'aquestes ubicacions — el script el trobarà automàticament:
+          </div>
+          <div className="flex flex-wrap gap-1.5 mt-1.5">
+            {["Documents", "Escriptori", "Descàrregues", "OneDrive\\Documents"].map((loc) => (
+              <span key={loc} className="bg-blue-100 text-blue-600 text-[11px] font-mono px-2 py-0.5 rounded">
+                {loc}
+              </span>
+            ))}
+          </div>
+          <div className="text-[11px] text-blue-500 mt-1">
+            Compatible amb Revit 2020–2030 · Detecta automàticament la versió instal·lada
+          </div>
         </div>
       </div>
 
