@@ -95,16 +95,20 @@ const equipToRow = (e: Equipment) => {
   const row: any = {
     id:          e.id,
     gubim_code:  e.gubimCode,
-    equip_code:  e.equipCode  || null,
+    // Enviem string buit en lloc de null per evitar conflictes amb
+    // constraints UNIQUE a equip_code (PostgreSQL tracta cada NULL com
+    // un valor diferent en alguns contexts, però el Prefer merge-duplicates
+    // pot fallar amb nulls en certes configuracions de Supabase)
+    equip_code:  e.equipCode  ?? "",
     equip_name:  e.equipName,
     needs_table: e.needsTable,
-    table_code:  e.tableCode  || null,
-    table_name:  e.tableName  || null,
-    field_cols:  e.fieldCols,
+    table_code:  e.tableCode  ?? "",
+    table_name:  e.tableName  ?? "",
+    field_cols:  e.fieldCols  ?? [],
+    parent_equip_code: e.parentEquipCode ?? "",
+    revit_category:    e.revitCategory   ?? "",
   };
-  if (e.parentEquipCode) row.parent_equip_code = e.parentEquipCode;
-  if (e.revitCategory)   row.revit_category    = e.revitCategory;
-  if (e.createdAt)       row.created_at        = e.createdAt;
+  if (e.createdAt) row.created_at = e.createdAt;
   return row;
 };
 
@@ -355,7 +359,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const upsertEquip = useCallback(async (e: Equipment) => {
     const token = getToken();
     await supa(token, "POST", "equipments?on_conflict=id", equipToRow(e), {
-      "Prefer": "return=representation,resolution=merge-duplicates",
+      "Prefer": "return=minimal,resolution=merge-duplicates",
     });
     setEquipments((prev) => {
       const idx = prev.findIndex((p) => p.id === e.id);
@@ -382,11 +386,13 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     });
     if (toAdd.length === 0) return;
     const token = getToken();
-    const BATCH = 50;
+    // BATCH reduït a 25 per evitar payloads massa grans (equips amb molts fieldCols)
+    // return=minimal evita que Supabase retorni tots els objectes inserits (menys overhead)
+    const BATCH = 25;
     for (let i = 0; i < toAdd.length; i += BATCH) {
       await supa(token, "POST", "equipments?on_conflict=id",
         toAdd.slice(i, i + BATCH).map(equipToRow),
-        { "Prefer": "return=representation,resolution=merge-duplicates" },
+        { "Prefer": "return=minimal,resolution=merge-duplicates" },
       );
     }
     setEquipments((prev) => [...prev, ...toAdd]);
