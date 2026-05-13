@@ -331,8 +331,9 @@ export function RevitExportPage() {
       nom: string;       // nom original per mostrar
       fileName: string;  // nom normalitzat per al fitxer .rfa
       cat: string;
-      params: string[];
+      params: { name: string; codi: string | null }[];
       fieldCols: string[];
+      tableCode: string;
     }[] = [];
     const skipped: { nom: string; reason: string }[] = [];
 
@@ -355,8 +356,8 @@ export function RevitExportPage() {
         .filter(Boolean) as typeof fields;
 
       const params = equipFields
-        .map((f) => f.cbt)
-        .filter(Boolean) as string[];
+        .map((f) => f.cbt ? { name: f.cbt, codi: f.codi ?? null } : null)
+        .filter(Boolean) as { name: string; codi: string | null }[];
 
       // Nom complet: "Nom pare Nom equip" si té pare, sinó sol el nom
       const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) : null;
@@ -368,6 +369,7 @@ export function RevitExportPage() {
         cat,
         params,
         fieldCols: eq.fieldCols,
+        tableCode: eq.tableCode ?? "",
       });
     }
 
@@ -397,9 +399,10 @@ export function RevitExportPage() {
       shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
       total: exportable.length,
       equipments: exportable.map((eq) => ({
-        nom: eq.fileName,
+        nom: "CBT_" + eq.fileName,
         cat: eq.cat,
         template: CATEGORY_CONFIG[eq.cat].template,
+        table_code: eq.tableCode,
         params: eq.params,
       })),
     };
