@@ -299,6 +299,7 @@ export function EquipmentsTable() {
         "Codi taula": e.tableCode,
         "Nom taula": e.tableName,
         "Equip pare": e.parentEquipCode,
+        "Categoria Revit": e.revitCategory ?? "",
       };
       allCols.forEach((col) => {
         const f = fieldMap.get(col);
@@ -347,7 +348,7 @@ export function EquipmentsTable() {
           fieldCols = String(r["Camps"]).split("|").map((s: string) => s.trim()).filter(Boolean);
         } else {
           fieldCols = Object.keys(r).filter(k => {
-            const known = ["GuBIMClass","Codi equip","Nom equip","Necessita taula","Codi taula","Nom taula","Equip pare"];
+            const known = ["GuBIMClass","Codi equip","Nom equip","Necessita taula","Codi taula","Nom taula","Equip pare","Categoria Revit"];
             if (known.includes(k)) return false;
             return String(r[k]).toUpperCase() === "Y";
           }).map(k => k.split(" (")[0].trim());
@@ -362,6 +363,7 @@ export function EquipmentsTable() {
             tableName = name;
           }
         }
+        const revitCategory = String(r["Categoria Revit"] ?? "").trim();
         return {
           id: uid(),
           gubimCode,
@@ -372,6 +374,7 @@ export function EquipmentsTable() {
           tableName,
           fieldCols,
           parentEquipCode,
+          revitCategory,
           createdAt: Date.now(),
         };
       }).filter((e) => e.equipName);

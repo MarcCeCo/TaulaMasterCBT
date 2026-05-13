@@ -88,7 +88,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
     if (taulaRequired && !taulaAssoc.trim()) return toast.error("La taula associada és obligatòria quan el tipus dada és 'Taula Associada'");
 
     const f: FieldMeta = isCls
-      ? { col, codi: null, taula_assoc: null, tipus_dada: null, cbt: null, format_param: null, agrupacio_revit: null, grup_txt: null, instancia_revit: null, disciplina: null }
+      ? { col, codi: null, taula_assoc: null, tipus_dada: null, cbt: null, format_param: null, agrupacio_revit: null, grup_txt: null, instancia_revit: null, disciplina: null, classificador: null }
       : {
           col,
           codi:            codi.trim() || null,
@@ -100,7 +100,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
           grup_txt:        grupTxt.trim() || null,
           instancia_revit: instancia || null,
           disciplina:      finalDisciplina || null,
-          classificador:   (() => { const auto = autoClassifierForCodi(codi.trim() || null); return classificador !== auto ? classificador : null; })(),
+          // classificador: calculat localment, no s'envia a Supabase
         };
     setSaving(true);
     try {
@@ -140,7 +140,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
               <div className="col-span-2">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="inline-block w-3 h-3 rounded-full bg-[#0099A8]" />
-                  <span className="text-xs font-semibold text-[#0099A8] uppercase tracking-wide">Paràmetre Revit (.txt)</span>
+                  <span className="text-xs font-semibold text-[#0099A8] uppercase tracking-wide">Configuració Revit</span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pl-5 border-l-2 border-[#0099A8]/30">
                   <div className="col-span-2 space-y-1.5">

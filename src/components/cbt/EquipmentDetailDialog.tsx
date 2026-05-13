@@ -77,7 +77,7 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
         </DialogHeader>
 
         {/* Metadades ràpides — mateix estil que el bloc de camps del EquipmentFormDialog */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 border rounded-md bg-muted/30">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-3 border rounded-md bg-muted/30">
           <div className="space-y-1">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Codi equip</p>
             <p className="font-mono font-semibold text-sm">
@@ -91,6 +91,14 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
                 ? <Badge className="bg-emerald-600 hover:bg-emerald-600 text-xs">Sí</Badge>
                 : <Badge variant="secondary" className="text-xs">No</Badge>}
             </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Categoria Revit</p>
+            <p className="text-sm truncate">
+              {equipment.revitCategory
+                ? <Badge variant="outline" className="text-xs border-[#0099A8]/40 text-[#006E7A] bg-[#0099A8]/5">{equipment.revitCategory}</Badge>
+                : <span className="text-muted-foreground italic text-xs">—</span>}
+            </p>
           </div>
           <div className="space-y-1">
             <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Nom taula</p>
@@ -162,7 +170,7 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
                     <td colSpan={5} className="px-4 py-1 border-l-2 border-[#0099A8]/30">
                       <span className="text-[10px] font-medium text-[#0099A8] flex items-center gap-1">
                         <span className="inline-block w-2 h-2 rounded-full bg-[#0099A8]" />
-                        Configuració paràmetre Revit (.txt)
+                        Configuració Revit
                       </span>
                     </td>
                   </tr>
