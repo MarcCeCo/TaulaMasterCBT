@@ -15,6 +15,12 @@ import { uid } from "@/lib/storage";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+const REVIT_CATEGORIES = [
+  "Mechanical equipment",
+  "Electrical equipment",
+  "Pipe accessories",
+] as const;
+
 interface Props {
   open: boolean;
   onOpenChange: (b: boolean) => void;
@@ -36,14 +42,17 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   const [cols, setCols] = useState<string[]>([]);
   const [pickOpen, setPickOpen] = useState(false);
   const [parentEquipCode, setParentEquipCode] = useState("");
+  const [revitCategory,   setRevitCategory]   = useState("");
 
   useEffect(() => {
     if (!open) return;
     if (editing) {
       setGubim(editing.gubimCode); setCode(editing.equipCode); setName(editing.equipName);
       setNeeds(editing.needsTable); setCols(editing.fieldCols); setParentEquipCode(editing.parentEquipCode ?? "");
+      setRevitCategory(editing.revitCategory ?? "");
     } else {
       setGubim(""); setCode(""); setName(""); setNeeds(false); setCols([]); setParentEquipCode("");
+      setRevitCategory("");
     }
   }, [open, editing]);
 
@@ -83,6 +92,7 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
       tableName: computedTableName,
       fieldCols: needs ? cols : [],
       parentEquipCode: parentEquipCode,
+      revitCategory: revitCategory,
       createdAt: editing?.createdAt ?? Date.now(),
     };
     setSaving(true);
@@ -136,6 +146,20 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
               </Select>
             </div>
           )}
+
+          {/* Categoria Revit */}
+          <div className="col-span-2 space-y-1.5">
+            <Label>Categoria Revit <span className="text-muted-foreground text-xs">(per a la família .rfa)</span></Label>
+            <Select value={revitCategory || "__none__"} onValueChange={(v) => setRevitCategory(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Selecciona categoria…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Sense categoria —</SelectItem>
+                {REVIT_CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="col-span-2 flex items-center gap-3 p-2 rounded-md bg-muted/40">
             <Switch checked={needs} onCheckedChange={setNeeds} id="needs" />

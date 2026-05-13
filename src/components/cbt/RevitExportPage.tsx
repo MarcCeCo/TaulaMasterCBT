@@ -62,12 +62,6 @@ const VALID_CATEGORIES = new Set(Object.keys(CATEGORY_CONFIG));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function singleCategory(cats: string[]): string | null {
-  const valid = cats.filter((c) => VALID_CATEGORIES.has(c));
-  if (valid.length === 1) return valid[0];
-  return null;
-}
-
 // ─── Component principal ──────────────────────────────────────────────────────
 
 export function RevitExportPage() {
@@ -87,45 +81,21 @@ export function RevitExportPage() {
     for (const eq of equipments) {
       if (!eq.needsTable) continue;
 
-      // La categoria Revit ve del primer fieldCol que coincideixi, o d'un
-      // camp "categoria_revit" si existís — usem el GuBIM Class per deduir-la.
-      // Per ara, busquem si l'equip té fieldCols que continguin la clau
-      // "CATEGORIA" i si el seu valor és una de les categories vàlides.
-      // Com que el valor de la categoria no està al equip sinó a la taula,
-      // usem el nom del GuBIMClass per mapar (igual que feia l'Excel).
-      // En el futur podeu afegir un camp `revit_category` a la taula.
+      const cat = eq.revitCategory?.trim() ?? "";
 
-      // Busca camps que tinguin agrupació_revit o disciplina que indiqui cat.
-      // Per ara: si el equip té fieldCols, obtenim els FieldMeta corresponents
-      // i mirem si algun té agrupacio_revit que mapegi a una categoria.
+      if (!cat || !VALID_CATEGORIES.has(cat)) {
+        skipped.push({
+          nom: eq.equipName,
+          reason: cat ? `Categoria no vàlida: "${cat}"` : "Sense categoria Revit assignada",
+        });
+        continue;
+      }
+
+      // Paràmetres CBT dels camps assignats a l'equip
       const equipFields = eq.fieldCols
         .map((col) => fields.find((f) => f.col === col))
         .filter(Boolean) as typeof fields;
 
-      // Intenta deduir categoria des dels FieldMeta (agrupacio_revit)
-      const revitCats = [
-        ...new Set(
-          equipFields
-            .map((f) => f.agrupacio_revit)
-            .filter(Boolean) as string[]
-        ),
-      ];
-
-      const cat = singleCategory(revitCats);
-
-      if (!cat) {
-        if (revitCats.length === 0) {
-          skipped.push({ nom: eq.equipName, reason: "Sense categoria Revit" });
-        } else {
-          skipped.push({
-            nom: eq.equipName,
-            reason: `Múltiples categories: ${revitCats.join(", ")}`,
-          });
-        }
-        continue;
-      }
-
-      // Paràmetres: els noms dels camps amb prefix CBT_
       const params = equipFields
         .map((f) => f.cbt)
         .filter(Boolean) as string[];
