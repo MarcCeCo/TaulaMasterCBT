@@ -296,16 +296,32 @@ const VALID_CATEGORIES = new Set(REVIT_CATEGORIES_FLAT);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// ─── Helper: nom de fitxer .rfa ───────────────────────────────────────────────
+// MAJÚSCULES + espais → "_"
+function toFileName(nom: string): string {
+  return nom.toUpperCase().replace(/\s+/g, "_");
+}
+
 // ─── Component principal ──────────────────────────────────────────────────────
 
 export function RevitExportPage() {
   const { equipments, fields, loading, error, retry } = useDataStore();
   const [downloaded, setDownloaded] = useState(false);
 
+  // Mapa ràpid equipCode → equipName per a la resolució de pares
+  const equipByCode = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const eq of equipments) {
+      if (eq.equipCode) m.set(eq.equipCode, eq.equipName);
+    }
+    return m;
+  }, [equipments]);
+
   // ── Calcula els equips exportables ──────────────────────────────────────────
   const { exportable, skipped } = useMemo(() => {
     const exportable: {
-      nom: string;
+      nom: string;       // nom original per mostrar
+      fileName: string;  // nom normalitzat per al fitxer .rfa
       cat: string;
       params: string[];
       fieldCols: string[];
@@ -334,8 +350,13 @@ export function RevitExportPage() {
         .map((f) => f.cbt)
         .filter(Boolean) as string[];
 
+      // Nom complet: "Nom pare Nom equip" si té pare, sinó sol el nom
+      const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) : null;
+      const nomComplet = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
+
       exportable.push({
-        nom: eq.equipName,
+        nom: nomComplet,
+        fileName: toFileName(nomComplet),
         cat,
         params,
         fieldCols: eq.fieldCols,
@@ -343,7 +364,7 @@ export function RevitExportPage() {
     }
 
     return { exportable, skipped };
-  }, [equipments, fields]);
+  }, [equipments, fields, equipByCode]);
 
   // ── Stats per grup de categories ────────────────────────────────────────────
   const statsByGroup = useMemo(() => {
@@ -368,7 +389,7 @@ export function RevitExportPage() {
       shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
       total: exportable.length,
       equipments: exportable.map((eq) => ({
-        nom: eq.nom,
+        nom: eq.fileName,
         cat: eq.cat,
         template: CATEGORY_CONFIG[eq.cat].template,
         params: eq.params,
@@ -527,8 +548,15 @@ export function RevitExportPage() {
                         key={eq.nom}
                         className="hover:bg-slate-50/50 transition-colors"
                       >
-                        <TableCell className="py-2.5 text-sm font-medium text-slate-700">
-                          {eq.nom}
+                        <TableCell className="py-2.5">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-mono text-xs font-semibold text-slate-800 tracking-tight">
+                              {eq.fileName}
+                            </span>
+                            {eq.nom !== eq.fileName.replace(/_/g, " ").toLowerCase() && (
+                              <span className="text-[11px] text-slate-400">{eq.nom}</span>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell className="py-2.5">
                           <Badge
