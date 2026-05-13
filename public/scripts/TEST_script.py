@@ -5,6 +5,13 @@ CREAR FAMÍLIES CBT - MODE TEST
 Llegeix el fitxer JSON exportat des de la plataforma TaulaMaster CBT-BIM
 i crea 1 família per cada categoria present al JSON (per validar el procés).
 
+Nom dels fitxers generats: CBT_<NOM_EQUIP>.rfa
+
+Grups de paràmetres:
+  - Paràmetres sense codi → grup "General"
+  - Paràmetres amb codi   → grup "Data"
+  - CBT_TAULA             → grup "General", valor = codi de taula de l'equip
+
 Col·loca aquest fitxer a:
   %APPDATA%\pyRevit-Master\Extensions\CBT.extension\CBT.tab\CBT Tools.panel\Crear Families TEST.pushbutton\script.py
 
@@ -169,7 +176,7 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
             output.print_md("  ⚠️ " + msg)
             continue
 
-        out_path = os.path.join(output_folder, nom + ".rfa")
+        out_path = os.path.join(output_folder, "CBT_" + nom + ".rfa")
         if os.path.exists(out_path):
             output.print_md("  ⏭ Ja existeix, saltant.")
             continue
@@ -186,14 +193,41 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
         t = Transaction(fam_doc, "Afegir params CBT")
         t.Start()
         try:
-            for pname in params:
-                if pname not in param_index:
-                    output.print_md("  ⚠️ Paràmetre no trobat al fitxer compartit: " + pname)
+            for param_entry in params:
+                # Suport tant del format nou (dict) com de l'antic (string)
+                if isinstance(param_entry, dict):
+                    pname = param_entry.get("name", "")
+                    has_codi = bool(param_entry.get("codi"))
+                else:
+                    pname = param_entry
+                    has_codi = False
+
+                if not pname or pname not in param_index:
+                    if pname:
+                        output.print_md("  ⚠️ Paràmetre no trobat al fitxer compartit: " + pname)
                     continue
+
+                # Grup: Data si té codi, General si no en té
+                if has_codi:
+                    grp = _PARAM_GROUP_DATA
+                else:
+                    grp = _PARAM_GROUP_GENERAL
+
                 try:
-                    fam_mgr.AddParameter(param_index[pname], _PARAM_GROUP, True)
+                    fam_mgr.AddParameter(param_index[pname], grp, True)
                 except Exception:
                     pass
+
+            # Paràmetre CBT_TAULA: afegir i omplir amb el codi de taula
+            table_code = equip.get("table_code", "")
+            if "CBT_TAULA" in param_index:
+                try:
+                    fp = fam_mgr.AddParameter(param_index["CBT_TAULA"], _PARAM_GROUP_GENERAL, True)
+                    if table_code and fp is not None:
+                        fam_mgr.Set(fp, table_code)
+                except Exception:
+                    pass
+
             t.Commit()
         except Exception as e:
             t.RollBack()
@@ -241,10 +275,12 @@ except NameError:
 _revit_version = int(app.VersionNumber)
 if _revit_version >= 2026:
     from Autodesk.Revit.DB import GroupTypeId
-    _PARAM_GROUP = GroupTypeId.Data
+    _PARAM_GROUP_GENERAL = GroupTypeId.General
+    _PARAM_GROUP_DATA    = GroupTypeId.Data
 else:
     from Autodesk.Revit.DB import BuiltInParameterGroup
-    _PARAM_GROUP = BuiltInParameterGroup.PG_DATA
+    _PARAM_GROUP_GENERAL = BuiltInParameterGroup.PG_GENERAL
+    _PARAM_GROUP_DATA    = BuiltInParameterGroup.PG_DATA
 # ──────────────────────────────────────────────────────────────
 
 # ── Cerca automàtica ──
