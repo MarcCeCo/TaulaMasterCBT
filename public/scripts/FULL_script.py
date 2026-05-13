@@ -22,10 +22,19 @@ import glob
 import json
 import clr
 clr.AddReference('RevitAPI')
-from Autodesk.Revit.DB import (
-    Transaction, SaveAsOptions, BuiltInParameterGroup
-)
+from Autodesk.Revit.DB import Transaction, SaveAsOptions
 from pyrevit import forms, script
+
+# ── Compatibilitat API Revit 2026+ ─────────────────────────────
+# BuiltInParameterGroup va desaparèixer a Revit 2026.
+# Usem GroupTypeId.Data com a equivalent modern.
+try:
+    from Autodesk.Revit.DB import BuiltInParameterGroup
+    _PARAM_GROUP = BuiltInParameterGroup.PG_DATA
+except ImportError:
+    from Autodesk.Revit.DB import GroupTypeId
+    _PARAM_GROUP = GroupTypeId.Data
+# ──────────────────────────────────────────────────────────────
 
 # ── CONFIGURACIÓ ──────────────────────────────────────────────
 JSON_FILENAME       = "CBT_Revit_Config.json"
@@ -237,7 +246,7 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
                     output.print_md("  ⚠️ Paràmetre no trobat al fitxer compartit: " + pname)
                     continue
                 try:
-                    fam_mgr.AddParameter(param_index[pname], BuiltInParameterGroup.PG_DATA, True)
+                    fam_mgr.AddParameter(param_index[pname], _PARAM_GROUP, True)
                 except Exception:
                     pass  # Ja existeix o incompatible
             t.Commit()
