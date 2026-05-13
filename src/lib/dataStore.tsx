@@ -87,6 +87,7 @@ const toEquip = (row: any): Equipment => ({
   tableName:       row.table_name       ?? "",
   fieldCols:       row.field_cols       ?? [],
   parentEquipCode: row.parent_equip_code ?? "",
+  revitCategory:   row.revit_category   ?? "",
   createdAt:       row.created_at       ?? Date.now(),
 });
 
@@ -102,6 +103,7 @@ const equipToRow = (e: Equipment) => {
     field_cols:  e.fieldCols,
   };
   if (e.parentEquipCode) row.parent_equip_code = e.parentEquipCode;
+  if (e.revitCategory)   row.revit_category    = e.revitCategory;
   if (e.createdAt)       row.created_at        = e.createdAt;
   return row;
 };
