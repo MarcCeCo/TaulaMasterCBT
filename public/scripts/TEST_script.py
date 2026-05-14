@@ -167,6 +167,7 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
         params     = equip["params"]
         template   = equip["template"]
         table_code = equip.get("table_code", "")
+        equip_code = equip.get("equip_code", "")
 
         output.print_md("**[{}/{}]** {} — *{}*".format(i + 1, len(equips), nom, cat))
 
@@ -177,10 +178,10 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
             output.print_md("  ⚠️ " + msg)
             continue
 
-        # Nom del fitxer: CBT_NOM-EQUIP_CODI.rfa (majúscules, espais substituïts per -)
+        # Nom del fitxer: CBT_NOM-EQUIP_CODI-EQUIP.rfa (majúscules, espais substituïts per -)
         nom_safe = nom.upper().replace(" ", "-")
-        if table_code:
-            file_stem = "CBT_{}_{}".format(nom_safe, table_code.upper())
+        if equip_code:
+            file_stem = "CBT_{}_{}".format(nom_safe, equip_code.upper())
         else:
             file_stem = "CBT_{}".format(nom_safe)
         out_path = os.path.join(output_folder, file_stem + ".rfa")
