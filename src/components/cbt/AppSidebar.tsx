@@ -1,9 +1,8 @@
-/// src/components/cbt/AppSidebar.tsx
+// src/components/cbt/AppSidebar.tsx
 import { useState } from "react";
 import {
-  FolderOpen,
+  Building2,
   GitBranch,
-  List,
   LogOut,
   Package,
   Settings2,
@@ -85,18 +84,11 @@ export function AppSidebar({
           view: "fields",
           isDialog: true,
         },
-      ],
-    },
-    {
-      id: "projectes",
-      label: "Projectes",
-      icon: <FolderOpen className="h-4 w-4" />,
-      items: [
         {
-          id: "projectes-equips",
-          label: "Llistat d'equips",
-          icon: <List className="h-4 w-4" />,
-          section: "projectes-equips",
+          id: "revit",
+          label: "Exportació Revit",
+          icon: <Building2 className="h-4 w-4" />,
+          section: "revit",
           view: "equips",
         },
       ],
