@@ -122,6 +122,7 @@ export function ProjectesEquipsPage() {
   const [dialogValidar, setDialogValidar] = useState<ProjectTag | null>(null);
   const [dialogEliminarProjecte, setDialogEliminarProjecte] = useState<string | null>(null);
   const [dialogArxivar, setDialogArxivar] = useState<string | null>(null);
+  const [dialogEliminarTagValidat, setDialogEliminarTagValidat] = useState<string | null>(null); // tagId
   const [detallEquip, setDetallEquip] = useState<string | null>(null); // tagId
   const [editEquip, setEditEquip] = useState<string | null>(null);
 
@@ -228,7 +229,6 @@ export function ProjectesEquipsPage() {
   ) {
     try {
       await updateProjecte(dialogEditProjecte!, data);
-      // Si s'han d'actualitzar els tags, actualizem el codiInstallacio de cadascun
       if (actualitzarTags) {
         const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
         if (projecteActual) {
@@ -237,13 +237,14 @@ export function ProjectesEquipsPage() {
             await updateTag(dialogEditProjecte!, tag.id, {
               codiInstallacio: data.codiInstallacio,
               tagComplet: nouTagComplet,
+              status: "pendent",
             });
           }
         }
       }
       setDialogEditProjecte(null);
       setDialogCanviInstallacio(null);
-      toast.success(actualitzarTags ? "Projecte i tags actualitzats" : "Projecte actualitzat");
+      toast.success(actualitzarTags ? "Projecte i tags actualitzats — els tags han tornat a estat pendent" : "Projecte actualitzat");
     } catch (e: any) {
       setEditProjecteError(e?.message ?? "Error en actualitzar el projecte.");
     }
@@ -399,6 +400,16 @@ export function ProjectesEquipsPage() {
 
   async function validarTag(tag: ProjectTag, nouStatus: TagStatus, comentari: string) {
     try {
+      // Abans de validar, comprova que el TAG no existeixi ja a Rosmiman
+      if (nouStatus === "validat") {
+        const duplicatRosmiman = rosmimanEquips.some(r => r.tag === tag.tagComplet);
+        if (duplicatRosmiman) {
+          toast.error(`No es pot validar: el TAG "${tag.tagComplet}" ja existeix al llistat Rosmiman.`);
+          setDialogValidar(null);
+          return;
+        }
+      }
+
       await updateTag(projecteActiu!, tag.id, { status: nouStatus, comentari });
       setDialogValidar(null);
 
@@ -729,11 +740,17 @@ export function ProjectesEquipsPage() {
                                   </Tooltip>
                                 )}
                                 {/* Eliminar */}
-                                {canEdit && projecteSeleccionat.status === "actiu" && tag.status !== "validat" && (
+                                {canEdit && projecteSeleccionat.status === "actiu" && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500"
-                                        onClick={() => eliminarTag(tag.id)}>
+                                        onClick={() => {
+                                          if (tag.status === "validat") {
+                                            setDialogEliminarTagValidat(tag.id);
+                                          } else {
+                                            eliminarTag(tag.id);
+                                          }
+                                        }}>
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </Button>
                                     </TooltipTrigger>
@@ -1088,6 +1105,37 @@ export function ProjectesEquipsPage() {
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel·la</AlertDialogCancel>
               <AlertDialogAction className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={() => { arxivarProjecte(dialogArxivar!); setDialogArxivar(null); }}>Confirmar</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* ── DIÀLEG: ELIMINAR TAG VALIDAT ─────────────────────────────── */}
+        <AlertDialog open={!!dialogEliminarTagValidat} onOpenChange={() => setDialogEliminarTagValidat(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Eliminar tag validat?
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-2 text-sm text-slate-600">
+                  <p>
+                    Aquest tag ja ha estat <span className="font-semibold text-emerald-700">validat</span> i pot estar al llistat Rosmiman.
+                  </p>
+                  <p>
+                    Eliminar-lo del projecte <span className="font-semibold">no</span> l'eliminarà automàticament del llistat Rosmiman. Si cal, elimina'l manualment des de la pàgina de Rosmiman.
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => { eliminarTag(dialogEliminarTagValidat!); setDialogEliminarTagValidat(null); }}
+              >
+                Eliminar igualment
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
