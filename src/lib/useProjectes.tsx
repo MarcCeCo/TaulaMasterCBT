@@ -388,7 +388,8 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
         const BATCH = 100;
         for (let i = 0; i < rows.length; i += BATCH) {
           await supa(token, "POST", "rosmiman_equips", rows.slice(i, i + BATCH), {
-            "Prefer": "return=minimal,resolution=merge-duplicates",
+            // "resolution=ignore-duplicates" evita el 409 si el tag ja existeix a la BD
+            "Prefer": "return=minimal,resolution=ignore-duplicates",
           });
         }
         setRosmimanEquips(prev => [...prev, ...rows.map(toRosmimanEquip)]
@@ -409,7 +410,9 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
 
   const clearRosmimanEquips = useCallback(async () => {
     const token = getToken();
-    await supa(token, "DELETE", "rosmiman_equips?id=neq.");
+    // Filtre "tag=neq.__NEVER__" és sempre cert (cap tag tindrà aquest valor)
+    // i permet esborrar totes les files sense el bloqueig de Supabase contra DELETE sense filtre
+    await supa(token, "DELETE", "rosmiman_equips?tag=neq.__NEVER__");
     setRosmimanEquips([]);
   }, [getToken]);
 
