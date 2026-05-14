@@ -54,7 +54,26 @@ export function TaulaMasterMain() {
     profileLoaded &&
     !canSeeView("equips") &&
     !canSeeView("gubimclass") &&
-    !canSeeView("fields");
+    !canSeeView("fields") &&
+    !canSeeView("revit") &&
+    !canSeeView("projectes") &&
+    !canSeeView("rosmiman");
+
+  const AccessDenied = () => (
+    <Card className="p-12 border-0 shadow-sm bg-white flex flex-col items-center gap-4 text-center">
+      <div className="h-14 w-14 rounded-full bg-slate-100 flex items-center justify-center">
+        <ShieldOff className="h-7 w-7 text-slate-400" />
+      </div>
+      <div>
+        <p className="font-semibold text-slate-700">Accés restringit</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          No tens permisos per accedir a aquesta secció.
+          <br />
+          Contacta amb l&apos;administrador.
+        </p>
+      </div>
+    </Card>
+  );
 
   const renderContent = () => {
     if (noAccessAtAll) {
@@ -86,23 +105,27 @@ export function TaulaMasterMain() {
         );
 
       case "usuaris":
-        if (!isAdmin) return null;
+        if (!isAdmin) return <AccessDenied />;
         return <UserManagerPage />;
 
       case "canviapwd":
         return <ChangePasswordPage />;
 
       case "revit":
+        if (!canSeeView("revit")) return <AccessDenied />;
         return <RevitExportPage />;
 
       case "projectes-equips":
+        if (!canSeeView("projectes")) return <AccessDenied />;
         return <ProjectesEquipsPage />;
 
       case "rosmiman-equips":
+        if (!canSeeView("rosmiman")) return <AccessDenied />;
         return <RosmimanEquipsPage />;
 
       case "equips":
       default:
+        if (!canSeeView("equips")) return <AccessDenied />;
         return (
           <div className="space-y-4">
             <div>

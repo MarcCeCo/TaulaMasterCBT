@@ -33,6 +33,7 @@ import {
   type AppView,
   ALL_VIEWS,
   VIEW_LABELS,
+  VIEW_GROUPS,
 } from "@/lib/auth";
 import { Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X, Info, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -244,16 +245,23 @@ export function UserManagerPage() {
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-700">Vistes accessibles</label>
-            <div className="flex flex-wrap gap-4">
-              {ALL_VIEWS.map((v) => (
-                <label key={v} className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-slate-600">
-                  <Checkbox
-                    checked={newUserViews.includes(v)}
-                    onCheckedChange={() => toggleView(v, newUserViews, setNewUserViews)}
-                  />
-                  {VIEW_LABELS[v]}
-                </label>
+            <label className="text-xs font-medium text-slate-700">Seccions accessibles</label>
+            <div className="space-y-3">
+              {VIEW_GROUPS.map((group) => (
+                <div key={group.label}>
+                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">{group.label}</p>
+                  <div className="flex flex-wrap gap-4 pl-1">
+                    {group.views.map((v) => (
+                      <label key={v} className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-slate-600">
+                        <Checkbox
+                          checked={newUserViews.includes(v)}
+                          onCheckedChange={() => toggleView(v, newUserViews, setNewUserViews)}
+                        />
+                        {VIEW_LABELS[v]}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
@@ -301,7 +309,7 @@ export function UserManagerPage() {
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Correu</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Nom</th>
                 <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Rol</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Vistes</th>
+                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Seccions accessibles</th>
                 <th className="px-4 py-3 w-28 text-xs font-semibold text-slate-500 uppercase tracking-wide">Accions</th>
               </tr>
             </thead>
@@ -348,22 +356,29 @@ export function UserManagerPage() {
                     </td>
                     <td className="px-4 py-3">
                       {isEditing ? (
-                        <div className="flex flex-wrap gap-2">
-                          {ALL_VIEWS.map((v) => (
-                            <label
-                              key={v}
-                              className={cn(
-                                "flex items-center gap-1 text-xs cursor-pointer select-none text-slate-600",
-                                editRole === "admin" && "opacity-50 pointer-events-none"
-                              )}
-                            >
-                              <Checkbox
-                                checked={editRole === "admin" || editViews.includes(v)}
-                                onCheckedChange={() => toggleView(v, editViews, setEditViews)}
-                                disabled={editRole === "admin"}
-                              />
-                              {VIEW_LABELS[v]}
-                            </label>
+                        <div className="space-y-2">
+                          {VIEW_GROUPS.map((group) => (
+                            <div key={group.label}>
+                              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{group.label}</p>
+                              <div className="flex flex-wrap gap-3 pl-1">
+                                {group.views.map((v) => (
+                                  <label
+                                    key={v}
+                                    className={cn(
+                                      "flex items-center gap-1 text-xs cursor-pointer select-none text-slate-600",
+                                      editRole === "admin" && "opacity-50 pointer-events-none"
+                                    )}
+                                  >
+                                    <Checkbox
+                                      checked={editRole === "admin" || editViews.includes(v)}
+                                      onCheckedChange={() => toggleView(v, editViews, setEditViews)}
+                                      disabled={editRole === "admin"}
+                                    />
+                                    {VIEW_LABELS[v]}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
                           ))}
                           {editRole === "admin" && (
                             <span className="text-[10px] text-slate-400 italic">Admin veu tot</span>

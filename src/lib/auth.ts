@@ -4,16 +4,47 @@ import type { User } from "@supabase/supabase-js";
 
 export type UserRole = "viewer" | "editor" | "admin";
 
-export type AppView = "equips" | "gubimclass" | "fields";
+// Totes les seccions de l'aplicació que es poden controlar per permisos
+export type AppView =
+  | "equips"        // Taula Master
+  | "gubimclass"    // GuBIMClass
+  | "fields"        // Diccionari de camps
+  | "revit"         // Exportació Revit
+  | "projectes"     // Llistat de projectes
+  | "rosmiman";     // Llistat d'equips Rosmiman
 
-export const ALL_VIEWS: AppView[] = ["equips", "gubimclass", "fields"];
+export const ALL_VIEWS: AppView[] = [
+  "equips",
+  "gubimclass",
+  "fields",
+  "revit",
+  "projectes",
+  "rosmiman",
+];
 
 export const VIEW_LABELS: Record<AppView, string> = {
-  equips: "Equips",
+  equips:     "Taula Master",
   gubimclass: "GuBIMClass",
-  fields: "Diccionari de camps",
+  fields:     "Diccionari de camps",
+  revit:      "Exportació Revit",
+  projectes:  "Llistat de projectes",
+  rosmiman:   "Llistat d'equips Rosmiman",
 };
 
+export const VIEW_GROUPS: { label: string; views: AppView[] }[] = [
+  {
+    label: "Equips i Taules",
+    views: ["equips", "gubimclass", "fields", "revit"],
+  },
+  {
+    label: "Projectes",
+    views: ["projectes", "rosmiman"],
+  },
+];
+
+// Permisos per secció: a més del rol global, cada vista pot tenir
+// un rol mínim requerit. Si allowed_views és null → totes accessibles.
+// El rol global (viewer/editor/admin) determina si pot editar o no.
 export interface UserProfile {
   id: string;
   email: string;
