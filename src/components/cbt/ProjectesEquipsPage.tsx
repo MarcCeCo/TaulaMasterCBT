@@ -11,7 +11,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Archive, ChevronRight, FolderOpen, FolderArchive,
   Plus, Trash2, Tags, CheckCircle2, XCircle, Pencil,
-  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search,
+  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/lib/dataStore";
@@ -21,6 +21,7 @@ import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import type { UserProfile } from "@/lib/auth";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -102,11 +103,11 @@ function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
 
 // ─── component principal ──────────────────────────────────────────────────────
 export function ProjectesEquipsPage() {
-  const { canEdit } = useAuth();
+  const { canEdit, isAdmin, profile: myProfile } = useAuth();
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
-    createProjecte, updateProjecte, deleteProjecte, toggleArxivar,
+    createProjecte, updateProjecte, updateProjecteUsers, deleteProjecte, toggleArxivar,
     addTag, updateTag, deleteTag,
     rosmimanEquips, importRosmimanEquips,
   } = useProjectes();
@@ -125,6 +126,12 @@ export function ProjectesEquipsPage() {
   const [dialogEliminarTagValidat, setDialogEliminarTagValidat] = useState<string | null>(null); // tagId
   const [detallEquip, setDetallEquip] = useState<string | null>(null); // tagId
   const [editEquip, setEditEquip] = useState<string | null>(null);
+
+  // Diàleg assignació usuaris (només admins)
+  const [dialogUsuaris, setDialogUsuaris] = useState<string | null>(null); // id projecte
+  const [allUsers, setAllUsers]           = useState<UserProfile[]>([]);
+  const [loadingUsers, setLoadingUsers]   = useState(false);
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
 
   // Filtre
   const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("tots");
@@ -159,9 +166,18 @@ export function ProjectesEquipsPage() {
 
   // Derived
   const projecteFiltrats = useMemo(() =>
-    projectes.filter(p => filtreStatus === "tots" || p.status === filtreStatus)
+    projectes
+      .filter(p => filtreStatus === "tots" || p.status === filtreStatus)
+      .filter(p => {
+        // Admins veuen tots els projectes
+        if (isAdmin) return true;
+        // Si no hi ha llista blanca, accés obert
+        if (!p.allowedUsers) return true;
+        // Si hi ha llista blanca, cal estar-hi
+        return myProfile ? p.allowedUsers.includes(myProfile.id) : false;
+      })
       .sort((a, b) => b.createdAt - a.createdAt),
-    [projectes, filtreStatus]
+    [projectes, filtreStatus, isAdmin, myProfile]
   );
 
   const projecteSeleccionat = useMemo(() =>
@@ -211,6 +227,34 @@ export function ProjectesEquipsPage() {
       setNouProjecteError(e?.message ?? "Error en crear el projecte.");
     }
   }
+
+  // ─── assignació usuaris (només admins) ─────────────────────────────────────
+  const obrirDialogUsuaris = async (id: string) => {
+    const p = projectes.find(px => px.id === id);
+    if (!p) return;
+    setSelectedUsers(p.allowedUsers ?? []);
+    setDialogUsuaris(id);
+    setLoadingUsers(true);
+    try {
+      const { supabase } = await import("@/lib/supabase");
+      const { data } = await supabase
+        .from("user_profiles")
+        .select("id, email, full_name, role")
+        .order("email");
+      setAllUsers((data ?? []) as UserProfile[]);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const guardarUsuaris = async () => {
+    if (!dialogUsuaris) return;
+    // null = sense restriccions; array buit = ningú (excepte admins)
+    const value = selectedUsers.length === 0 ? null : selectedUsers;
+    await updateProjecteUsers(dialogUsuaris, value);
+    toast.success("Permisos del projecte actualitzats");
+    setDialogUsuaris(null);
+  };
 
   function obrirEditProjecte(id: string) {
     const p = projectes.find(pr => pr.id === id);
@@ -607,6 +651,14 @@ export function ProjectesEquipsPage() {
                             onClick={() => obrirEditProjecte(p.id)}>
                             <Pencil className="h-3 w-3" />
                           </Button>
+                          {isAdmin && (
+                            <Button variant="outline" size="sm"
+                              className="h-7 text-[11px] border-slate-200 text-slate-600"
+                              onClick={() => obrirDialogUsuaris(p.id)}
+                              title={p.allowedUsers ? "Accés restringit · Gestionar usuaris" : "Accés obert · Gestionar usuaris"}>
+                              {p.allowedUsers ? <Lock className="h-3 w-3 text-amber-500" /> : <LockOpen className="h-3 w-3" />}
+                            </Button>
+                          )}
                           <Button variant="outline" size="sm" className="h-7 text-[11px] flex-1 border-slate-200"
                             onClick={() => setDialogArxivar(p.id)}>
                             <Archive className="h-3 w-3 mr-1" />{p.status === "arxivat" ? "Desarxivar" : "Arxivar"}
@@ -1195,6 +1247,73 @@ export function ProjectesEquipsPage() {
           isCodeTaken={isEquipCodeTaken}
           allEquipments={equipments}
         />
+        {/* ── DIÀLEG: GESTIÓ D'ACCÉS PER USUARI (només admins) ──────────── */}
+        <Dialog open={!!dialogUsuaris} onOpenChange={(b) => { if (!b) setDialogUsuaris(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-[#0099A8]" />
+                Accés al projecte
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-xs text-slate-500">
+                Selecciona els usuaris que poden veure aquest projecte. Si no en selecciones cap, el projecte serà visible per a tots els usuaris amb accés a Projectes. Els administradors sempre hi tenen accés.
+              </p>
+              {loadingUsers ? (
+                <p className="text-sm text-slate-400 text-center py-4">Carregant usuaris…</p>
+              ) : (
+                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                  {allUsers.filter(u => u.role !== "admin").map(u => {
+                    const checked = selectedUsers.includes(u.id);
+                    return (
+                      <label key={u.id} className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors",
+                        checked ? "bg-[#0099A8]/8 border-[#0099A8]/30" : "bg-slate-50 border-slate-100 hover:border-slate-200"
+                      )}>
+                        <input
+                          type="checkbox"
+                          className="accent-[#0099A8]"
+                          checked={checked}
+                          onChange={() => {
+                            setSelectedUsers(prev =>
+                              checked ? prev.filter(id => id !== u.id) : [...prev, u.id]
+                            );
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-700 truncate">{u.full_name || u.email}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">{u.email}</p>
+                        </div>
+                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",
+                          u.role === "editor" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
+                        )}>{u.role}</span>
+                      </label>
+                    );
+                  })}
+                  {allUsers.filter(u => u.role !== "admin").length === 0 && (
+                    <p className="text-sm text-slate-400 text-center py-4">Cap usuari no-admin trobat</p>
+                  )}
+                </div>
+              )}
+              {selectedUsers.length > 0 && (
+                <p className="text-xs text-[#006E7A] font-medium">
+                  {selectedUsers.length} usuari{selectedUsers.length !== 1 ? "s" : ""} seleccionat{selectedUsers.length !== 1 ? "s" : ""}
+                </p>
+              )}
+              {selectedUsers.length === 0 && !loadingUsers && (
+                <p className="text-xs text-slate-400 italic">Sense selecció = accés obert per a tots</p>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" size="sm" onClick={() => setDialogUsuaris(null)}>Cancel·la</Button>
+              <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={guardarUsuaris}>
+                Desa permisos
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </TooltipProvider>
   );
