@@ -103,7 +103,7 @@ function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
 
 // ─── component principal ──────────────────────────────────────────────────────
 export function ProjectesEquipsPage() {
-  const { canEdit, isAdmin, profile: myProfile } = useAuth();
+  const { canEdit, isAdmin, profile: myProfile, getToken } = useAuth();
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
