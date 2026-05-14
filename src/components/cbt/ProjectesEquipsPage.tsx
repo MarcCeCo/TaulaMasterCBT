@@ -129,7 +129,7 @@ export function ProjectesEquipsPage() {
   const [dialogValidar, setDialogValidar] = useState<ProjectTag | null>(null);
   const [dialogEliminarProjecte, setDialogEliminarProjecte] = useState<string | null>(null);
   const [dialogArxivar, setDialogArxivar] = useState<string | null>(null);
-  const [detallEquip, setDetallEquip] = useState<string | null>(null); // equipId
+  const [detallEquip, setDetallEquip] = useState<string | null>(null); // tagId
   const [editEquip, setEditEquip] = useState<string | null>(null);
 
   // Filtre
@@ -172,8 +172,9 @@ export function ProjectesEquipsPage() {
     [equipments]
   );
 
-  const detallEquipObj = detallEquip ? equipMap.get(detallEquip) ?? null : null;
-  const editEquipObj = editEquip ? equipMap.get(editEquip) ?? null : null;
+  const detallTag = detallEquip ? projecteSeleccionat?.tags.find(t => t.id === detallEquip) ?? null : null;
+  const detallEquipObj = detallTag ? equipMap.get(detallTag.equipId) ?? null : null;
+  const editEquipObj = editEquip ? equipMap.get(editEquip) ?? null : null; // usat només des de la taula master
 
   // ─── accions projectes ──────────────────────────────────────────────────────
   function crearProjecte() {
@@ -531,7 +532,7 @@ export function ProjectesEquipsPage() {
                               {equip ? (
                                 <button
                                   className="text-left group/eq hover:underline underline-offset-2"
-                                  onClick={() => setDetallEquip(tag.equipId)}
+                                  onClick={() => setDetallEquip(tag.id)}
                                 >
                                   <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">{equip.equipName}</p>
                                   <p className="text-[10px] text-slate-400 font-mono">{equip.equipCode}</p>
@@ -549,7 +550,7 @@ export function ProjectesEquipsPage() {
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-[#0099A8]"
-                                        onClick={() => setDetallEquip(tag.equipId)}>
+                                        onClick={() => setDetallEquip(tag.id)}>
                                         <Eye className="h-3.5 w-3.5" />
                                       </Button>
                                     </TooltipTrigger>
@@ -693,7 +694,7 @@ export function ProjectesEquipsPage() {
                                 tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
                               )}>
                               <span className="font-mono shrink-0">{e.equipCode}</span>
-                              <span className="text-slate-500 truncate">{e.equipName}</span>
+                              <span className="text-slate-500 truncate">{e.tableName || e.equipName}</span>
                               {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
                             </button>
                           ))
@@ -706,7 +707,7 @@ export function ProjectesEquipsPage() {
                   <div className="p-2 bg-slate-50 rounded text-xs">
                     <span className="text-slate-500">Equip: </span>
                     <span className="font-mono font-medium">{equipMap.get(dialogEditTag.equipId)?.equipCode}</span>
-                    <span className="text-slate-500 ml-1">{equipMap.get(dialogEditTag.equipId)?.equipName}</span>
+                    <span className="text-slate-500 ml-1">{equipMap.get(dialogEditTag.equipId)?.tableName || equipMap.get(dialogEditTag.equipId)?.equipName}</span>
                   </div>
                 )}
 
@@ -861,25 +862,21 @@ export function ProjectesEquipsPage() {
         </AlertDialog>
 
         {/* ── DIÀLEG: DETALL EQUIP ────────────────────────────────────────── */}
-        {(() => {
-          const tagDelEquip = projecteSeleccionat?.tags.find(
-            t => t.equipId === detallEquip && t.status === "validat"
-          ) ?? null;
-          return (
-            <ProjecteEquipDetailDialog
-              open={!!detallEquip}
-              onOpenChange={(b) => { if (!b) setDetallEquip(null); }}
-              equipment={detallEquipObj}
-              nodeMap={gubimNodeMap}
-              fieldMap={fieldMap}
-              fields={fields}
-              onEdit={() => { setEditEquip(detallEquip); setDetallEquip(null); }}
-              canEditValues={!!tagDelEquip}
-              fieldValues={tagDelEquip?.fieldValues ?? {}}
-              onSaveValues={(vals) => tagDelEquip && saveFieldValues(tagDelEquip.id, vals)}
-            />
-          );
-        })()}
+        <ProjecteEquipDetailDialog
+          open={!!detallEquip}
+          onOpenChange={(b) => { if (!b) setDetallEquip(null); }}
+          equipment={detallEquipObj}
+          nodeMap={gubimNodeMap}
+          fieldMap={fieldMap}
+          fields={fields}
+          onEdit={() => {
+            if (detallTag) { obrirEditTag(detallTag); }
+            setDetallEquip(null);
+          }}
+          canEditValues={detallTag?.status === "validat"}
+          fieldValues={detallTag?.fieldValues ?? {}}
+          onSaveValues={(vals) => detallTag && saveFieldValues(detallTag.id, vals)}
+        />
 
         {/* ── DIÀLEG: EDITAR EQUIP (camps específics) ─────────────────────── */}
         <EquipmentFormDialog
