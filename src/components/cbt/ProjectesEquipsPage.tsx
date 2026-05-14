@@ -236,12 +236,20 @@ export function ProjectesEquipsPage() {
     setDialogUsuaris(id);
     setLoadingUsers(true);
     try {
-      const { supabase } = await import("@/lib/supabase");
-      const { data } = await supabase
-        .from("user_profiles")
-        .select("id, email, full_name, role")
-        .order("email");
-      setAllUsers((data ?? []) as UserProfile[]);
+      // Usem /api/list-users (service role) per llegir tots els usuaris,
+      // igual que UserManagerPage — el client supabase (anon key) queda
+      // bloquejat per RLS i només retorna el perfil propi.
+      const token = getToken();
+      const res = await fetch("/api/list-users", {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setAllUsers(json.users ?? []);
+      } else {
+        toast.error("Error carregant usuaris");
+      }
     } finally {
       setLoadingUsers(false);
     }
