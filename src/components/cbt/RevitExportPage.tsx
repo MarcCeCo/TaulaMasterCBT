@@ -677,6 +677,38 @@ export function RevitExportPage() {
             </div>
           </div>
 
+          {/* Fitxer 3: Scripts pyRevit */}
+          <div className="space-y-1">
+            <div className="font-medium text-blue-800">
+              3. Scripts pyRevit{" "}
+              <code className="bg-blue-100 px-1 rounded text-xs font-mono">script.py</code>
+            </div>
+            <div className="text-xs text-blue-600">
+              Descarrega els scripts des dels botons <span className="font-semibold">Script TEST</span> i{" "}
+              <span className="font-semibold">Script FULL</span> d'aquesta pàgina i guarda'ls
+              exactament a les rutes següents (crea les carpetes si no existeixen).
+              Pots accedir a <code className="bg-blue-100 px-1 rounded font-mono">%APPDATA%</code> escrivint-ho
+              directament a la barra d'adreces de l'Explorador de Windows:
+            </div>
+            <div className="space-y-1.5 mt-1.5">
+              <div>
+                <div className="text-[11px] text-blue-500 mb-0.5 font-medium">Script TEST (1 família per categoria — per validar):</div>
+                <code className="text-[11px] text-blue-700 font-mono bg-blue-100 px-2 py-1 rounded block break-all">
+                  %APPDATA%\pyRevit-Master\Extensions\CBT.extension\CBT.tab\CBT Tools.panel\Crear Families TEST.pushbutton\script.py
+                </code>
+              </div>
+              <div>
+                <div className="text-[11px] text-blue-500 mb-0.5 font-medium">Script FULL (totes les famílies):</div>
+                <code className="text-[11px] text-blue-700 font-mono bg-blue-100 px-2 py-1 rounded block break-all">
+                  %APPDATA%\pyRevit-Master\Extensions\CBT.extension\CBT.tab\CBT Tools.panel\Crear Families FULL.pushbutton\script.py
+                </code>
+              </div>
+            </div>
+            <div className="text-xs text-blue-500">
+              ⚠️ El fitxer s'ha d'anomenar exactament <code className="bg-blue-100 px-1 rounded font-mono">script.py</code> dins de cada carpeta .pushbutton
+            </div>
+          </div>
+
           {/* Nota final */}
           <div className="text-[11px] text-blue-500 border-t border-blue-200 pt-2">
             Compatible amb Revit 2020–2030 · Detecta automàticament la versió instal·lada ·
