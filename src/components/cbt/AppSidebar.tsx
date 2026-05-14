@@ -1,4 +1,4 @@
-// src/components/cbt/AppSidebar.tsx
+/// src/components/cbt/AppSidebar.tsx
 import { useState } from "react";
 import {
   FolderOpen,

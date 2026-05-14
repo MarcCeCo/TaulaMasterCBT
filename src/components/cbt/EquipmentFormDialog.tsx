@@ -13,7 +13,60 @@ import { GubimClassPicker } from "./GubimClassPicker";
 import { FieldPickerDialog } from "./FieldPickerDialog";
 import { uid } from "@/lib/storage";
 import { toast } from "sonner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+// Categories Revit agrupades per disciplina
+// Clau: valor guardat a la BD  |  Valor: nom visible al selector
+export const REVIT_CATEGORIES_BY_GROUP: Record<string, string[]> = {
+  "Mecànica / MEP": [
+    "Mechanical Equipment",
+    "Specialty Equipment",
+    "Plumbing Fixtures",
+    "Mechanical Control Devices",
+    "Air Terminals",
+    "Fire Protection",
+    "Sprinklers",
+  ],
+  "Canonades": [
+    "Pipe Accessories",
+    "Pipe Fittings",
+    "Pipes",
+  ],
+  "Conductes": [
+    "Duct Accessories",
+    "Duct Fittings",
+    "Ducts",
+  ],
+  "Elèctrica": [
+    "Electrical Equipment",
+    "Electrical Fixtures",
+    "Lighting Fixtures",
+    "Lighting Devices",
+    "Communication Devices",
+    "Data Devices",
+    "Fire Alarm Devices",
+    "Security Devices",
+    "Cable Trays",
+    "Conduits",
+  ],
+  "Estructura": [
+    "Structural Columns",
+    "Structural Framing",
+    "Structural Foundations",
+  ],
+  "Arquitectura / General": [
+    "Generic Models",
+    "Vertical Circulation",
+    "Furniture",
+    "Casework",
+    "Walls",
+    "Doors",
+    "Windows",
+  ],
+};
+
+// Llista plana per a validació (valors únics)
+export const REVIT_CATEGORIES_FLAT: string[] = Object.values(REVIT_CATEGORIES_BY_GROUP).flat();
 
 interface Props {
   open: boolean;
@@ -36,14 +89,17 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   const [cols, setCols] = useState<string[]>([]);
   const [pickOpen, setPickOpen] = useState(false);
   const [parentEquipCode, setParentEquipCode] = useState("");
+  const [revitCategory,   setRevitCategory]   = useState("");
 
   useEffect(() => {
     if (!open) return;
     if (editing) {
       setGubim(editing.gubimCode); setCode(editing.equipCode); setName(editing.equipName);
       setNeeds(editing.needsTable); setCols(editing.fieldCols); setParentEquipCode(editing.parentEquipCode ?? "");
+      setRevitCategory(editing.revitCategory ?? "");
     } else {
       setGubim(""); setCode(""); setName(""); setNeeds(false); setCols([]); setParentEquipCode("");
+      setRevitCategory("");
     }
   }, [open, editing]);
 
@@ -83,6 +139,7 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
       tableName: computedTableName,
       fieldCols: needs ? cols : [],
       parentEquipCode: parentEquipCode,
+      revitCategory: revitCategory,
       createdAt: editing?.createdAt ?? Date.now(),
     };
     setSaving(true);
@@ -136,6 +193,25 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
               </Select>
             </div>
           )}
+
+          {/* Categoria Revit */}
+          <div className="col-span-2 space-y-1.5">
+            <Label>Categoria Revit <span className="text-muted-foreground text-xs">(per a la família .rfa)</span></Label>
+            <Select value={revitCategory || "__none__"} onValueChange={(v) => setRevitCategory(v === "__none__" ? "" : v)}>
+              <SelectTrigger><SelectValue placeholder="Selecciona categoria…" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">— Sense categoria —</SelectItem>
+                {Object.entries(REVIT_CATEGORIES_BY_GROUP).map(([group, cats]) => (
+                  <SelectGroup key={group}>
+                    <SelectLabel className="text-xs text-muted-foreground">{group}</SelectLabel>
+                    {cats.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="col-span-2 flex items-center gap-3 p-2 rounded-md bg-muted/40">
             <Switch checked={needs} onCheckedChange={setNeeds} id="needs" />

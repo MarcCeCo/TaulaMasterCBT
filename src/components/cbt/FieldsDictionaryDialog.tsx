@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, Plus, Trash2, Upload, Pencil } from "lucide-react";
-import { FieldMeta, isClassifier } from "@/lib/fields";
+import { FieldMeta, isClassifier, autoClassifierForCodi } from "@/lib/fields";
 import { useFields } from "@/hooks/useFields";
 import { useEquipments } from "@/hooks/useEquipments";
 import { AddFieldDialog } from "./AddFieldDialog";
@@ -88,7 +88,7 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
 
   const exportXlsx = () => {
     const rows = fields.filter((f) => !isClassifier(f)).map((f) => ({
-      "Nom": f.col, "Codi": f.codi ?? "", "Taula associada": f.taula_assoc ?? "",
+      "Nom": f.col, "Codi": f.codi ?? "", "Taula associada": f.taula_assoc ?? "", "Classificador": f.classificador ?? "",
       "Tipus dada": f.tipus_dada ?? "", "CBT": f.cbt ?? "",
       "Format paràmetre": f.format_param ?? "", "Agrupació Revit": f.agrupacio_revit ?? "",
       "Grup .txt": f.grup_txt ?? "", "Instància Revit": f.instancia_revit ?? "",
@@ -107,20 +107,39 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
       const wb   = XLSX.read(buf);
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
+
       const toAdd: FieldMeta[] = rows.map((r) => {
         const nom = String(r["Nom"] ?? "").trim().toUpperCase();
         if (!nom) return null;
+
+        const codi            = String(r["Codi"]             ?? "").trim() || null;
+        const taula_assoc     = String(r["Taula associada"]  ?? "").trim() || null;
+        const tipus_dada      = String(r["Tipus dada"]       ?? "").trim() || null;
+        const cbt             = String(r["CBT"]              ?? "").trim() || null;
+        const format_param    = String(r["Format parèmetre"] ?? "").trim() || null;
+        const agrupacio_revit = String(r["Agrupació Revit"]  ?? "").trim() || null;
+        const grup_txt        = String(r["Grup .txt"]        ?? "").trim() || null;
+        const instancia_revit = String(r["Instància Revit"]  ?? "").trim() || null;
+        const disciplina      = String(r["Disciplina"]       ?? "").trim() || null;
+
+        // Si tots els camps tècnics estan buits → classificador explícit
+        const isExplicitClassifier = !codi && !cbt && !format_param && !agrupacio_revit && !disciplina;
+
+        // Classificador automàtic per rang numèric del codi
+        const classificador = isExplicitClassifier ? null : autoClassifierForCodi(codi);
+
         return {
           col: nom,
-          codi:            String(r["Codi"]             ?? "").trim() || null,
-          taula_assoc:     String(r["Taula associada"]  ?? "").trim() || null,
-          tipus_dada:      String(r["Tipus dada"]       ?? "").trim() || null,
-          cbt:             String(r["CBT"]              ?? "").trim() || null,
-          format_param:    String(r["Format paràmetre"] ?? "").trim() || null,
-          agrupacio_revit: String(r["Agrupació Revit"]  ?? "").trim() || null,
-          grup_txt:        String(r["Grup .txt"]        ?? "").trim() || null,
-          instancia_revit: String(r["Instància Revit"]  ?? "").trim() || null,
-          disciplina:      String(r["Disciplina"]       ?? "").trim() || null,
+          codi,
+          taula_assoc,
+          tipus_dada,
+          cbt,
+          format_param,
+          agrupacio_revit,
+          grup_txt,
+          instancia_revit,
+          disciplina,
+          classificador,
         } as FieldMeta;
       }).filter(Boolean) as FieldMeta[];
 

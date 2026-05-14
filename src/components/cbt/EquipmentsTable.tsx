@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { exportRosmiman } from "@/lib/exportRosmiman";
 import { useAuth } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
+import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
 
 const GROUP_COLORS = [
   "border-l-violet-500 bg-violet-50/60 dark:bg-violet-950/30",
@@ -299,6 +300,7 @@ export function EquipmentsTable() {
         "Codi taula": e.tableCode,
         "Nom taula": e.tableName,
         "Equip pare": e.parentEquipCode,
+        "Categoria Revit": e.revitCategory ?? "",
       };
       allCols.forEach((col) => {
         const f = fieldMap.get(col);
@@ -347,7 +349,7 @@ export function EquipmentsTable() {
           fieldCols = String(r["Camps"]).split("|").map((s: string) => s.trim()).filter(Boolean);
         } else {
           fieldCols = Object.keys(r).filter(k => {
-            const known = ["GuBIMClass","Codi equip","Nom equip","Necessita taula","Codi taula","Nom taula","Equip pare"];
+            const known = ["GuBIMClass","Codi equip","Nom equip","Necessita taula","Codi taula","Nom taula","Equip pare","Categoria Revit"];
             if (known.includes(k)) return false;
             return String(r[k]).toUpperCase() === "Y";
           }).map(k => k.split(" (")[0].trim());
@@ -362,6 +364,12 @@ export function EquipmentsTable() {
             tableName = name;
           }
         }
+        const revitCategoryRaw = String(r["Categoria Revit"] ?? "").trim();
+        // Normalitzem: cerquem la categoria correcta (case-insensitive) per
+        // compatibilitat amb valors antics en minúscules (p.ex. "Mechanical equipment")
+        const revitCategory = REVIT_CATEGORIES_FLAT.find(
+          (c) => c.toLowerCase() === revitCategoryRaw.toLowerCase()
+        ) ?? revitCategoryRaw;
         return {
           id: uid(),
           gubimCode,
@@ -372,6 +380,7 @@ export function EquipmentsTable() {
           tableName,
           fieldCols,
           parentEquipCode,
+          revitCategory,
           createdAt: Date.now(),
         };
       }).filter((e) => e.equipName);
@@ -415,8 +424,14 @@ export function EquipmentsTable() {
         } else {
           toast.success(`${imported} equips importats correctament`);
         }
-      }).catch(() => toast.error("Error important equips"));
-    } catch { toast.error("Error en importar"); }
+      }).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        toast.error(`Error important equips: ${msg.slice(0, 120)}`);
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(`Error processant el fitxer: ${msg.slice(0, 120)}`);
+    }
   }, [items, addMany]);
 
   return (

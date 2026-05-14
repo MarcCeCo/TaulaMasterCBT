@@ -14,6 +14,7 @@ export type Equipment = {
   tableName:       string;
   fieldCols:       string[];
   parentEquipCode: string;
+  revitCategory:   string;
   createdAt:       number;
 };
 
