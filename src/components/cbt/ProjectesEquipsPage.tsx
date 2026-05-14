@@ -244,7 +244,7 @@ export function ProjectesEquipsPage() {
     setDialogNouTag(true);
   }
 
-  function guardarNouTag() {
+  async function guardarNouTag() {
     const equip = equipMap.get(tagEquipId);
     if (!equip) { setTagError("Selecciona un equip de la Taula Master."); return; }
     const err = validateTagFields(tagCodiInstallacio, tagCcm, tagFuncio, tagDuplicitat);
@@ -277,7 +277,7 @@ export function ProjectesEquipsPage() {
     }
   }
 
-  function guardarEditTag() {
+  async function guardarEditTag() {
     if (!dialogEditTag) return;
     const equip = equipMap.get(dialogEditTag.equipId);
     if (!equip) return;
