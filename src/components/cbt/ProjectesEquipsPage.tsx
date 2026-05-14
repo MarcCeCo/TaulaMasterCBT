@@ -14,43 +14,13 @@ import {
   ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { uid } from "@/lib/storage";
-import { useDebouncedLocalStorage } from "@/lib/storage";
 import { useDataStore } from "@/lib/dataStore";
+import { useProjectes } from "@/lib/useProjectes";
+import type { ProjectTag, Projecte, ProjectStatus, TagStatus } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-
-// ─── tipus ───────────────────────────────────────────────────────────────────
-
-type ProjectStatus = "actiu" | "arxivat";
-type TagStatus = "pendent" | "validat" | "rebutjat";
-
-export interface ProjectTag {
-  id: string;
-  equipId: string;        // id de l'equip a EquipmentsTable
-  codiInstallacio: string; // 5 dígits alfanumèrics
-  ccm: string;            // 1 dígit numèric
-  funcio: string;         // 2 dígits numèrics
-  duplicitat: string;     // 1 dígit alfabètic
-  tagComplet: string;     // CODIINSTALLACIO_CODIEQUIP_CCMFUNCIODUPLICITATAT
-  status: TagStatus;
-  comentari: string;
-  fieldValues: Record<string, string>;
-  createdAt: number;
-}
-
-export interface Projecte {
-  id: string;
-  nom: string;
-  descripcio: string;
-  codiProjecte: string;      // format NNNN-N a NNNN-NNNN
-  codiInstallacio: string;   // 5 dígits alfanumèrics, comú a tot el projecte
-  status: ProjectStatus;
-  tags: ProjectTag[];
-  createdAt: number;
-}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -66,6 +36,26 @@ function nextDuplicitatDisponible(usades: string[]): string | null {
     if (!usadesUp.includes(lletra)) return lletra;
   }
   return null; // totes 26 lletres usades
+}
+
+// Retorna la primera duplicitat disponible que no existeix ni al projecte ni a Rosmiman
+function primeraDuplicitatLliure(
+  codiInstallacio: string,
+  codiEquip: string,
+  ccm: string,
+  funcio: string,
+  projecteTags: ProjectTag[],
+  rosmimanEquips: { tag: string }[],
+  excludeTagId?: string,
+): string | null {
+  for (let i = 0; i < 26; i++) {
+    const lletra = String.fromCharCode(65 + i);
+    const candidat = buildTag(codiInstallacio, codiEquip, ccm, funcio, lletra);
+    const alProjecte = projecteTags.some(t => t.id !== excludeTagId && t.tagComplet === candidat);
+    const aRosmiman  = rosmimanEquips.some(r => r.tag === candidat);
+    if (!alProjecte && !aRosmiman) return lletra;
+  }
+  return null;
 }
 
 // Comprova si el tag (sense duplicitat) ja existeix i retorna les duplicitats usades
@@ -115,8 +105,11 @@ export function ProjectesEquipsPage() {
   const { canEdit } = useAuth();
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
-  // Persistència en localStorage
-  const [projectes, setProjectes] = useDebouncedLocalStorage<Projecte[]>("cbt_projectes", []);
+  const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
+    createProjecte, updateProjecte, deleteProjecte, toggleArxivar,
+    addTag, updateTag, deleteTag,
+    rosmimanEquips, importRosmimanEquips,
+  } = useProjectes();
 
   // Navegació
   const [projecteActiu, setProjecteActiu] = useState<string | null>(null);
@@ -129,6 +122,7 @@ export function ProjectesEquipsPage() {
   const [dialogValidar, setDialogValidar] = useState<ProjectTag | null>(null);
   const [dialogEliminarProjecte, setDialogEliminarProjecte] = useState<string | null>(null);
   const [dialogArxivar, setDialogArxivar] = useState<string | null>(null);
+  const [dialogEliminarTagValidat, setDialogEliminarTagValidat] = useState<string | null>(null); // tagId
   const [detallEquip, setDetallEquip] = useState<string | null>(null); // tagId
   const [editEquip, setEditEquip] = useState<string | null>(null);
 
@@ -149,6 +143,11 @@ export function ProjectesEquipsPage() {
   const [editCodiProjecte, setEditCodiProjecte] = useState("");
   const [editCodiInstallacio, setEditCodiInstallacio] = useState("");
   const [editProjecteError, setEditProjecteError] = useState<string | null>(null);
+  // Advertència canvi codi instal·lació quan el projecte té tags
+  const [dialogCanviInstallacio, setDialogCanviInstallacio] = useState<{
+    nouCodi: string; codiAntic: string;
+    pendingData: { nom: string; descripcio: string; codiProjecte: string; codiInstallacio: string };
+  } | null>(null);
   const [tagCodiInstallacio, setTagCodiInstallacio] = useState("");
   const [tagEquipId, setTagEquipId] = useState("");
   const [tagCcm, setTagCcm] = useState("");
@@ -185,7 +184,7 @@ export function ProjectesEquipsPage() {
   const editEquipObj = editEquip ? equipMap.get(editEquip) ?? null : null; // usat només des de la taula master
 
   // ─── accions projectes ──────────────────────────────────────────────────────
-  function crearProjecte() {
+  async function crearProjecte() {
     if (!nouNom.trim()) return;
     const errCodi = validateCodiProjecte(nouCodiProjecte);
     if (errCodi) { setNouProjecteError(errCodi); return; }
@@ -197,20 +196,20 @@ export function ProjectesEquipsPage() {
       setNouProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.");
       return;
     }
-    const nou: Projecte = {
-      id: uid(),
-      nom: nouNom.trim(),
-      descripcio: nouDesc.trim(),
-      codiProjecte: nouCodiProjecte.trim(),
-      codiInstallacio: nouCodiInstallacio.toUpperCase().trim(),
-      status: "actiu",
-      tags: [],
-      createdAt: Date.now(),
-    };
-    setProjectes(prev => [nou, ...prev]);
-    setDialogNouProjecte(false);
-    setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
-    toast.success("Projecte creat");
+    try {
+      await createProjecte({
+        nom: nouNom.trim(),
+        descripcio: nouDesc.trim(),
+        codiProjecte: nouCodiProjecte.trim(),
+        codiInstallacio: nouCodiInstallacio.toUpperCase().trim(),
+        status: "actiu",
+      });
+      setDialogNouProjecte(false);
+      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
+      toast.success("Projecte creat");
+    } catch (e: any) {
+      setNouProjecteError(e?.message ?? "Error en crear el projecte.");
+    }
   }
 
   function obrirEditProjecte(id: string) {
@@ -224,29 +223,76 @@ export function ProjectesEquipsPage() {
     setDialogEditProjecte(id);
   }
 
-  function guardarEditProjecte() {
+  async function guardarEditProjecteReal(
+    data: { nom: string; descripcio: string; codiProjecte: string; codiInstallacio: string },
+    actualitzarTags: boolean
+  ) {
+    try {
+      await updateProjecte(dialogEditProjecte!, data);
+      if (actualitzarTags) {
+        const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
+        if (projecteActual) {
+          for (const tag of projecteActual.tags) {
+            const nouTagComplet = buildTag(data.codiInstallacio, tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
+            await updateTag(dialogEditProjecte!, tag.id, {
+              codiInstallacio: data.codiInstallacio,
+              tagComplet: nouTagComplet,
+              status: "pendent",
+            });
+          }
+        }
+      }
+      setDialogEditProjecte(null);
+      setDialogCanviInstallacio(null);
+      toast.success(actualitzarTags ? "Projecte i tags actualitzats — els tags han tornat a estat pendent" : "Projecte actualitzat");
+    } catch (e: any) {
+      setEditProjecteError(e?.message ?? "Error en actualitzar el projecte.");
+    }
+  }
+
+  async function guardarEditProjecte() {
     if (!editNom.trim()) { setEditProjecteError("El nom és obligatori."); return; }
     const errCodi = validateCodiProjecte(editCodiProjecte);
     if (errCodi) { setEditProjecteError(errCodi); return; }
     if (!editCodiInstallacio.trim()) { setEditProjecteError("El codi d'instal·lació és obligatori."); return; }
     if (!/^[A-Z0-9]{5}$/i.test(editCodiInstallacio)) { setEditProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics."); return; }
-    setProjectes(prev => prev.map(p => p.id === dialogEditProjecte
-      ? { ...p, nom: editNom.trim(), descripcio: editDesc.trim(), codiProjecte: editCodiProjecte.trim(), codiInstallacio: editCodiInstallacio.toUpperCase().trim() }
-      : p
-    ));
-    setDialogEditProjecte(null);
-    toast.success("Projecte actualitzat");
+
+    const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
+    const codiAntic = projecteActual?.codiInstallacio ?? "";
+    const nouCodi = editCodiInstallacio.toUpperCase().trim();
+    const data = {
+      nom: editNom.trim(),
+      descripcio: editDesc.trim(),
+      codiProjecte: editCodiProjecte.trim(),
+      codiInstallacio: nouCodi,
+    };
+
+    // Si el codi d'instal·lació ha canviat i el projecte té tags, mostrem l'advertència
+    if (codiAntic !== nouCodi && (projecteActual?.tags.length ?? 0) > 0) {
+      setDialogCanviInstallacio({ nouCodi, codiAntic, pendingData: data });
+      return;
+    }
+
+    await guardarEditProjecteReal(data, false);
   }
 
-  function arxivarProjecte(id: string) {
-    setProjectes(prev => prev.map(p => p.id === id ? { ...p, status: p.status === "arxivat" ? "actiu" : "arxivat" } : p));
-    toast.success("Estat del projecte actualitzat");
+  async function arxivarProjecte(id: string) {
+    try {
+      await toggleArxivar(id);
+      toast.success("Estat del projecte actualitzat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en canviar l'estat.");
+    }
   }
 
-  function eliminarProjecte(id: string) {
-    setProjectes(prev => prev.filter(p => p.id !== id));
-    if (projecteActiu === id) { setProjecteActiu(null); setVista("llistat"); }
-    toast.success("Projecte eliminat");
+  async function eliminarProjecte(id: string) {
+    try {
+      await deleteProjecte(id);
+      if (projecteActiu === id) { setProjecteActiu(null); setVista("llistat"); }
+      toast.success("Projecte eliminat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en eliminar el projecte.");
+    }
   }
 
   // ─── accions tags ───────────────────────────────────────────────────────────
@@ -258,7 +304,7 @@ export function ProjectesEquipsPage() {
     setDialogNouTag(true);
   }
 
-  function guardarNouTag() {
+  async function guardarNouTag() {
     const equip = equipMap.get(tagEquipId);
     if (!equip) { setTagError("Selecciona un equip de la Taula Master."); return; }
     const err = validateTagFields(tagCodiInstallacio, tagCcm, tagFuncio, tagDuplicitat);
@@ -271,26 +317,39 @@ export function ProjectesEquipsPage() {
       return;
     }
 
-    const tag: ProjectTag = {
-      id: uid(),
-      equipId: tagEquipId,
-      codiInstallacio: tagCodiInstallacio.toUpperCase(),
-      ccm: tagCcm,
-      funcio: tagFuncio.padStart(2, "0"),
-      duplicitat: tagDuplicitat.toUpperCase(),
-      tagComplet: tagCandidat,
-      status: "pendent",
-      comentari: tagComentari,
-      fieldValues: {},
-      createdAt: Date.now(),
-    };
-    setProjectes(prev => prev.map(p => p.id === projecteActiu ? { ...p, tags: [...p.tags, tag] } : p));
-    setDialogNouTag(false);
-    setEquipSearch("");
-    toast.success("Tag creat");
+    // Comprova si el TAG ja existeix al llistat Rosmiman
+    const existeixARosmiman = rosmimanEquips.some(r => r.tag === tagCandidat);
+    if (existeixARosmiman) {
+      const projecteActualTags = projecteActual?.tags ?? [];
+      const lliure = primeraDuplicitatLliure(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, projecteActualTags, rosmimanEquips);
+      const suggeriment = lliure
+        ? ` Primera duplicitat disponible: ${buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, lliure)} (lletra ${lliure}).`
+        : " No hi ha duplicitats disponibles.";
+      setTagError(`El TAG "${tagCandidat}" ja existeix al llistat Rosmiman.${suggeriment}`);
+      return;
+    }
+
+    try {
+      await addTag(projecteActiu!, {
+        equipId: tagEquipId,
+        codiInstallacio: tagCodiInstallacio.toUpperCase(),
+        ccm: tagCcm,
+        funcio: tagFuncio.padStart(2, "0"),
+        duplicitat: tagDuplicitat.toUpperCase(),
+        tagComplet: tagCandidat,
+        status: "pendent",
+        comentari: tagComentari,
+        fieldValues: {},
+      });
+      setDialogNouTag(false);
+      setEquipSearch("");
+      toast.success("Tag creat");
+    } catch (e: any) {
+      setTagError(e?.message ?? "Error en crear el tag.");
+    }
   }
 
-  function guardarEditTag() {
+  async function guardarEditTag() {
     if (!dialogEditTag) return;
     const equip = equipMap.get(dialogEditTag.equipId);
     if (!equip) return;
@@ -302,45 +361,96 @@ export function ProjectesEquipsPage() {
       setTagError(`El TAG "${tagCandidatEdit}" ja existeix en aquest projecte.`);
       return;
     }
-    const updated: ProjectTag = {
-      ...dialogEditTag,
-      codiInstallacio: tagCodiInstallacio.toUpperCase(),
-      ccm: tagCcm,
-      funcio: tagFuncio.padStart(2, "0"),
-      duplicitat: tagDuplicitat.toUpperCase(),
-      tagComplet: tagCandidatEdit,
-      comentari: tagComentari,
-    };
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.map(t => t.id === updated.id ? updated : t) }
-      : p
-    ));
-    setDialogEditTag(null);
-    toast.success("Tag actualitzat");
+    // Comprova si el TAG modificat ja existeix al llistat Rosmiman
+    const existeixARosmimanEdit = rosmimanEquips.some(r => r.tag === tagCandidatEdit);
+    if (existeixARosmimanEdit) {
+      const projecteActual2Tags = projecteActual2?.tags ?? [];
+      const lliureEdit = primeraDuplicitatLliure(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, projecteActual2Tags, rosmimanEquips, dialogEditTag.id);
+      const suggerimentEdit = lliureEdit
+        ? ` Primera duplicitat disponible: ${buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, lliureEdit)} (lletra ${lliureEdit}).`
+        : " No hi ha duplicitats disponibles.";
+      setTagError(`El TAG "${tagCandidatEdit}" ja existeix al llistat Rosmiman.${suggerimentEdit}`);
+      return;
+    }
+
+    try {
+      await updateTag(projecteActiu!, dialogEditTag.id, {
+        codiInstallacio: tagCodiInstallacio.toUpperCase(),
+        ccm: tagCcm,
+        funcio: tagFuncio.padStart(2, "0"),
+        duplicitat: tagDuplicitat.toUpperCase(),
+        tagComplet: tagCandidatEdit,
+        comentari: tagComentari,
+      });
+      setDialogEditTag(null);
+      toast.success("Tag actualitzat");
+    } catch (e: any) {
+      setTagError(e?.message ?? "Error en actualitzar el tag.");
+    }
   }
 
-  function eliminarTag(tagId: string) {
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.filter(t => t.id !== tagId) }
-      : p
-    ));
-    toast.success("Tag eliminat");
+  async function eliminarTag(tagId: string) {
+    try {
+      await deleteTag(projecteActiu!, tagId);
+      toast.success("Tag eliminat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en eliminar el tag.");
+    }
   }
 
-  function validarTag(tag: ProjectTag, nouStatus: TagStatus, comentari: string) {
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.map(t => t.id === tag.id ? { ...t, status: nouStatus, comentari } : t) }
-      : p
-    ));
-    setDialogValidar(null);
-    toast.success(nouStatus === "validat" ? "Tag validat ✓" : "Tag rebutjat");
+  async function validarTag(tag: ProjectTag, nouStatus: TagStatus, comentari: string) {
+    try {
+      // Abans de validar, comprova que el TAG no existeixi ja a Rosmiman
+      if (nouStatus === "validat") {
+        const duplicatRosmiman = rosmimanEquips.some(r => r.tag === tag.tagComplet);
+        if (duplicatRosmiman) {
+          toast.error(`No es pot validar: el TAG "${tag.tagComplet}" ja existeix al llistat Rosmiman.`);
+          setDialogValidar(null);
+          return;
+        }
+      }
+
+      await updateTag(projecteActiu!, tag.id, { status: nouStatus, comentari });
+      setDialogValidar(null);
+
+      // Comprova si tots els tags del projecte han quedat validats
+      // (inclou el tag actual que acabem de validar)
+      if (nouStatus === "validat") {
+        const projecteActual = projectes.find(p => p.id === projecteActiu);
+        if (projecteActual) {
+          const totsValidats = projecteActual.tags.every(t =>
+            t.id === tag.id ? true : t.status === "validat"
+          );
+          if (totsValidats && projecteActual.tags.length > 0) {
+            // Afegim tots els tags validats al llistat Rosmiman
+            const equipsAImportar = projecteActual.tags.map(t => ({
+              tag:             t.id === tag.id ? tag.tagComplet : t.tagComplet,
+              descripcio:      equipMap.get(t.equipId)?.equipName ?? "",
+              codiInstallacio: t.codiInstallacio,
+            }));
+            const { inserted, skipped } = await importRosmimanEquips(equipsAImportar);
+            if (inserted > 0) {
+              toast.success(`Tots els tags validats ✓ — ${inserted} tag${inserted !== 1 ? "s" : ""} afegit${inserted !== 1 ? "s" : ""} al llistat Rosmiman.`);
+            } else {
+              toast.success("Tots els tags validats ✓ (ja existien al llistat Rosmiman).");
+            }
+            return;
+          }
+        }
+      }
+
+      toast.success(nouStatus === "validat" ? "Tag validat ✓" : "Tag rebutjat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en validar el tag.");
+    }
   }
 
-  function saveFieldValues(tagId: string, values: Record<string, string>) {
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.map(t => t.id === tagId ? { ...t, fieldValues: values } : t) }
-      : p
-    ));
+  async function saveFieldValues(tagId: string, values: Record<string, string>) {
+    try {
+      await updateTag(projecteActiu!, tagId, { fieldValues: values });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en guardar els valors.");
+    }
   }
 
   function obrirEditTag(tag: ProjectTag) {
@@ -630,11 +740,11 @@ export function ProjectesEquipsPage() {
                                   </Tooltip>
                                 )}
                                 {/* Eliminar */}
-                                {canEdit && projecteSeleccionat.status === "actiu" && tag.status !== "validat" && (
+                                {canEdit && projecteSeleccionat.status === "actiu" && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500"
-                                        onClick={() => eliminarTag(tag.id)}>
+                                        onClick={() => setDialogEliminarTagValidat(tag.id)}>
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </Button>
                                     </TooltipTrigger>
@@ -923,6 +1033,56 @@ export function ProjectesEquipsPage() {
           </Dialog>
         )}
 
+        {/* ── DIÀLEG: ADVERTÈNCIA CANVI CODI INSTAL·LACIÓ ──────────────── */}
+        <AlertDialog open={!!dialogCanviInstallacio} onOpenChange={(o) => { if (!o) setDialogCanviInstallacio(null); }}>
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                Canvi de codi d'instal·lació
+              </AlertDialogTitle>
+              <AlertDialogDescription asChild>
+                <div className="space-y-3 text-sm text-slate-600">
+                  <p>
+                    Estàs canviant el codi d'instal·lació de{" "}
+                    <span className="font-mono font-semibold text-slate-800">{dialogCanviInstallacio?.codiAntic}</span>{" "}
+                    a{" "}
+                    <span className="font-mono font-semibold text-slate-800">{dialogCanviInstallacio?.nouCodi}</span>.
+                  </p>
+                  <p>
+                    Aquest projecte té{" "}
+                    <span className="font-semibold text-slate-800">
+                      {projectes.find(p => p.id === dialogEditProjecte)?.tags.length ?? 0} tags
+                    </span>{" "}
+                    creats. Vols actualitzar també el codi d'instal·lació dels tags existents?
+                  </p>
+                  <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
+                    Si <strong>no</strong> actualitzes els tags, continuaran amb el codi antic{" "}
+                    <span className="font-mono">{dialogCanviInstallacio?.codiAntic}</span> al seu TAG.
+                  </div>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+              <AlertDialogCancel onClick={() => setDialogCanviInstallacio(null)}>
+                Cancel·la
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-slate-600 hover:bg-slate-700 text-white"
+                onClick={() => dialogCanviInstallacio && guardarEditProjecteReal(dialogCanviInstallacio.pendingData, false)}
+              >
+                Canviar només el projecte
+              </AlertDialogAction>
+              <AlertDialogAction
+                className="bg-[#0099A8] hover:bg-[#006E7A] text-white"
+                onClick={() => dialogCanviInstallacio && guardarEditProjecteReal(dialogCanviInstallacio.pendingData, true)}
+              >
+                Canviar projecte i tags
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
         {/* ── DIÀLEG: ARXIVAR ─────────────────────────────────────────────── */}
         <AlertDialog open={!!dialogArxivar} onOpenChange={() => setDialogArxivar(null)}>
           <AlertDialogContent>
@@ -942,6 +1102,52 @@ export function ProjectesEquipsPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* ── DIÀLEG: ELIMINAR TAG ─────────────────────────────────────── */}
+        {(() => {
+          const tagAEliminar = dialogEliminarTagValidat
+            ? projecteSeleccionat?.tags.find(t => t.id === dialogEliminarTagValidat) ?? null
+            : null;
+          const esValidat = tagAEliminar?.status === "validat";
+          return (
+            <AlertDialog open={!!dialogEliminarTagValidat} onOpenChange={() => setDialogEliminarTagValidat(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className={`h-5 w-5 ${esValidat ? "text-amber-500" : "text-red-500"}`} />
+                    Eliminar tag?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2 text-sm text-slate-600">
+                      {tagAEliminar && (
+                        <p className="font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">
+                          {tagAEliminar.tagComplet}
+                        </p>
+                      )}
+                      {esValidat ? (
+                        <>
+                          <p>Aquest tag ja ha estat <span className="font-semibold text-emerald-700">validat</span> i pot estar al llistat Rosmiman.</p>
+                          <p>Eliminar-lo del projecte <span className="font-semibold">no</span> l'eliminarà automàticament del llistat Rosmiman. Si cal, elimina'l manualment des de la pàgina de Rosmiman.</p>
+                        </>
+                      ) : (
+                        <p>Aquesta acció no es pot desfer.</p>
+                      )}
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => { eliminarTag(dialogEliminarTagValidat!); setDialogEliminarTagValidat(null); }}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          );
+        })()}
 
         {/* ── DIÀLEG: ELIMINAR PROJECTE ────────────────────────────────────── */}
         <AlertDialog open={!!dialogEliminarProjecte} onOpenChange={() => setDialogEliminarProjecte(null)}>

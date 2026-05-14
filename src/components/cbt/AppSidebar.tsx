@@ -3,6 +3,7 @@ import { useState } from "react";
 import {
   Building2,
   FolderOpen,
+  ClipboardList,
   GitBranch,
   List,
   LogOut,
@@ -102,9 +103,15 @@ export function AppSidebar({
       items: [
         {
           id: "projectes-equips",
-          label: "Llistat d'equips",
+          label: "Llistat de projectes",
           icon: <List className="h-4 w-4" />,
           section: "projectes-equips",
+        },
+        {
+          id: "rosmiman-equips",
+          label: "Llistat d'equips",
+          icon: <ClipboardList className="h-4 w-4" />,
+          section: "rosmiman-equips",
         },
       ],
     },
