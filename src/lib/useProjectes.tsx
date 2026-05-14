@@ -63,6 +63,14 @@ async function supa(
 export type ProjectStatus = "actiu" | "arxivat";
 export type TagStatus = "pendent" | "validat" | "rebutjat";
 
+export interface RosmimanEquip {
+  id: string;
+  tag: string;           // TAG complet (col A de l'Excel)
+  descripcio: string;    // Descripció (col B de l'Excel)
+  codiInstallacio: string; // primers 5 caràcters del TAG
+  createdAt: number;
+}
+
 export interface ProjectTag {
   id: string;
   projecteId: string;
@@ -142,6 +150,14 @@ const projecteToRow = (p: Projecte) => ({
   created_at:       p.createdAt,
 });
 
+const toRosmimanEquip = (row: any): RosmimanEquip => ({
+  id:              row.id,
+  tag:             row.tag             ?? "",
+  descripcio:      row.descripcio      ?? "",
+  codiInstallacio: row.codi_installacio ?? "",
+  createdAt:       row.created_at      ?? Date.now(),
+});
+
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 export interface ProjectesValue {
@@ -156,6 +172,13 @@ export interface ProjectesValue {
   updateProjecte: (id: string, patch: Partial<Omit<Projecte, "id" | "tags">>) => Promise<void>;
   deleteProjecte: (id: string) => Promise<void>;
   toggleArxivar:  (id: string) => Promise<void>;
+
+  // Equips Rosmiman
+  rosmimanEquips:       RosmimanEquip[];
+  loadingRosmiman:      boolean;
+  importRosmimanEquips: (equips: Omit<RosmimanEquip, "id" | "createdAt">[]) => Promise<{ inserted: number; skipped: number }>;
+  deleteRosmimanEquip:  (id: string) => Promise<void>;
+  clearRosmimanEquips:  () => Promise<void>;
 
   // Tags CRUD
   addTag:    (projecteId: string, tag: Omit<ProjectTag, "id" | "projecteId" | "createdAt">) => Promise<void>;
@@ -175,7 +198,9 @@ export const useProjectes = (): ProjectesValue => {
 
 export function ProjectesProvider({ children }: { children: ReactNode }) {
   const { getToken, loading: authLoading, user } = useAuth();
-  const [projectes, setProjectes] = useState<Projecte[]>([]);
+  const [projectes, setProjectes]           = useState<Projecte[]>([]);
+  const [rosmimanEquips, setRosmimanEquips] = useState<RosmimanEquip[]>([]);
+  const [loadingRosmiman, setLoadingRosmiman] = useState(false);
   const [loading, setLoading]     = useState(true);
   const [error,   setError]       = useState<string | null>(null);
   const loadingRef     = useRef(false);
@@ -210,15 +235,17 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const [projectesData, tagsData] = await Promise.all([
+      const [projectesData, tagsData, rosmimanData] = await Promise.all([
         supa(token, "GET", "projectes?select=*&order=created_at.desc"),
         supa(token, "GET", "projecte_tags?select=*&order=created_at.asc"),
+        supa(token, "GET", "rosmiman_equips?select=*&order=codi_installacio.asc,tag.asc"),
       ]);
 
       const tags = tagsData.map(toTag);
 
       startTransition(() => {
         setProjectes(projectesData.map(row => toProjecte(row, tags)));
+        setRosmimanEquips(rosmimanData.map(toRosmimanEquip));
       });
     } catch (e: any) {
       setError(e?.message ?? "Error de xarxa");
@@ -235,7 +262,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === "SIGNED_IN")      setTimeout(() => load(), 50);
-      if (event === "SIGNED_OUT")     { startTransition(() => setProjectes([])); setLoading(false); setError(null); loadingRef.current = false; }
+      if (event === "SIGNED_OUT")     { startTransition(() => { setProjectes([]); setRosmimanEquips([]); }); setLoading(false); setError(null); loadingRef.current = false; }
       if (event === "TOKEN_REFRESHED") {
         if (document.hidden) needsReloadRef.current = true;
         else load();
@@ -338,9 +365,59 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     ));
   }, [getToken]);
 
+  // ── Mutacions Rosmiman ───────────────────────────────────────────────────
+
+  const importRosmimanEquips = useCallback(async (
+    equips: Omit<RosmimanEquip, "id" | "createdAt">[]
+  ): Promise<{ inserted: number; skipped: number }> => {
+    const token = getToken();
+    setLoadingRosmiman(true);
+    try {
+      const existingTags = new Set(rosmimanEquips.map(e => e.tag));
+      const toInsert = equips.filter(e => !existingTags.has(e.tag));
+      const skipped = equips.length - toInsert.length;
+
+      if (toInsert.length > 0) {
+        const rows = toInsert.map(e => ({
+          id:               uid(),
+          tag:              e.tag,
+          descripcio:       e.descripcio,
+          codi_installacio: e.codiInstallacio,
+          created_at:       Date.now(),
+        }));
+        const BATCH = 100;
+        for (let i = 0; i < rows.length; i += BATCH) {
+          await supa(token, "POST", "rosmiman_equips", rows.slice(i, i + BATCH), {
+            "Prefer": "return=minimal,resolution=merge-duplicates",
+          });
+        }
+        setRosmimanEquips(prev => [...prev, ...rows.map(toRosmimanEquip)]
+          .sort((a, b) => a.codiInstallacio.localeCompare(b.codiInstallacio) || a.tag.localeCompare(b.tag))
+        );
+      }
+      return { inserted: toInsert.length, skipped };
+    } finally {
+      setLoadingRosmiman(false);
+    }
+  }, [getToken, rosmimanEquips]);
+
+  const deleteRosmimanEquip = useCallback(async (id: string) => {
+    const token = getToken();
+    await supa(token, "DELETE", `rosmiman_equips?id=eq.${id}`);
+    setRosmimanEquips(prev => prev.filter(e => e.id !== id));
+  }, [getToken]);
+
+  const clearRosmimanEquips = useCallback(async () => {
+    const token = getToken();
+    await supa(token, "DELETE", "rosmiman_equips?id=neq.");
+    setRosmimanEquips([]);
+  }, [getToken]);
+
   const value: ProjectesValue = {
     loading, error, retry: load,
     projectes,
+    rosmimanEquips, loadingRosmiman,
+    importRosmimanEquips, deleteRosmimanEquip, clearRosmimanEquips,
     createProjecte, updateProjecte, deleteProjecte, toggleArxivar,
     addTag, updateTag, deleteTag,
   };

@@ -7,6 +7,7 @@ import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
 import { RevitExportPage } from "./RevitExportPage";
 import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
+import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
 import { ShieldOff } from "lucide-react";
@@ -96,6 +97,9 @@ export function TaulaMasterMain() {
 
       case "projectes-equips":
         return <ProjectesEquipsPage />;
+
+      case "rosmiman-equips":
+        return <RosmimanEquipsPage />;
 
       case "equips":
       default:

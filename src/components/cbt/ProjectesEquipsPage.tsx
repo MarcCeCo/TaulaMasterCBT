@@ -88,6 +88,7 @@ export function ProjectesEquipsPage() {
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
     createProjecte, updateProjecte, deleteProjecte, toggleArxivar,
     addTag, updateTag, deleteTag,
+    rosmimanEquips,
   } = useProjectes();
 
   // Navegació
@@ -257,6 +258,13 @@ export function ProjectesEquipsPage() {
       return;
     }
 
+    // Comprova si el TAG ja existeix al llistat Rosmiman
+    const existeixARosmiman = rosmimanEquips.some(r => r.tag === tagCandidat);
+    if (existeixARosmiman) {
+      setTagError(`El TAG "${tagCandidat}" ja existeix al llistat Rosmiman. Revisa el CCM, la funció o la duplicitat.`);
+      return;
+    }
+
     try {
       await addTag(projecteActiu!, {
         equipId: tagEquipId,
@@ -289,6 +297,13 @@ export function ProjectesEquipsPage() {
       setTagError(`El TAG "${tagCandidatEdit}" ja existeix en aquest projecte.`);
       return;
     }
+    // Comprova si el TAG modificat ja existeix al llistat Rosmiman
+    const existeixARosmimanEdit = rosmimanEquips.some(r => r.tag === tagCandidatEdit);
+    if (existeixARosmimanEdit) {
+      setTagError(`El TAG "${tagCandidatEdit}" ja existeix al llistat Rosmiman. Revisa el CCM, la funció o la duplicitat.`);
+      return;
+    }
+
     try {
       await updateTag(projecteActiu!, dialogEditTag.id, {
         codiInstallacio: tagCodiInstallacio.toUpperCase(),
