@@ -302,9 +302,9 @@ const VALID_CATEGORIES = new Set(REVIT_CATEGORIES_FLAT);
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // ─── Helper: nom de fitxer .rfa ───────────────────────────────────────────────
-// MAJÚSCULES + espais → "_"
+// MAJÚSCULES + espais → "-"
 function toFileName(nom: string): string {
-  return nom.toUpperCase().replace(/\s+/g, "_");
+  return nom.toUpperCase().replace(/\s+/g, "-");
 }
 
 // ─── Component principal ──────────────────────────────────────────────────────
@@ -627,22 +627,60 @@ export function RevitExportPage() {
       {/* Nota informativa */}
       <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
         <Info className="h-4 w-4 shrink-0 mt-0.5" />
-        <div className="space-y-1">
+        <div className="space-y-3">
           <div>
-            <span className="font-medium">Com funciona: </span>
-            Descarrega el JSON i guarda'l com{" "}
-            <code className="bg-blue-100 px-1 rounded text-xs font-mono">CBT_Revit_Config.json</code>{" "}
-            a qualsevol d'aquestes ubicacions — el script el trobarà automàticament:
+            <span className="font-semibold">Com funciona</span>
           </div>
-          <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {["Documents", "Escriptori", "Descàrregues", "OneDrive\\Documents"].map((loc) => (
-              <span key={loc} className="bg-blue-100 text-blue-600 text-[11px] font-mono px-2 py-0.5 rounded">
-                {loc}
-              </span>
-            ))}
+
+          {/* Fitxer 1: JSON */}
+          <div className="space-y-1">
+            <div className="font-medium text-blue-800">
+              1. Fitxer de configuració JSON{" "}
+              <code className="bg-blue-100 px-1 rounded text-xs font-mono">CBT_Revit_Config.json</code>
+            </div>
+            <div className="text-xs text-blue-600">
+              Descarrega'l des d'aquesta pàgina amb el botó{" "}
+              <span className="font-semibold">Config Revit (JSON)</span>. Conté la llista de tots els
+              equips, les categories Revit i els paràmetres CBT a crear. Guarda'l amb el nom exacte{" "}
+              <code className="bg-blue-100 px-1 rounded font-mono">CBT_Revit_Config.json</code>{" "}
+              a qualsevol d'aquestes ubicacions — el script el trobarà automàticament:
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {["Documents", "Escriptori", "Descàrregues", "OneDrive\\Documents"].map((loc) => (
+                <span key={loc} className="bg-blue-100 text-blue-600 text-[11px] font-mono px-2 py-0.5 rounded">
+                  {loc}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="text-[11px] text-blue-500 mt-1">
-            Compatible amb Revit 2020–2030 · Detecta automàticament la versió instal·lada
+
+          {/* Fitxer 2: Paràmetres compartits */}
+          <div className="space-y-1">
+            <div className="font-medium text-blue-800">
+              2. Fitxer de paràmetres compartits{" "}
+              <code className="bg-blue-100 px-1 rounded text-xs font-mono">CBT_PARAMETRES-COMPARTITS.txt</code>
+            </div>
+            <div className="text-xs text-blue-600">
+              Aquest fitxer el proporciona l'administrador BIM del projecte. Defineix tots els
+              paràmetres compartits CBT que s'afegiran a les famílies Revit. Ha d'estar guardat
+              obligatòriament a:
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {["Documents"].map((loc) => (
+                <span key={loc} className="bg-blue-100 text-blue-600 text-[11px] font-mono px-2 py-0.5 rounded">
+                  {loc}
+                </span>
+              ))}
+            </div>
+            <div className="text-xs text-blue-500">
+              ⚠️ No canviïs el nom del fitxer. El script el cerca exactament amb aquest nom.
+            </div>
+          </div>
+
+          {/* Nota final */}
+          <div className="text-[11px] text-blue-500 border-t border-blue-200 pt-2">
+            Compatible amb Revit 2020–2030 · Detecta automàticament la versió instal·lada ·
+            Les famílies es generen a <code className="font-mono">Documents\Families_Output\</code>
           </div>
         </div>
       </div>
@@ -693,7 +731,7 @@ export function RevitExportPage() {
                             <span className="font-mono text-xs font-semibold text-slate-800 tracking-tight">
                               {eq.fileName}
                             </span>
-                            {eq.nom !== eq.fileName.replace(/_/g, " ").toLowerCase() && (
+                            {eq.nom !== eq.fileName.replace(/-/g, " ").toLowerCase() && (
                               <span className="text-[11px] text-slate-400">{eq.nom}</span>
                             )}
                           </div>
