@@ -95,6 +95,8 @@ export interface Projecte {
   status: ProjectStatus;
   tags: ProjectTag[];
   createdAt: number;
+  // Llista blanca d'IDs d'usuari amb accés. null = accés per a tothom (admins sempre accedeixen)
+  allowedUsers: string[] | null;
 }
 
 // ─── Conversors row ↔ objecte ─────────────────────────────────────────────────
@@ -138,6 +140,7 @@ const toProjecte = (row: any, tags: ProjectTag[]): Projecte => ({
   status:           row.status           ?? "actiu",
   tags:             tags.filter(t => t.projecteId === row.id),
   createdAt:        row.created_at       ?? Date.now(),
+  allowedUsers:     Array.isArray(row.allowed_users) ? row.allowed_users : null,
 });
 
 const projecteToRow = (p: Projecte) => ({
@@ -148,6 +151,7 @@ const projecteToRow = (p: Projecte) => ({
   codi_installacio: p.codiInstallacio,
   status:           p.status,
   created_at:       p.createdAt,
+  allowed_users:    p.allowedUsers ?? null,
 });
 
 const toRosmimanEquip = (row: any): RosmimanEquip => ({
@@ -170,6 +174,7 @@ export interface ProjectesValue {
   // Projectes CRUD
   createProjecte: (data: Omit<Projecte, "id" | "tags" | "createdAt">) => Promise<void>;
   updateProjecte: (id: string, patch: Partial<Omit<Projecte, "id" | "tags">>) => Promise<void>;
+  updateProjecteUsers: (id: string, userIds: string[] | null) => Promise<void>;
   deleteProjecte: (id: string) => Promise<void>;
   toggleArxivar:  (id: string) => Promise<void>;
 
@@ -317,6 +322,15 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     await updateProjecte(id, { status: nouStatus });
   }, [projectes, updateProjecte]);
 
+  const updateProjecteUsers = useCallback(async (id: string, userIds: string[] | null) => {
+    const token = getToken();
+    await supa(token, "PATCH", `projectes?id=eq.${id}`,
+      { allowed_users: userIds },
+      { "Prefer": "return=minimal" }
+    );
+    setProjectes(prev => prev.map(p => p.id === id ? { ...p, allowedUsers: userIds } : p));
+  }, [getToken]);
+
   // ── Mutacions tags ────────────────────────────────────────────────────────
 
   const addTag = useCallback(async (
@@ -444,7 +458,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     projectes,
     rosmimanEquips, loadingRosmiman,
     importRosmimanEquips, deleteRosmimanEquip, clearRosmimanEquips,
-    createProjecte, updateProjecte, deleteProjecte, toggleArxivar,
+    createProjecte, updateProjecte, updateProjecteUsers, deleteProjecte, toggleArxivar,
     addTag, updateTag, deleteTag,
   };
 

@@ -8,6 +8,9 @@ import {
   canViewRole,
   isAdminRole,
   canSeeViewFn,
+  canEditViewFn,
+  getSectionRoleFn,
+  parseSectionPermissions,
   type UserProfile,
 } from "@/lib/auth";
 
@@ -25,24 +28,26 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
         .select("id, email, full_name, role")
         .eq("id", u.id)
         .single();
-      return data2 ? { ...data2, allowed_views: null } as UserProfile : null;
+      return data2 ? { ...data2, section_permissions: null } as UserProfile : null;
     }
 
-    return data ? { ...data, allowed_views: data.allowed_views ?? null } as UserProfile : null;
+    return data
+      ? {
+          id:                  data.id,
+          email:               data.email,
+          full_name:           data.full_name ?? null,
+          role:                data.role,
+          section_permissions: parseSectionPermissions(data.allowed_views),
+        } as UserProfile
+      : null;
   } catch {
     return null;
   }
 }
 
-// Detecta si la URL actual correspon a un callback d'autenticació de Supabase.
-// Supabase pot enviar tokens de dues maneres:
-//   - Implicit flow (antic): #access_token=...&type=recovery
-//   - PKCE flow (nou, per defecte): ?code=...  (sense type explícit a la URL)
-// En ambdós casos, la pàgina de destinació és /auth/callback.
 export function isAuthCallbackUrl(): boolean {
   if (typeof window === "undefined") return false;
-  const path = window.location.pathname;
-  return path.startsWith("/auth/callback");
+  return window.location.pathname.startsWith("/auth/callback");
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -58,10 +63,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function init() {
-      // Si estem a /auth/callback, NO cridem getSession() aquí.
-      // Supabase bescanviarà el codi/token automàticament i dispararà
-      // onAuthStateChange. Cridar getSession() primer podria interferir
-      // amb el flux PKCE i netejar el ?code= abans que s'hagi bescanviat.
       if (!isAuthCallbackUrl()) {
         const { data: { session } } = await supabase.auth.getSession();
         const u = session?.user ?? null;
@@ -78,8 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!cancelled) setLoading(false);
         }
       }
-      // Si som a /auth/callback, deixem loading=true fins que
-      // onAuthStateChange ens indiqui que el token s'ha processat.
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange(
         async (event, session) => {
@@ -88,8 +87,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           tokenRef.current = session?.access_token ?? "";
 
           if (event === "INITIAL_SESSION") {
-            // Quan som a /auth/callback, INITIAL_SESSION pot arribar
-            // amb la sessió del recovery/invite ja activa. L'aprofitem.
             if (isAuthCallbackUrl()) {
               const u2 = session?.user ?? null;
               setUser(u2);
@@ -156,10 +153,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         profile,
         loading,
-        canView:    canViewRole(role),
-        canEdit:    canEditRole(role),
-        isAdmin:    isAdminRole(role),
-        canSeeView: canSeeViewFn(profile, user),
+        canView:        canViewRole(role),
+        canEdit:        canEditRole(role),
+        isAdmin:        isAdminRole(role),
+        getSectionRole: getSectionRoleFn(profile),
+        canSeeView:     canSeeViewFn(profile, user),
+        canEditView:    canEditViewFn(profile),
         getToken,
         signIn,
         signOut,
