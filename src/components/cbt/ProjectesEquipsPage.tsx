@@ -45,6 +45,8 @@ export interface Projecte {
   id: string;
   nom: string;
   descripcio: string;
+  codiProjecte: string;      // format NNNN-N a NNNN-NNNN
+  codiInstallacio: string;   // 5 dígits alfanumèrics, comú a tot el projecte
   status: ProjectStatus;
   tags: ProjectTag[];
   createdAt: number;
@@ -79,6 +81,12 @@ function duplicitatsUsades(
   return tags
     .filter(t => t.id !== excludeTagId && t.tagComplet.startsWith(prefix) && t.tagComplet.length === prefix.length + 1)
     .map(t => t.duplicitat.toUpperCase());
+}
+
+function validateCodiProjecte(codi: string): string | null {
+  if (!codi.trim()) return null; // opcional
+  if (!/^\d{4}-\d{1,4}$/.test(codi.trim())) return "El codi de projecte ha de tenir el format NNNN-N a NNNN-NNNN (ex: 2024-1 o 2024-1234).";
+  return null;
 }
 
 function validateTagFields(codiInstallacio: string, ccm: string, funcio: string, duplicitat: string): string | null {
@@ -130,6 +138,9 @@ export function ProjectesEquipsPage() {
   // Formularis
   const [nouNom, setNouNom] = useState("");
   const [nouDesc, setNouDesc] = useState("");
+  const [nouCodiProjecte, setNouCodiProjecte] = useState("");
+  const [nouCodiInstallacio, setNouCodiInstallacio] = useState("");
+  const [nouProjecteError, setNouProjecteError] = useState<string | null>(null);
   const [tagCodiInstallacio, setTagCodiInstallacio] = useState("");
   const [tagEquipId, setTagEquipId] = useState("");
   const [tagCcm, setTagCcm] = useState("");
@@ -167,10 +178,25 @@ export function ProjectesEquipsPage() {
   // ─── accions projectes ──────────────────────────────────────────────────────
   function crearProjecte() {
     if (!nouNom.trim()) return;
-    const nou: Projecte = { id: uid(), nom: nouNom.trim(), descripcio: nouDesc.trim(), status: "actiu", tags: [], createdAt: Date.now() };
+    const errCodi = validateCodiProjecte(nouCodiProjecte);
+    if (errCodi) { setNouProjecteError(errCodi); return; }
+    if (nouCodiInstallacio && !/^[A-Z0-9]{5}$/i.test(nouCodiInstallacio)) {
+      setNouProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.");
+      return;
+    }
+    const nou: Projecte = {
+      id: uid(),
+      nom: nouNom.trim(),
+      descripcio: nouDesc.trim(),
+      codiProjecte: nouCodiProjecte.trim(),
+      codiInstallacio: nouCodiInstallacio.toUpperCase().trim(),
+      status: "actiu",
+      tags: [],
+      createdAt: Date.now(),
+    };
     setProjectes(prev => [nou, ...prev]);
     setDialogNouProjecte(false);
-    setNouNom(""); setNouDesc("");
+    setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
     toast.success("Projecte creat");
   }
 
@@ -187,7 +213,9 @@ export function ProjectesEquipsPage() {
 
   // ─── accions tags ───────────────────────────────────────────────────────────
   function obrirNouTag() {
-    setTagCodiInstallacio(""); setTagEquipId(""); setTagCcm("");
+    const projecteActual = projectes.find(p => p.id === projecteActiu);
+    setTagCodiInstallacio(projecteActual?.codiInstallacio ?? "");
+    setTagEquipId(""); setTagCcm("");
     setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagError(null);
     setDialogNouTag(true);
   }
@@ -394,7 +422,9 @@ export function ProjectesEquipsPage() {
                             <ProjectStatusBadge status={p.status} />
                           </div>
                           <p className="font-semibold text-slate-700 truncate">{p.nom}</p>
+                          {p.codiProjecte && <p className="text-[10px] font-mono text-[#006E7A] mt-0.5">#{p.codiProjecte}</p>}
                           {p.descripcio && <p className="text-xs text-slate-400 truncate mt-0.5">{p.descripcio}</p>}
+                          {p.codiInstallacio && <p className="text-[10px] text-slate-400 mt-0.5 font-mono">Instal·lació: {p.codiInstallacio}</p>}
                         </div>
                         <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-[#0099A8] shrink-0 mt-1 transition-colors" />
                       </div>
@@ -576,18 +606,44 @@ export function ProjectesEquipsPage() {
         )}
 
         {/* ── DIÀLEG: NOU PROJECTE ────────────────────────────────────────── */}
-        <Dialog open={dialogNouProjecte} onOpenChange={setDialogNouProjecte}>
+        <Dialog open={dialogNouProjecte} onOpenChange={(b) => { setDialogNouProjecte(b); if (!b) setNouProjecteError(null); }}>
           <DialogContent className="max-w-md">
             <DialogHeader><DialogTitle>Nou projecte</DialogTitle></DialogHeader>
             <div className="space-y-3 py-2">
               <div>
                 <Label className="text-xs font-medium">Nom del projecte *</Label>
-                <Input className="mt-1" placeholder="Nom del projecte" value={nouNom} onChange={e => setNouNom(e.target.value)} onKeyDown={e => e.key === "Enter" && crearProjecte()} />
+                <Input className="mt-1" placeholder="Nom del projecte" value={nouNom} onChange={e => setNouNom(e.target.value)} />
               </div>
               <div>
                 <Label className="text-xs font-medium">Descripció</Label>
                 <Input className="mt-1" placeholder="Descripció opcional" value={nouDesc} onChange={e => setNouDesc(e.target.value)} />
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-medium">Codi de projecte <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
+                  <Input
+                    className="mt-1 font-mono"
+                    placeholder="2024-1"
+                    value={nouCodiProjecte}
+                    onChange={e => { setNouCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setNouProjecteError(null); }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-medium">Codi instal·lació <span className="text-slate-400 font-normal">(5 car.)</span></Label>
+                  <Input
+                    className="mt-1 font-mono uppercase"
+                    placeholder="XXXXX"
+                    maxLength={5}
+                    value={nouCodiInstallacio}
+                    onChange={e => { setNouCodiInstallacio(e.target.value.toUpperCase()); setNouProjecteError(null); }}
+                  />
+                </div>
+              </div>
+              {nouProjecteError && (
+                <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{nouProjecteError}
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogNouProjecte(false)}>Cancel·la</Button>
@@ -655,10 +711,27 @@ export function ProjectesEquipsPage() {
                 )}
 
                 {/* Camps del TAG */}
+                {/* Codi instal·lació del projecte (informatiu si ja està fixat) */}
+                {projecteSeleccionat?.codiInstallacio ? (
+                  <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs flex items-center gap-2">
+                    <span className="text-slate-500">Instal·lació del projecte:</span>
+                    <span className="font-mono font-semibold text-slate-700">{projecteSeleccionat.codiInstallacio}</span>
+                  </div>
+                ) : null}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label className="text-xs font-medium">Codi instal·lació * <span className="text-slate-400 font-normal">(5 car. alfanum.)</span></Label>
-                    <Input className="mt-1 font-mono uppercase" maxLength={5} placeholder="XXXXX" value={tagCodiInstallacio} onChange={e => setTagCodiInstallacio(e.target.value.toUpperCase())} />
+                    <Label className="text-xs font-medium">
+                      Codi instal·lació * <span className="text-slate-400 font-normal">(5 car. alfanum.)</span>
+                    </Label>
+                    <Input
+                      className="mt-1 font-mono uppercase"
+                      maxLength={5}
+                      placeholder="XXXXX"
+                      value={tagCodiInstallacio}
+                      readOnly={!!projecteSeleccionat?.codiInstallacio}
+                      onChange={e => { if (!projecteSeleccionat?.codiInstallacio) setTagCodiInstallacio(e.target.value.toUpperCase()); }}
+                      title={projecteSeleccionat?.codiInstallacio ? "Fixat a la configuració del projecte" : undefined}
+                    />
                   </div>
                   <div>
                     <Label className="text-xs font-medium">CCM * <span className="text-slate-400 font-normal">(1 dígit)</span></Label>
