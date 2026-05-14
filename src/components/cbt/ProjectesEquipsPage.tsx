@@ -84,7 +84,7 @@ function duplicitatsUsades(
 }
 
 function validateCodiProjecte(codi: string): string | null {
-  if (!codi.trim()) return null; // opcional
+  if (!codi.trim()) return "El codi de projecte és obligatori.";
   if (!/^\d{4}-\d{1,4}$/.test(codi.trim())) return "El codi de projecte ha de tenir el format NNNN-N a NNNN-NNNN (ex: 2024-1 o 2024-1234).";
   return null;
 }
@@ -141,6 +141,14 @@ export function ProjectesEquipsPage() {
   const [nouCodiProjecte, setNouCodiProjecte] = useState("");
   const [nouCodiInstallacio, setNouCodiInstallacio] = useState("");
   const [nouProjecteError, setNouProjecteError] = useState<string | null>(null);
+
+  // Edició projecte existent
+  const [dialogEditProjecte, setDialogEditProjecte] = useState<string | null>(null); // id del projecte
+  const [editNom, setEditNom] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editCodiProjecte, setEditCodiProjecte] = useState("");
+  const [editCodiInstallacio, setEditCodiInstallacio] = useState("");
+  const [editProjecteError, setEditProjecteError] = useState<string | null>(null);
   const [tagCodiInstallacio, setTagCodiInstallacio] = useState("");
   const [tagEquipId, setTagEquipId] = useState("");
   const [tagCcm, setTagCcm] = useState("");
@@ -181,7 +189,11 @@ export function ProjectesEquipsPage() {
     if (!nouNom.trim()) return;
     const errCodi = validateCodiProjecte(nouCodiProjecte);
     if (errCodi) { setNouProjecteError(errCodi); return; }
-    if (nouCodiInstallacio && !/^[A-Z0-9]{5}$/i.test(nouCodiInstallacio)) {
+    if (!nouCodiInstallacio.trim()) {
+      setNouProjecteError("El codi d'instal·lació és obligatori.");
+      return;
+    }
+    if (!/^[A-Z0-9]{5}$/i.test(nouCodiInstallacio)) {
       setNouProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.");
       return;
     }
@@ -199,6 +211,31 @@ export function ProjectesEquipsPage() {
     setDialogNouProjecte(false);
     setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
     toast.success("Projecte creat");
+  }
+
+  function obrirEditProjecte(id: string) {
+    const p = projectes.find(pr => pr.id === id);
+    if (!p) return;
+    setEditNom(p.nom);
+    setEditDesc(p.descripcio);
+    setEditCodiProjecte(p.codiProjecte);
+    setEditCodiInstallacio(p.codiInstallacio);
+    setEditProjecteError(null);
+    setDialogEditProjecte(id);
+  }
+
+  function guardarEditProjecte() {
+    if (!editNom.trim()) { setEditProjecteError("El nom és obligatori."); return; }
+    const errCodi = validateCodiProjecte(editCodiProjecte);
+    if (errCodi) { setEditProjecteError(errCodi); return; }
+    if (!editCodiInstallacio.trim()) { setEditProjecteError("El codi d'instal·lació és obligatori."); return; }
+    if (!/^[A-Z0-9]{5}$/i.test(editCodiInstallacio)) { setEditProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics."); return; }
+    setProjectes(prev => prev.map(p => p.id === dialogEditProjecte
+      ? { ...p, nom: editNom.trim(), descripcio: editDesc.trim(), codiProjecte: editCodiProjecte.trim(), codiInstallacio: editCodiInstallacio.toUpperCase().trim() }
+      : p
+    ));
+    setDialogEditProjecte(null);
+    toast.success("Projecte actualitzat");
   }
 
   function arxivarProjecte(id: string) {
@@ -374,10 +411,17 @@ export function ProjectesEquipsPage() {
               <Plus className="h-3.5 w-3.5 mr-1.5" /> Nou projecte
             </Button>
           )}
-          {vista === "detail" && projecteSeleccionat?.status === "actiu" && canEdit && (
-            <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
-              <Tags className="h-3.5 w-3.5 mr-1.5" /> Nou TAG
-            </Button>
+          {vista === "detail" && canEdit && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => obrirEditProjecte(projecteActiu!)}>
+                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edita projecte
+              </Button>
+              {projecteSeleccionat?.status === "actiu" && (
+                <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
+                  <Tags className="h-3.5 w-3.5 mr-1.5" /> Nou TAG
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
@@ -449,6 +493,10 @@ export function ProjectesEquipsPage() {
                       {/* Accions ràpides */}
                       {canEdit && (
                         <div className="flex gap-1.5 mt-3 pt-3 border-t border-slate-100" onClick={e => e.stopPropagation()}>
+                          <Button variant="outline" size="sm" className="h-7 text-[11px] border-slate-200 text-slate-600"
+                            onClick={() => obrirEditProjecte(p.id)}>
+                            <Pencil className="h-3 w-3" />
+                          </Button>
                           <Button variant="outline" size="sm" className="h-7 text-[11px] flex-1 border-slate-200"
                             onClick={() => setDialogArxivar(p.id)}>
                             <Archive className="h-3 w-3 mr-1" />{p.status === "arxivat" ? "Desarxivar" : "Arxivar"}
@@ -621,7 +669,7 @@ export function ProjectesEquipsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-medium">Codi de projecte <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
+                  <Label className="text-xs font-medium">Codi de projecte * <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
                   <Input
                     className="mt-1 font-mono"
                     placeholder="2024-1"
@@ -630,7 +678,7 @@ export function ProjectesEquipsPage() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs font-medium">Codi instal·lació <span className="text-slate-400 font-normal">(5 car.)</span></Label>
+                  <Label className="text-xs font-medium">Codi instal·lació * <span className="text-slate-400 font-normal">(5 car.)</span></Label>
                   <Input
                     className="mt-1 font-mono uppercase"
                     placeholder="XXXXX"
@@ -648,7 +696,57 @@ export function ProjectesEquipsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogNouProjecte(false)}>Cancel·la</Button>
-              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim()}>Crear projecte</Button>
+              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || !nouCodiInstallacio.trim()}>Crear projecte</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── DIÀLEG: EDITAR PROJECTE ────────────────────────────────────── */}
+        <Dialog open={!!dialogEditProjecte} onOpenChange={(b) => { if (!b) { setDialogEditProjecte(null); setEditProjecteError(null); } }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader><DialogTitle>Editar projecte</DialogTitle></DialogHeader>
+            <div className="space-y-3 py-2">
+              <div>
+                <Label className="text-xs font-medium">Nom del projecte *</Label>
+                <Input className="mt-1" placeholder="Nom del projecte" value={editNom} onChange={e => { setEditNom(e.target.value); setEditProjecteError(null); }} />
+              </div>
+              <div>
+                <Label className="text-xs font-medium">Descripció</Label>
+                <Input className="mt-1" placeholder="Descripció opcional" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-medium">Codi de projecte * <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
+                  <Input
+                    className="mt-1 font-mono"
+                    placeholder="2024-1"
+                    value={editCodiProjecte}
+                    onChange={e => { setEditCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setEditProjecteError(null); }}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-medium">Codi instal·lació * <span className="text-slate-400 font-normal">(5 car.)</span></Label>
+                  <Input
+                    className="mt-1 font-mono uppercase"
+                    placeholder="XXXXX"
+                    maxLength={5}
+                    value={editCodiInstallacio}
+                    onChange={e => { setEditCodiInstallacio(e.target.value.toUpperCase()); setEditProjecteError(null); }}
+                  />
+                </div>
+              </div>
+              {editProjecteError && (
+                <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-600">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{editProjecteError}
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDialogEditProjecte(null)}>Cancel·la</Button>
+              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={guardarEditProjecte}
+                disabled={!editNom.trim() || !editCodiProjecte.trim() || !editCodiInstallacio.trim()}>
+                Guardar canvis
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
