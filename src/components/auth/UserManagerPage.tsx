@@ -332,18 +332,26 @@ export function UserManagerPage() {
   };
 
   const handleUpdateUser = async (userId: string) => {
-    const { error } = await supabase
-      .from("user_profiles")
-      .update({
-        role:          editRole,
-        allowed_views: editRole === "admin" ? null : editPerms,
-      })
-      .eq("id", userId);
-    if (error) return toast.error("Error actualitzant usuari");
-    toast.success("Usuari actualitzat");
-    setEditingId(null);
-    setExpanded(null);
-    await fetchUsers();
+    try {
+      const token = getToken();
+      const res = await fetch("/api/update-user", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          user_id:       userId,
+          role:          editRole,
+          allowed_views: editRole === "admin" ? null : editPerms,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Error actualitzant usuari");
+      toast.success("Usuari actualitzat");
+      setEditingId(null);
+      setExpanded(null);
+      await fetchUsers();
+    } catch (err: any) {
+      toast.error(err.message ?? "Error actualitzant usuari");
+    }
   };
 
   const handleDelete = async (userId: string, userEmail: string) => {
