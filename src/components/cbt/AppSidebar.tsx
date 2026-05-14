@@ -2,7 +2,9 @@
 import { useState } from "react";
 import {
   Building2,
+  FolderOpen,
   GitBranch,
+  List,
   LogOut,
   Package,
   Settings2,
@@ -90,6 +92,19 @@ export function AppSidebar({
           icon: <Building2 className="h-4 w-4" />,
           section: "revit",
           view: "equips",
+        },
+      ],
+    },
+    {
+      id: "projectes",
+      label: "Projectes",
+      icon: <FolderOpen className="h-4 w-4" />,
+      items: [
+        {
+          id: "projectes-equips",
+          label: "Llistat d'equips",
+          icon: <List className="h-4 w-4" />,
+          section: "projectes-equips",
         },
       ],
     },

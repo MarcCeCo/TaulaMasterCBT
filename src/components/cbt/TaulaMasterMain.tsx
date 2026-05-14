@@ -6,6 +6,7 @@ import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
 import { RevitExportPage } from "./RevitExportPage";
+import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
 import { ShieldOff } from "lucide-react";
@@ -92,6 +93,9 @@ export function TaulaMasterMain() {
 
       case "revit":
         return <RevitExportPage />;
+
+      case "projectes-equips":
+        return <ProjectesEquipsPage />;
 
       case "equips":
       default:
