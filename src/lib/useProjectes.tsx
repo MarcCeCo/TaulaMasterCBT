@@ -389,11 +389,31 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
           created_at:       Date.now(),
         }));
         const BATCH = 100;
+        let actualInserted = 0;
         for (let i = 0; i < rows.length; i += BATCH) {
-          await supa(token, "POST", "rosmiman_equips", rows.slice(i, i + BATCH), {
-            // resolution=ignore-duplicates com a salvaguarda addicional
-            "Prefer": "resolution=ignore-duplicates,return=minimal",
-          });
+          try {
+            // Upsert real: on_conflict=tag ignora duplicats per la columna TAG
+            await supa(token, "POST", "rosmiman_equips?on_conflict=tag", rows.slice(i, i + BATCH), {
+              "Prefer": "resolution=ignore-duplicates,return=minimal",
+            });
+            actualInserted += rows.slice(i, i + BATCH).length;
+          } catch (err: any) {
+            // Si el batch falla per duplicat (409), intentem fila per fila
+            if (err?.message?.includes("409") || err?.message?.includes("23505")) {
+              for (const row of rows.slice(i, i + BATCH)) {
+                try {
+                  await supa(token, "POST", "rosmiman_equips?on_conflict=tag", [row], {
+                    "Prefer": "resolution=ignore-duplicates,return=minimal",
+                  });
+                  actualInserted++;
+                } catch {
+                  // Duplicat individual: skip silenciós
+                }
+              }
+            } else {
+              throw err;
+            }
+          }
         }
         setRosmimanEquips(prev => [...prev, ...rows.map(toRosmimanEquip)]
           .sort((a, b) => a.codiInstallacio.localeCompare(b.codiInstallacio) || a.tag.localeCompare(b.tag))
