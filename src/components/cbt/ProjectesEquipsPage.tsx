@@ -108,7 +108,7 @@ export function ProjectesEquipsPage() {
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
     createProjecte, updateProjecte, deleteProjecte, toggleArxivar,
     addTag, updateTag, deleteTag,
-    rosmimanEquips,
+    rosmimanEquips, importRosmimanEquips,
   } = useProjectes();
 
   // Navegació
@@ -401,6 +401,33 @@ export function ProjectesEquipsPage() {
     try {
       await updateTag(projecteActiu!, tag.id, { status: nouStatus, comentari });
       setDialogValidar(null);
+
+      // Comprova si tots els tags del projecte han quedat validats
+      // (inclou el tag actual que acabem de validar)
+      if (nouStatus === "validat") {
+        const projecteActual = projectes.find(p => p.id === projecteActiu);
+        if (projecteActual) {
+          const totsValidats = projecteActual.tags.every(t =>
+            t.id === tag.id ? true : t.status === "validat"
+          );
+          if (totsValidats && projecteActual.tags.length > 0) {
+            // Afegim tots els tags validats al llistat Rosmiman
+            const equipsAImportar = projecteActual.tags.map(t => ({
+              tag:             t.id === tag.id ? tag.tagComplet : t.tagComplet,
+              descripcio:      equipMap.get(t.equipId)?.equipName ?? "",
+              codiInstallacio: t.codiInstallacio,
+            }));
+            const { inserted, skipped } = await importRosmimanEquips(equipsAImportar);
+            if (inserted > 0) {
+              toast.success(`Tots els tags validats ✓ — ${inserted} tag${inserted !== 1 ? "s" : ""} afegit${inserted !== 1 ? "s" : ""} al llistat Rosmiman.`);
+            } else {
+              toast.success("Tots els tags validats ✓ (ja existien al llistat Rosmiman).");
+            }
+            return;
+          }
+        }
+      }
+
       toast.success(nouStatus === "validat" ? "Tag validat ✓" : "Tag rebutjat");
     } catch (e: any) {
       toast.error(e?.message ?? "Error en validar el tag.");
