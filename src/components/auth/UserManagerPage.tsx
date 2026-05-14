@@ -335,19 +335,11 @@ export function UserManagerPage() {
     const { error } = await supabase
       .from("user_profiles")
       .update({
-        role,
-        allowed_views: editRole === "admin" ? null : editPerms,
-      })
-      .eq("id", userId);
-    // Usem editRole aquí:
-    const { error: err2 } = await supabase
-      .from("user_profiles")
-      .update({
         role:          editRole,
         allowed_views: editRole === "admin" ? null : editPerms,
       })
       .eq("id", userId);
-    if (err2) return toast.error("Error actualitzant usuari");
+    if (error) return toast.error("Error actualitzant usuari");
     toast.success("Usuari actualitzat");
     setEditingId(null);
     setExpanded(null);
