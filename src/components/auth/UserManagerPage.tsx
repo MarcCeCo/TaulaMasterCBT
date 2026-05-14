@@ -483,14 +483,14 @@ export function UserManagerPage() {
                 <div className="flex items-center gap-3 px-5 py-3">
                   {/* Avatar */}
                   <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
-                    {((u.full_name ?? u.email ?? "?")[0]).toUpperCase()}
+                    {((u.full_name || u.email || "?")[0]).toUpperCase()}
                   </div>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-slate-700 truncate">
-                        {u.full_name ?? u.email}
+                        {u.full_name || u.email}
                       </span>
                       {isMe && (
                         <Badge className="text-[10px] px-1.5 py-0 bg-[#0099A8] text-white border-0">Jo</Badge>
