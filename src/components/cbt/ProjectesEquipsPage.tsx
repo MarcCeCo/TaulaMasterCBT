@@ -14,43 +14,13 @@ import {
   ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { uid } from "@/lib/storage";
-import { useDebouncedLocalStorage } from "@/lib/storage";
 import { useDataStore } from "@/lib/dataStore";
+import { useProjectes } from "@/lib/useProjectes";
+import type { ProjectTag, Projecte, ProjectStatus, TagStatus } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-
-// ─── tipus ───────────────────────────────────────────────────────────────────
-
-type ProjectStatus = "actiu" | "arxivat";
-type TagStatus = "pendent" | "validat" | "rebutjat";
-
-export interface ProjectTag {
-  id: string;
-  equipId: string;        // id de l'equip a EquipmentsTable
-  codiInstallacio: string; // 5 dígits alfanumèrics
-  ccm: string;            // 1 dígit numèric
-  funcio: string;         // 2 dígits numèrics
-  duplicitat: string;     // 1 dígit alfabètic
-  tagComplet: string;     // CODIINSTALLACIO_CODIEQUIP_CCMFUNCIODUPLICITATAT
-  status: TagStatus;
-  comentari: string;
-  fieldValues: Record<string, string>;
-  createdAt: number;
-}
-
-export interface Projecte {
-  id: string;
-  nom: string;
-  descripcio: string;
-  codiProjecte: string;      // format NNNN-N a NNNN-NNNN
-  codiInstallacio: string;   // 5 dígits alfanumèrics, comú a tot el projecte
-  status: ProjectStatus;
-  tags: ProjectTag[];
-  createdAt: number;
-}
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -115,8 +85,10 @@ export function ProjectesEquipsPage() {
   const { canEdit } = useAuth();
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
-  // Persistència en localStorage
-  const [projectes, setProjectes] = useDebouncedLocalStorage<Projecte[]>("cbt_projectes", []);
+  const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
+    createProjecte, updateProjecte, deleteProjecte, toggleArxivar,
+    addTag, updateTag, deleteTag,
+  } = useProjectes();
 
   // Navegació
   const [projecteActiu, setProjecteActiu] = useState<string | null>(null);
@@ -185,7 +157,7 @@ export function ProjectesEquipsPage() {
   const editEquipObj = editEquip ? equipMap.get(editEquip) ?? null : null; // usat només des de la taula master
 
   // ─── accions projectes ──────────────────────────────────────────────────────
-  function crearProjecte() {
+  async function crearProjecte() {
     if (!nouNom.trim()) return;
     const errCodi = validateCodiProjecte(nouCodiProjecte);
     if (errCodi) { setNouProjecteError(errCodi); return; }
@@ -197,20 +169,20 @@ export function ProjectesEquipsPage() {
       setNouProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.");
       return;
     }
-    const nou: Projecte = {
-      id: uid(),
-      nom: nouNom.trim(),
-      descripcio: nouDesc.trim(),
-      codiProjecte: nouCodiProjecte.trim(),
-      codiInstallacio: nouCodiInstallacio.toUpperCase().trim(),
-      status: "actiu",
-      tags: [],
-      createdAt: Date.now(),
-    };
-    setProjectes(prev => [nou, ...prev]);
-    setDialogNouProjecte(false);
-    setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
-    toast.success("Projecte creat");
+    try {
+      await createProjecte({
+        nom: nouNom.trim(),
+        descripcio: nouDesc.trim(),
+        codiProjecte: nouCodiProjecte.trim(),
+        codiInstallacio: nouCodiInstallacio.toUpperCase().trim(),
+        status: "actiu",
+      });
+      setDialogNouProjecte(false);
+      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
+      toast.success("Projecte creat");
+    } catch (e: any) {
+      setNouProjecteError(e?.message ?? "Error en crear el projecte.");
+    }
   }
 
   function obrirEditProjecte(id: string) {
@@ -224,29 +196,43 @@ export function ProjectesEquipsPage() {
     setDialogEditProjecte(id);
   }
 
-  function guardarEditProjecte() {
+  async function guardarEditProjecte() {
     if (!editNom.trim()) { setEditProjecteError("El nom és obligatori."); return; }
     const errCodi = validateCodiProjecte(editCodiProjecte);
     if (errCodi) { setEditProjecteError(errCodi); return; }
     if (!editCodiInstallacio.trim()) { setEditProjecteError("El codi d'instal·lació és obligatori."); return; }
     if (!/^[A-Z0-9]{5}$/i.test(editCodiInstallacio)) { setEditProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics."); return; }
-    setProjectes(prev => prev.map(p => p.id === dialogEditProjecte
-      ? { ...p, nom: editNom.trim(), descripcio: editDesc.trim(), codiProjecte: editCodiProjecte.trim(), codiInstallacio: editCodiInstallacio.toUpperCase().trim() }
-      : p
-    ));
-    setDialogEditProjecte(null);
-    toast.success("Projecte actualitzat");
+    try {
+      await updateProjecte(dialogEditProjecte!, {
+        nom: editNom.trim(),
+        descripcio: editDesc.trim(),
+        codiProjecte: editCodiProjecte.trim(),
+        codiInstallacio: editCodiInstallacio.toUpperCase().trim(),
+      });
+      setDialogEditProjecte(null);
+      toast.success("Projecte actualitzat");
+    } catch (e: any) {
+      setEditProjecteError(e?.message ?? "Error en actualitzar el projecte.");
+    }
   }
 
-  function arxivarProjecte(id: string) {
-    setProjectes(prev => prev.map(p => p.id === id ? { ...p, status: p.status === "arxivat" ? "actiu" : "arxivat" } : p));
-    toast.success("Estat del projecte actualitzat");
+  async function arxivarProjecte(id: string) {
+    try {
+      await toggleArxivar(id);
+      toast.success("Estat del projecte actualitzat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en canviar l'estat.");
+    }
   }
 
-  function eliminarProjecte(id: string) {
-    setProjectes(prev => prev.filter(p => p.id !== id));
-    if (projecteActiu === id) { setProjecteActiu(null); setVista("llistat"); }
-    toast.success("Projecte eliminat");
+  async function eliminarProjecte(id: string) {
+    try {
+      await deleteProjecte(id);
+      if (projecteActiu === id) { setProjecteActiu(null); setVista("llistat"); }
+      toast.success("Projecte eliminat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en eliminar el projecte.");
+    }
   }
 
   // ─── accions tags ───────────────────────────────────────────────────────────
@@ -271,23 +257,24 @@ export function ProjectesEquipsPage() {
       return;
     }
 
-    const tag: ProjectTag = {
-      id: uid(),
-      equipId: tagEquipId,
-      codiInstallacio: tagCodiInstallacio.toUpperCase(),
-      ccm: tagCcm,
-      funcio: tagFuncio.padStart(2, "0"),
-      duplicitat: tagDuplicitat.toUpperCase(),
-      tagComplet: tagCandidat,
-      status: "pendent",
-      comentari: tagComentari,
-      fieldValues: {},
-      createdAt: Date.now(),
-    };
-    setProjectes(prev => prev.map(p => p.id === projecteActiu ? { ...p, tags: [...p.tags, tag] } : p));
-    setDialogNouTag(false);
-    setEquipSearch("");
-    toast.success("Tag creat");
+    try {
+      await addTag(projecteActiu!, {
+        equipId: tagEquipId,
+        codiInstallacio: tagCodiInstallacio.toUpperCase(),
+        ccm: tagCcm,
+        funcio: tagFuncio.padStart(2, "0"),
+        duplicitat: tagDuplicitat.toUpperCase(),
+        tagComplet: tagCandidat,
+        status: "pendent",
+        comentari: tagComentari,
+        fieldValues: {},
+      });
+      setDialogNouTag(false);
+      setEquipSearch("");
+      toast.success("Tag creat");
+    } catch (e: any) {
+      setTagError(e?.message ?? "Error en crear el tag.");
+    }
   }
 
   function guardarEditTag() {
@@ -302,45 +289,47 @@ export function ProjectesEquipsPage() {
       setTagError(`El TAG "${tagCandidatEdit}" ja existeix en aquest projecte.`);
       return;
     }
-    const updated: ProjectTag = {
-      ...dialogEditTag,
-      codiInstallacio: tagCodiInstallacio.toUpperCase(),
-      ccm: tagCcm,
-      funcio: tagFuncio.padStart(2, "0"),
-      duplicitat: tagDuplicitat.toUpperCase(),
-      tagComplet: tagCandidatEdit,
-      comentari: tagComentari,
-    };
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.map(t => t.id === updated.id ? updated : t) }
-      : p
-    ));
-    setDialogEditTag(null);
-    toast.success("Tag actualitzat");
+    try {
+      await updateTag(projecteActiu!, dialogEditTag.id, {
+        codiInstallacio: tagCodiInstallacio.toUpperCase(),
+        ccm: tagCcm,
+        funcio: tagFuncio.padStart(2, "0"),
+        duplicitat: tagDuplicitat.toUpperCase(),
+        tagComplet: tagCandidatEdit,
+        comentari: tagComentari,
+      });
+      setDialogEditTag(null);
+      toast.success("Tag actualitzat");
+    } catch (e: any) {
+      setTagError(e?.message ?? "Error en actualitzar el tag.");
+    }
   }
 
-  function eliminarTag(tagId: string) {
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.filter(t => t.id !== tagId) }
-      : p
-    ));
-    toast.success("Tag eliminat");
+  async function eliminarTag(tagId: string) {
+    try {
+      await deleteTag(projecteActiu!, tagId);
+      toast.success("Tag eliminat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en eliminar el tag.");
+    }
   }
 
-  function validarTag(tag: ProjectTag, nouStatus: TagStatus, comentari: string) {
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.map(t => t.id === tag.id ? { ...t, status: nouStatus, comentari } : t) }
-      : p
-    ));
-    setDialogValidar(null);
-    toast.success(nouStatus === "validat" ? "Tag validat ✓" : "Tag rebutjat");
+  async function validarTag(tag: ProjectTag, nouStatus: TagStatus, comentari: string) {
+    try {
+      await updateTag(projecteActiu!, tag.id, { status: nouStatus, comentari });
+      setDialogValidar(null);
+      toast.success(nouStatus === "validat" ? "Tag validat ✓" : "Tag rebutjat");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en validar el tag.");
+    }
   }
 
-  function saveFieldValues(tagId: string, values: Record<string, string>) {
-    setProjectes(prev => prev.map(p => p.id === projecteActiu
-      ? { ...p, tags: p.tags.map(t => t.id === tagId ? { ...t, fieldValues: values } : t) }
-      : p
-    ));
+  async function saveFieldValues(tagId: string, values: Record<string, string>) {
+    try {
+      await updateTag(projecteActiu!, tagId, { fieldValues: values });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en guardar els valors.");
+    }
   }
 
   function obrirEditTag(tag: ProjectTag) {
