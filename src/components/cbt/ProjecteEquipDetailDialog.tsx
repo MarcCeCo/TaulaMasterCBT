@@ -59,6 +59,8 @@ export function ProjecteEquipDetailDialog({
       continue;
     }
     if (!assignedCols.has(f.col)) continue;
+    // Només mostrar camps que tenen codi
+    if (!f.codi) continue;
     if (currentClassifier && !classifierAdded) {
       tableRows.push({ classifier: true, classifierName: currentClassifier });
       classifierAdded = true;
@@ -85,7 +87,7 @@ export function ProjecteEquipDetailDialog({
     setDirty(false);
   }
 
-  const colSpanTotal = canEditValues ? 5 : 4;
+  const colSpanTotal = canEditValues ? 2 : 1;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -184,9 +186,6 @@ export function ProjecteEquipDetailDialog({
                 <thead className="sticky top-0 z-10 bg-white border-b shadow-sm">
                   <tr className="text-left">
                     <th className="px-4 py-2.5 font-semibold text-xs text-slate-600">Nom del paràmetre</th>
-                    <th className="px-4 py-2.5 font-semibold text-xs text-slate-600">Codi</th>
-                    <th className="px-4 py-2.5 font-semibold text-xs text-slate-600">Tipus dada</th>
-                    <th className="px-4 py-2.5 font-semibold text-xs text-slate-600">Nom CBT</th>
                     {canEditValues && (
                       <th className="px-4 py-2.5 font-semibold text-xs text-emerald-700 border-l-2 border-emerald-200 min-w-[180px]">
                         Valor
@@ -210,9 +209,6 @@ export function ProjecteEquipDetailDialog({
                     return (
                       <tr key={f.col} className="border-t hover:bg-muted/30 align-middle">
                         <td className="px-4 py-2 font-medium break-words">{f.col}</td>
-                        <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{f.codi ?? "—"}</td>
-                        <td className="px-4 py-2 text-xs text-muted-foreground">{f.tipus_dada ?? "—"}</td>
-                        <td className="px-4 py-2 font-mono text-xs text-[#006E7A]">{f.cbt ?? "—"}</td>
                         {canEditValues && (
                           <td className="px-4 py-1.5 border-l-2 border-emerald-100">
                             <Input
@@ -238,8 +234,6 @@ export function ProjecteEquipDetailDialog({
                         return (
                           <tr key={col} className="border-t bg-amber-50/50">
                             <td className="px-4 py-2 font-mono text-xs font-semibold text-amber-700">{col}</td>
-                            <td colSpan={2} className="px-4 py-2 text-xs text-amber-600 italic">Camp no trobat al diccionari</td>
-                            <td />
                             {canEditValues && (
                               <td className="px-4 py-1.5 border-l-2 border-emerald-100">
                                 <Input
