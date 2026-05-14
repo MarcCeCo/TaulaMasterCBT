@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 import { uid } from "@/lib/storage";
 import { useDebouncedLocalStorage } from "@/lib/storage";
 import { useDataStore } from "@/lib/dataStore";
-import { EquipmentDetailDialog } from "./EquipmentDetailDialog";
+import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -37,6 +37,7 @@ export interface ProjectTag {
   tagComplet: string;     // CODIINSTALLACIO_CODIEQUIP_CCMFUNCIODUPLICITATAT
   status: TagStatus;
   comentari: string;
+  fieldValues: Record<string, string>;
   createdAt: number;
 }
 
@@ -214,6 +215,7 @@ export function ProjectesEquipsPage() {
       tagComplet: tagCandidat,
       status: "pendent",
       comentari: tagComentari,
+      fieldValues: {},
       createdAt: Date.now(),
     };
     setProjectes(prev => prev.map(p => p.id === projecteActiu ? { ...p, tags: [...p.tags, tag] } : p));
@@ -266,6 +268,13 @@ export function ProjectesEquipsPage() {
     ));
     setDialogValidar(null);
     toast.success(nouStatus === "validat" ? "Tag validat ✓" : "Tag rebutjat");
+  }
+
+  function saveFieldValues(tagId: string, values: Record<string, string>) {
+    setProjectes(prev => prev.map(p => p.id === projecteActiu
+      ? { ...p, tags: p.tags.map(t => t.id === tagId ? { ...t, fieldValues: values } : t) }
+      : p
+    ));
   }
 
   function obrirEditTag(tag: ProjectTag) {
@@ -490,10 +499,13 @@ export function ProjectesEquipsPage() {
                             </td>
                             <td className="p-3">
                               {equip ? (
-                                <div>
-                                  <p className="font-medium text-slate-700 text-xs">{equip.equipName}</p>
+                                <button
+                                  className="text-left group/eq hover:underline underline-offset-2"
+                                  onClick={() => setDetallEquip(tag.equipId)}
+                                >
+                                  <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">{equip.equipName}</p>
                                   <p className="text-[10px] text-slate-400 font-mono">{equip.equipCode}</p>
-                                </div>
+                                </button>
                               ) : (
                                 <span className="flex items-center gap-1 text-amber-600 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Equip no trobat</span>
                               )}
@@ -776,15 +788,25 @@ export function ProjectesEquipsPage() {
         </AlertDialog>
 
         {/* ── DIÀLEG: DETALL EQUIP ────────────────────────────────────────── */}
-        <EquipmentDetailDialog
-          open={!!detallEquip}
-          onOpenChange={(b) => { if (!b) setDetallEquip(null); }}
-          equipment={detallEquipObj}
-          nodeMap={gubimNodeMap}
-          fieldMap={fieldMap}
-          fields={fields}
-          onEdit={() => { setEditEquip(detallEquip); setDetallEquip(null); }}
-        />
+        {(() => {
+          const tagDelEquip = projecteSeleccionat?.tags.find(
+            t => t.equipId === detallEquip && t.status === "validat"
+          ) ?? null;
+          return (
+            <ProjecteEquipDetailDialog
+              open={!!detallEquip}
+              onOpenChange={(b) => { if (!b) setDetallEquip(null); }}
+              equipment={detallEquipObj}
+              nodeMap={gubimNodeMap}
+              fieldMap={fieldMap}
+              fields={fields}
+              onEdit={() => { setEditEquip(detallEquip); setDetallEquip(null); }}
+              canEditValues={!!tagDelEquip}
+              fieldValues={tagDelEquip?.fieldValues ?? {}}
+              onSaveValues={(vals) => tagDelEquip && saveFieldValues(tagDelEquip.id, vals)}
+            />
+          );
+        })()}
 
         {/* ── DIÀLEG: EDITAR EQUIP (camps específics) ─────────────────────── */}
         <EquipmentFormDialog
