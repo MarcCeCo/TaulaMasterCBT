@@ -94,6 +94,9 @@ export function TaulaMasterMain() {
       case "projectes-equips":
         return <ProjectesEquipsPage />;
 
+      case "revit":
+        return <RevitExportPage />;
+
       case "equips":
       default:
         return (
