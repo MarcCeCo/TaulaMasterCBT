@@ -341,7 +341,7 @@ export function ProjectesEquipsPage() {
     const q = equipSearch.toLowerCase().trim();
     if (!q) return equipmentsAmbCodi;
     return equipmentsAmbCodi.filter(e =>
-      e.equipCode.toLowerCase().includes(q) || e.equipName.toLowerCase().includes(q)
+      e.equipCode.toLowerCase().includes(q) || e.equipName.toLowerCase().includes(q) || (e.tableName && e.tableName.toLowerCase().includes(q))
     );
   }, [equipmentsAmbCodi, equipSearch]);
 
