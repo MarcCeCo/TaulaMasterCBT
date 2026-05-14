@@ -10,6 +10,7 @@ import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
 import { ShieldOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
+import { RevitExportPage } from "./RevitExportPage";
 
 // Lazy load dels diàlegs pesats (GuBIMClass i Camps segueixen com a diàlegs)
 const GubimClassManager = lazy(() =>
