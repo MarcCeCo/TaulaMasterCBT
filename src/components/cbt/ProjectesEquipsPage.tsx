@@ -744,13 +744,7 @@ export function ProjectesEquipsPage() {
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500"
-                                        onClick={() => {
-                                          if (tag.status === "validat") {
-                                            setDialogEliminarTagValidat(tag.id);
-                                          } else {
-                                            eliminarTag(tag.id);
-                                          }
-                                        }}>
+                                        onClick={() => setDialogEliminarTagValidat(tag.id)}>
                                         <Trash2 className="h-3.5 w-3.5" />
                                       </Button>
                                     </TooltipTrigger>
@@ -1109,36 +1103,51 @@ export function ProjectesEquipsPage() {
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* ── DIÀLEG: ELIMINAR TAG VALIDAT ─────────────────────────────── */}
-        <AlertDialog open={!!dialogEliminarTagValidat} onOpenChange={() => setDialogEliminarTagValidat(null)}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
-                Eliminar tag validat?
-              </AlertDialogTitle>
-              <AlertDialogDescription asChild>
-                <div className="space-y-2 text-sm text-slate-600">
-                  <p>
-                    Aquest tag ja ha estat <span className="font-semibold text-emerald-700">validat</span> i pot estar al llistat Rosmiman.
-                  </p>
-                  <p>
-                    Eliminar-lo del projecte <span className="font-semibold">no</span> l'eliminarà automàticament del llistat Rosmiman. Si cal, elimina'l manualment des de la pàgina de Rosmiman.
-                  </p>
-                </div>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-              <AlertDialogAction
-                className="bg-red-600 hover:bg-red-700"
-                onClick={() => { eliminarTag(dialogEliminarTagValidat!); setDialogEliminarTagValidat(null); }}
-              >
-                Eliminar igualment
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        {/* ── DIÀLEG: ELIMINAR TAG ─────────────────────────────────────── */}
+        {(() => {
+          const tagAEliminar = dialogEliminarTagValidat
+            ? projecteSeleccionat?.tags.find(t => t.id === dialogEliminarTagValidat) ?? null
+            : null;
+          const esValidat = tagAEliminar?.status === "validat";
+          return (
+            <AlertDialog open={!!dialogEliminarTagValidat} onOpenChange={() => setDialogEliminarTagValidat(null)}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle className="flex items-center gap-2">
+                    <AlertTriangle className={`h-5 w-5 ${esValidat ? "text-amber-500" : "text-red-500"}`} />
+                    Eliminar tag?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription asChild>
+                    <div className="space-y-2 text-sm text-slate-600">
+                      {tagAEliminar && (
+                        <p className="font-mono bg-slate-100 px-2 py-1 rounded text-slate-700">
+                          {tagAEliminar.tagComplet}
+                        </p>
+                      )}
+                      {esValidat ? (
+                        <>
+                          <p>Aquest tag ja ha estat <span className="font-semibold text-emerald-700">validat</span> i pot estar al llistat Rosmiman.</p>
+                          <p>Eliminar-lo del projecte <span className="font-semibold">no</span> l'eliminarà automàticament del llistat Rosmiman. Si cal, elimina'l manualment des de la pàgina de Rosmiman.</p>
+                        </>
+                      ) : (
+                        <p>Aquesta acció no es pot desfer.</p>
+                      )}
+                    </div>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-red-600 hover:bg-red-700"
+                    onClick={() => { eliminarTag(dialogEliminarTagValidat!); setDialogEliminarTagValidat(null); }}
+                  >
+                    Eliminar
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          );
+        })()}
 
         {/* ── DIÀLEG: ELIMINAR PROJECTE ────────────────────────────────────── */}
         <AlertDialog open={!!dialogEliminarProjecte} onOpenChange={() => setDialogEliminarProjecte(null)}>
