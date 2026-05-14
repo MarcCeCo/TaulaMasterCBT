@@ -373,7 +373,10 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     const token = getToken();
     setLoadingRosmiman(true);
     try {
-      const existingTags = new Set(rosmimanEquips.map(e => e.tag));
+      // Sempre consultem la BD per tenir els tags actuals, evitant falsos positius
+      // si l'estat local estava desactualitzat
+      const freshRows = await supa(token, "GET", "rosmiman_equips?select=tag");
+      const existingTags = new Set(freshRows.map((r: any) => r.tag as string));
       const toInsert = equips.filter(e => !existingTags.has(e.tag));
       const skipped = equips.length - toInsert.length;
 
@@ -388,8 +391,8 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
         const BATCH = 100;
         for (let i = 0; i < rows.length; i += BATCH) {
           await supa(token, "POST", "rosmiman_equips", rows.slice(i, i + BATCH), {
-            // "resolution=ignore-duplicates" evita el 409 si el tag ja existeix a la BD
-            "Prefer": "return=minimal,resolution=ignore-duplicates",
+            // resolution=ignore-duplicates com a salvaguarda addicional
+            "Prefer": "resolution=ignore-duplicates,return=minimal",
           });
         }
         setRosmimanEquips(prev => [...prev, ...rows.map(toRosmimanEquip)]
@@ -400,7 +403,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoadingRosmiman(false);
     }
-  }, [getToken, rosmimanEquips]);
+  }, [getToken]);
 
   const deleteRosmimanEquip = useCallback(async (id: string) => {
     const token = getToken();
