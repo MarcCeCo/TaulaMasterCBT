@@ -333,6 +333,7 @@ export function RevitExportPage() {
       cat: string;
       params: { name: string; codi: string | null }[];
       fieldCols: string[];
+      equipCode: string;
       tableCode: string;
     }[] = [];
     const skipped: { nom: string; reason: string }[] = [];
@@ -369,6 +370,7 @@ export function RevitExportPage() {
         cat,
         params,
         fieldCols: eq.fieldCols,
+        equipCode: eq.equipCode ?? "",
         tableCode: eq.tableCode ?? "",
       });
     }
@@ -399,9 +401,10 @@ export function RevitExportPage() {
       shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
       total: exportable.length,
       equipments: exportable.map((eq) => ({
-        nom: "CBT_" + eq.fileName,
+        nom: eq.fileName,
         cat: eq.cat,
         template: CATEGORY_CONFIG[eq.cat].template,
+        equip_code: eq.equipCode,
         table_code: eq.tableCode,
         params: eq.params,
       })),
@@ -761,11 +764,9 @@ export function RevitExportPage() {
                         <TableCell className="py-2.5">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-mono text-xs font-semibold text-slate-800 tracking-tight">
-                              {eq.fileName}
+                              {"CBT_" + eq.fileName + (eq.equipCode ? "_" + eq.equipCode.toUpperCase() : "") + ".rfa"}
                             </span>
-                            {eq.nom !== eq.fileName.replace(/-/g, " ").toLowerCase() && (
-                              <span className="text-[11px] text-slate-400">{eq.nom}</span>
-                            )}
+                            <span className="text-[11px] text-slate-400">{eq.nom}</span>
                           </div>
                         </TableCell>
                         <TableCell className="py-2.5">
