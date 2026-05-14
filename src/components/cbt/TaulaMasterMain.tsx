@@ -44,7 +44,7 @@ function PageSkeleton() {
 }
 
 export function TaulaMasterMain() {
-  const { canSeeView, profile, user, isAdmin } = useAuth();
+  const { canSeeView, canEditView, profile, user, isAdmin } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
   const [gubim, setGubim] = useState(false);
   const [dict, setDict] = useState(false);

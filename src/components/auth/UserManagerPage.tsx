@@ -1,29 +1,16 @@
 // src/components/auth/UserManagerPage.tsx
-// Versió en pàgina completa (no pop-up) de la gestió d'usuaris.
-// Manté tota la lògica original de UserManagerDialog.
 import { useEffect, useState } from "react";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Card } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/lib/supabase";
 import {
@@ -31,69 +18,268 @@ import {
   type UserRole,
   type UserProfile,
   type AppView,
+  type SectionRole,
+  type SectionPermissions,
   ALL_VIEWS,
   VIEW_LABELS,
+  VIEW_ICONS,
   VIEW_GROUPS,
+  DEFAULT_SECTION_PERMISSIONS,
+  FULL_SECTION_PERMISSIONS,
+  parseSectionPermissions,
 } from "@/lib/auth";
-import { Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X, Info, Users } from "lucide-react";
+import {
+  Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X,
+  Info, Users, Eye, EyeOff, Shield, ChevronDown, ChevronUp,
+} from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const ROLE_LABELS: Record<UserRole, string> = {
   viewer: "Visualitzador",
   editor: "Editor",
-  admin: "Administrador",
+  admin:  "Administrador",
 };
 
 const ROLE_COLORS: Record<UserRole, string> = {
-  viewer: "bg-slate-100 text-slate-700",
+  viewer: "bg-slate-100 text-slate-600",
   editor: "bg-blue-100 text-blue-700",
-  admin: "bg-violet-100 text-violet-700",
+  admin:  "bg-violet-100 text-violet-700",
 };
 
+const SECTION_ROLE_CONFIG: Record<SectionRole, { label: string; color: string; icon: React.ReactNode }> = {
+  none:   { label: "Sense accés", color: "bg-slate-100 text-slate-400 border-slate-200",  icon: <EyeOff className="h-3 w-3" /> },
+  viewer: { label: "Visualitzador", color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <Eye className="h-3 w-3" /> },
+  editor: { label: "Editor",        color: "bg-blue-50 text-blue-700 border-blue-200",          icon: <Pencil className="h-3 w-3" /> },
+};
+
+// Cicle: none → viewer → editor → none
+function cycleSectionRole(current: SectionRole): SectionRole {
+  if (current === "none")   return "viewer";
+  if (current === "viewer") return "editor";
+  return "none";
+}
+
+// ── Pill clicable per una secció ─────────────────────────────────────────────
+function SectionRolePill({
+  role,
+  onClick,
+  disabled = false,
+}: {
+  role: SectionRole | "admin";
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
+  if (role === "admin") {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border bg-violet-50 text-violet-700 border-violet-200">
+        <Shield className="h-3 w-3" /> Admin
+      </span>
+    );
+  }
+  const cfg = SECTION_ROLE_CONFIG[role];
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-all",
+        cfg.color,
+        !disabled && "hover:opacity-80 cursor-pointer",
+        disabled && "cursor-default"
+      )}
+      title={disabled ? undefined : `Clic per canviar (${cfg.label})`}
+    >
+      {cfg.icon} {cfg.label}
+    </button>
+  );
+}
+
+// ── Matriu de permisos per a un usuari en edició ─────────────────────────────
+function PermissionsMatrix({
+  permissions,
+  globalRole,
+  onChange,
+}: {
+  permissions: SectionPermissions;
+  globalRole: UserRole;
+  onChange: (next: SectionPermissions) => void;
+}) {
+  const isAdmin = globalRole === "admin";
+
+  const setAll = (role: SectionRole) => {
+    const next = { ...permissions };
+    ALL_VIEWS.forEach((v) => { next[v] = role; });
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Botons ràpids */}
+      {!isAdmin && (
+        <div className="flex gap-2 flex-wrap">
+          <span className="text-[11px] text-slate-400 self-center mr-1">Assignar tot:</span>
+          <button
+            type="button"
+            onClick={() => setAll("none")}
+            className="text-[11px] px-2 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-50"
+          >
+            Sense accés
+          </button>
+          <button
+            type="button"
+            onClick={() => setAll("viewer")}
+            className="text-[11px] px-2 py-0.5 rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+          >
+            Tot visualitzador
+          </button>
+          <button
+            type="button"
+            onClick={() => setAll("editor")}
+            className="text-[11px] px-2 py-0.5 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
+          >
+            Tot editor
+          </button>
+        </div>
+      )}
+
+      {/* Grups de seccions */}
+      {VIEW_GROUPS.map((group) => (
+        <div key={group.label}>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
+            {group.label}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {group.views.map((view) => {
+              const current = isAdmin ? "admin" : (permissions[view] ?? "none");
+              return (
+                <div
+                  key={view}
+                  className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100"
+                >
+                  <span className="text-xs text-slate-600 flex items-center gap-1.5">
+                    <span>{VIEW_ICONS[view]}</span>
+                    {VIEW_LABELS[view]}
+                  </span>
+                  <SectionRolePill
+                    role={current}
+                    disabled={isAdmin}
+                    onClick={() => {
+                      const next = { ...permissions };
+                      next[view] = cycleSectionRole(permissions[view] ?? "none");
+                      onChange(next);
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {isAdmin && (
+        <p className="text-[11px] text-slate-400 italic">
+          Els administradors tenen accés complet a totes les seccions.
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ── Resum compacte de permisos (mode lectura) ────────────────────────────────
+function PermissionsSummary({
+  profile,
+}: {
+  profile: UserProfile;
+}) {
+  if (profile.role === "admin") {
+    return (
+      <span className="text-[11px] text-violet-600 italic flex items-center gap-1">
+        <Shield className="h-3 w-3" /> Accés complet
+      </span>
+    );
+  }
+
+  const perms = profile.section_permissions;
+  if (!perms) return <span className="text-[11px] text-slate-400 italic">Accés complet</span>;
+
+  const editors  = ALL_VIEWS.filter((v) => perms[v] === "editor");
+  const viewers  = ALL_VIEWS.filter((v) => perms[v] === "viewer");
+  const noneCount = ALL_VIEWS.filter((v) => perms[v] === "none").length;
+
+  if (noneCount === ALL_VIEWS.length) {
+    return <span className="text-[11px] text-slate-400 italic">Sense accés a cap secció</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {editors.map((v) => (
+        <span key={v} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 border border-blue-100">
+          <Pencil className="h-2.5 w-2.5" /> {VIEW_LABELS[v]}
+        </span>
+      ))}
+      {viewers.map((v) => (
+        <span key={v} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100">
+          <Eye className="h-2.5 w-2.5" /> {VIEW_LABELS[v]}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ── Component principal ──────────────────────────────────────────────────────
 export function UserManagerPage() {
   const { profile: myProfile, getToken } = useAuth();
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [users, setUsers]       = useState<UserProfile[]>([]);
+  const [loading, setLoading]   = useState(false);
+  const [expanded, setExpanded] = useState<string | null>(null);
 
-  const [email, setEmail] = useState("");
+  // Formulari nou usuari
+  const [email, setEmail]       = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole] = useState<UserRole>("viewer");
-  const [newUserViews, setNewUserViews] = useState<AppView[]>([...ALL_VIEWS]);
+  const [role, setRole]         = useState<UserRole>("viewer");
+  const [newPerms, setNewPerms] = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
   const [submitting, setSubmitting] = useState(false);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editRole, setEditRole] = useState<UserRole>("viewer");
-  const [editViews, setEditViews] = useState<AppView[]>([...ALL_VIEWS]);
+  // Edició usuari existent
+  const [editingId, setEditingId]   = useState<string | null>(null);
+  const [editRole, setEditRole]     = useState<UserRole>("viewer");
+  const [editPerms, setEditPerms]   = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
       const token = getToken();
-      const controller = new AbortController();
-      const apiTimeout = setTimeout(() => controller.abort(), 10000);
       let usedApi = false;
       try {
         const res = await fetch("/api/list-users", {
           headers: { Authorization: `Bearer ${token}` },
-          signal: controller.signal,
+          signal: AbortSignal.timeout(10000),
         });
-        clearTimeout(apiTimeout);
         if (res.ok) {
           const json = await res.json();
-          setUsers((json.users ?? []) as UserProfile[]);
+          const raw: UserProfile[] = (json.users ?? []).map((u: any) => ({
+            ...u,
+            section_permissions: parseSectionPermissions(u.allowed_views ?? u.section_permissions),
+          }));
+          setUsers(raw);
           usedApi = true;
         }
-      } catch (apiErr) {
-        clearTimeout(apiTimeout);
-      }
+      } catch {}
       if (!usedApi) {
         const { data, error } = await supabase
           .from("user_profiles")
           .select("id, email, full_name, role, allowed_views")
           .order("email");
-        if (!error && data) setUsers(data as UserProfile[]);
-        else toast.error("Error carregant usuaris");
+        if (!error && data) {
+          setUsers(data.map((u: any) => ({
+            ...u,
+            section_permissions: parseSectionPermissions(u.allowed_views),
+          })));
+        } else {
+          toast.error("Error carregant usuaris");
+        }
       }
     } catch {
       toast.error("Error carregant usuaris");
@@ -110,26 +296,25 @@ export function UserManagerPage() {
     setSubmitting(true);
     try {
       const token = getToken();
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      let res: Response;
-      try {
-        res = await fetch("/api/create-user", {
-          method: "POST",
-          signal: controller.signal,
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ email: email.trim(), full_name: fullName.trim(), role, allowed_views: newUserViews }),
-        });
-      } finally {
-        clearTimeout(timeout);
-      }
+      const res = await fetch("/api/create-user", {
+        method: "POST",
+        signal: AbortSignal.timeout(15000),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          email:         email.trim(),
+          full_name:     fullName.trim(),
+          role,
+          allowed_views: role === "admin" ? null : newPerms,
+        }),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error convidant usuari");
       toast.success(`Invitació enviada a ${email}`);
-      setEmail(""); setFullName(""); setRole("viewer"); setNewUserViews([...ALL_VIEWS]);
+      setEmail(""); setFullName(""); setRole("viewer");
+      setNewPerms({ ...DEFAULT_SECTION_PERMISSIONS });
       await fetchUsers();
     } catch (err: any) {
-      if (err.name === "AbortError") {
+      if (err.name === "AbortError" || err.name === "TimeoutError") {
         toast.error("La invitació ha trigat massa. Comprova la configuració SMTP de Supabase.");
       } else {
         toast.error(err.message ?? "Error desconegut");
@@ -141,18 +326,31 @@ export function UserManagerPage() {
 
   const startEditing = (u: UserProfile) => {
     setEditingId(u.id);
-    setEditRole(u.role as UserRole);
-    setEditViews(u.allowed_views ?? [...ALL_VIEWS]);
+    setEditRole(u.role);
+    setEditPerms(u.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
+    setExpanded(u.id);
   };
 
   const handleUpdateUser = async (userId: string) => {
     const { error } = await supabase
       .from("user_profiles")
-      .update({ role: editRole, allowed_views: editViews })
+      .update({
+        role,
+        allowed_views: editRole === "admin" ? null : editPerms,
+      })
       .eq("id", userId);
-    if (error) return toast.error("Error actualitzant usuari");
+    // Usem editRole aquí:
+    const { error: err2 } = await supabase
+      .from("user_profiles")
+      .update({
+        role:          editRole,
+        allowed_views: editRole === "admin" ? null : editPerms,
+      })
+      .eq("id", userId);
+    if (err2) return toast.error("Error actualitzant usuari");
     toast.success("Usuari actualitzat");
     setEditingId(null);
+    setExpanded(null);
     await fetchUsers();
   };
 
@@ -173,21 +371,33 @@ export function UserManagerPage() {
     }
   };
 
-  const toggleView = (view: AppView, current: AppView[], setter: (v: AppView[]) => void) => {
-    setter(current.includes(view) ? current.filter((v) => v !== view) : [...current, view]);
-  };
-
   return (
-    <div className="space-y-6">
-      {/* Capçalera de pàgina */}
+    <div className="space-y-6 max-w-4xl">
+      {/* Capçalera */}
       <div>
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
           <Users className="h-6 w-6 text-[#0099A8]" />
           Gestió d'usuaris
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Administra els usuaris i els permisos d'accés a la plataforma
+          Administra els usuaris i configura els permisos per secció
         </p>
+      </div>
+
+      {/* Llegenda */}
+      <div className="flex flex-wrap gap-3 text-[11px]">
+        {(["none", "viewer", "editor"] as SectionRole[]).map((r) => {
+          const cfg = SECTION_ROLE_CONFIG[r];
+          return (
+            <span key={r} className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-full border font-medium", cfg.color)}>
+              {cfg.icon} {cfg.label}
+            </span>
+          );
+        })}
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border font-medium bg-violet-50 text-violet-700 border-violet-200">
+          <Shield className="h-3 w-3" /> Administrador (accés complet)
+        </span>
+        <span className="text-slate-400 self-center ml-1">· Clica les pastilles per canviar el permís</span>
       </div>
 
       {/* Formulari invitació */}
@@ -201,40 +411,25 @@ export function UserManagerPage() {
 
         <div className="flex items-start gap-2 p-3 rounded-lg bg-[#0099A8]/5 border border-[#0099A8]/15 text-xs text-[#006E7A] mb-4">
           <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-          <span>
-            L'usuari rebrà un correu d'invitació per establir la seva pròpia contrasenya.
-            Tu només has de configurar el rol i les vistes accessibles.
-          </span>
+          L'usuari rebrà un correu d'invitació per establir la seva pròpia contrasenya.
         </div>
 
         <form onSubmit={handleInvite} className="space-y-4">
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1 flex-1 min-w-[200px]">
               <label className="text-xs font-medium text-slate-700">Correu electrònic *</label>
-              <Input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="usuari@example.com"
-                required
-                className="h-9"
-              />
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                placeholder="usuari@example.com" required className="h-9" />
             </div>
             <div className="space-y-1 flex-1 min-w-[160px]">
               <label className="text-xs font-medium text-slate-700">Nom complet</label>
-              <Input
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nom i cognoms"
-                className="h-9"
-              />
+              <Input value={fullName} onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nom i cognoms" className="h-9" />
             </div>
             <div className="space-y-1 w-44">
-              <label className="text-xs font-medium text-slate-700">Rol</label>
+              <label className="text-xs font-medium text-slate-700">Rol global</label>
               <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
-                <SelectTrigger className="h-9">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="viewer">Visualitzador</SelectItem>
                   <SelectItem value="editor">Editor</SelectItem>
@@ -244,39 +439,19 @@ export function UserManagerPage() {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-slate-700">Seccions accessibles</label>
-            <div className="space-y-3">
-              {VIEW_GROUPS.map((group) => (
-                <div key={group.label}>
-                  <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">{group.label}</p>
-                  <div className="flex flex-wrap gap-4 pl-1">
-                    {group.views.map((v) => (
-                      <label key={v} className="flex items-center gap-1.5 text-xs cursor-pointer select-none text-slate-600">
-                        <Checkbox
-                          checked={newUserViews.includes(v)}
-                          onCheckedChange={() => toggleView(v, newUserViews, setNewUserViews)}
-                        />
-                        {VIEW_LABELS[v]}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+          {/* Matriu de permisos per al nou usuari */}
+          <div className="border border-slate-100 rounded-xl p-4 bg-slate-50/50">
+            <p className="text-xs font-semibold text-slate-600 mb-3">Permisos per secció</p>
+            <PermissionsMatrix
+              permissions={newPerms}
+              globalRole={role}
+              onChange={setNewPerms}
+            />
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <p className="text-xs text-slate-400">
-              <strong className="text-slate-500">Visualitzador:</strong> consulta.&nbsp;
-              <strong className="text-slate-500">Editor:</strong> crea, edita i esborra.&nbsp;
-              <strong className="text-slate-500">Admin:</strong> accés complet.
-            </p>
-            <Button
-              type="submit"
-              disabled={submitting}
-              className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5 shrink-0"
-            >
+          <div className="flex justify-end pt-1">
+            <Button type="submit" disabled={submitting}
+              className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5">
               <Send className="h-4 w-4" />
               {submitting ? "Enviant invitació…" : "Envia invitació"}
             </Button>
@@ -284,194 +459,165 @@ export function UserManagerPage() {
         </form>
       </Card>
 
-      {/* Taula d'usuaris */}
-      <Card className="p-0 border-0 shadow-sm bg-white overflow-hidden">
+      {/* Llistat d'usuaris */}
+      <Card className="border-0 shadow-sm bg-white overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
           <p className="text-sm font-semibold text-slate-700">
             {users.length} usuari{users.length !== 1 ? "s" : ""}
           </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchUsers}
-            disabled={loading}
-            className="gap-1.5 text-xs"
-          >
+          <Button variant="ghost" size="sm" onClick={fetchUsers} disabled={loading} className="gap-1.5 text-xs">
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             Actualitza
           </Button>
         </div>
 
-        <div className="overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr className="text-left">
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Correu</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Nom</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Rol</th>
-                <th className="px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Seccions accessibles</th>
-                <th className="px-4 py-3 w-28 text-xs font-semibold text-slate-500 uppercase tracking-wide">Accions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => {
-                const isMe = u.id === myProfile?.id;
-                const isEditing = editingId === u.id;
-                const effectiveViews = u.role === "admin" ? ALL_VIEWS : u.allowed_views ?? ALL_VIEWS;
+        <div className="divide-y divide-slate-50">
+          {users.map((u) => {
+            const isMe      = u.id === myProfile?.id;
+            const isEditing = editingId === u.id;
+            const isOpen    = expanded === u.id;
 
-                return (
-                  <tr
-                    key={u.id}
-                    className={cn(
-                      "border-t border-slate-50 hover:bg-slate-50/60 align-top transition-colors",
-                      isMe && "bg-[#0099A8]/3"
-                    )}
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">
-                      {u.email}
+            return (
+              <div key={u.id} className={cn("transition-colors", isMe && "bg-[#0099A8]/3")}>
+                {/* Fila principal */}
+                <div className="flex items-center gap-3 px-5 py-3">
+                  {/* Avatar */}
+                  <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
+                    {((u.full_name ?? u.email ?? "?")[0]).toUpperCase()}
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-slate-700 truncate">
+                        {u.full_name ?? u.email}
+                      </span>
                       {isMe && (
-                        <Badge className="ml-2 text-[10px] px-1.5 py-0 bg-[#0099A8] text-white border-0">
-                          Jo
-                        </Badge>
+                        <Badge className="text-[10px] px-1.5 py-0 bg-[#0099A8] text-white border-0">Jo</Badge>
                       )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{u.full_name ?? "—"}</td>
-                    <td className="px-4 py-3">
-                      {isEditing ? (
-                        <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
-                          <SelectTrigger className="h-7 text-xs w-36">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="viewer">Visualitzador</SelectItem>
-                            <SelectItem value="editor">Editor</SelectItem>
-                            <SelectItem value="admin">Administrador</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <Badge className={cn("text-xs font-normal border-0", ROLE_COLORS[u.role as UserRole])}>
-                          {ROLE_LABELS[u.role as UserRole] ?? u.role}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {isEditing ? (
-                        <div className="space-y-2">
-                          {VIEW_GROUPS.map((group) => (
-                            <div key={group.label}>
-                              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">{group.label}</p>
-                              <div className="flex flex-wrap gap-3 pl-1">
-                                {group.views.map((v) => (
-                                  <label
-                                    key={v}
-                                    className={cn(
-                                      "flex items-center gap-1 text-xs cursor-pointer select-none text-slate-600",
-                                      editRole === "admin" && "opacity-50 pointer-events-none"
-                                    )}
-                                  >
-                                    <Checkbox
-                                      checked={editRole === "admin" || editViews.includes(v)}
-                                      onCheckedChange={() => toggleView(v, editViews, setEditViews)}
-                                      disabled={editRole === "admin"}
-                                    />
-                                    {VIEW_LABELS[v]}
-                                  </label>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                          {editRole === "admin" && (
-                            <span className="text-[10px] text-slate-400 italic">Admin veu tot</span>
-                          )}
+                      <Badge className={cn("text-[10px] px-1.5 py-0 border-0 font-normal", ROLE_COLORS[u.role])}>
+                        {ROLE_LABELS[u.role]}
+                      </Badge>
+                    </div>
+                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">{u.email}</p>
+                  </div>
+
+                  {/* Resum permisos */}
+                  <div className="hidden md:block flex-1 min-w-0">
+                    <PermissionsSummary profile={u} />
+                  </div>
+
+                  {/* Accions */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    {!isMe && (
+                      <>
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7"
+                          onClick={() => {
+                            if (isEditing) { setEditingId(null); setExpanded(null); }
+                            else startEditing(u);
+                          }}
+                          title={isEditing ? "Cancel·la" : "Edita permisos"}
+                        >
+                          {isEditing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600" title="Elimina">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                S'eliminarà <strong>{u.email}</strong> de forma permanent.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-destructive hover:bg-destructive/90"
+                                onClick={() => handleDelete(u.id, u.email)}
+                              >
+                                Elimina
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </>
+                    )}
+                    <button
+                      className="h-7 w-7 flex items-center justify-center text-slate-400 hover:text-slate-600"
+                      onClick={() => setExpanded(isOpen ? null : u.id)}
+                      title={isOpen ? "Amaga permisos" : "Mostra permisos"}
+                    >
+                      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Panell expandible amb la matriu */}
+                {isOpen && (
+                  <div className="px-5 pb-5 pt-1 border-t border-slate-50 bg-slate-50/40">
+                    {isEditing ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="space-y-1 w-44">
+                            <label className="text-xs font-medium text-slate-600">Rol global</label>
+                            <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
+                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="viewer">Visualitzador</SelectItem>
+                                <SelectItem value="editor">Editor</SelectItem>
+                                <SelectItem value="admin">Administrador</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {u.role === "admin" ? (
-                            <span className="text-[10px] text-slate-400 italic">Totes</span>
-                          ) : (
-                            effectiveViews.map((v) => (
-                              <Badge key={v} variant="secondary" className="text-[10px] px-1.5 py-0 font-normal">
-                                {VIEW_LABELS[v]}
-                              </Badge>
-                            ))
-                          )}
-                          {u.role !== "admin" && effectiveViews.length === 0 && (
-                            <span className="text-[10px] text-destructive">Cap vista</span>
-                          )}
+
+                        <PermissionsMatrix
+                          permissions={editPerms}
+                          globalRole={editRole}
+                          onChange={setEditPerms}
+                        />
+
+                        <div className="flex gap-2 pt-1">
+                          <Button
+                            size="sm"
+                            className="bg-[#0099A8] hover:bg-[#006E7A] gap-1"
+                            onClick={() => handleUpdateUser(u.id)}
+                          >
+                            <Check className="h-3.5 w-3.5" /> Desa canvis
+                          </Button>
+                          <Button
+                            size="sm" variant="outline" className="gap-1"
+                            onClick={() => { setEditingId(null); setExpanded(null); }}
+                          >
+                            <X className="h-3.5 w-3.5" /> Cancel·la
+                          </Button>
                         </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-1">
-                        {isEditing ? (
-                          <>
-                            <Button
-                              size="sm"
-                              className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] gap-1"
-                              onClick={() => handleUpdateUser(u.id)}
-                            >
-                              <Check className="h-3 w-3" /> Desa
-                            </Button>
-                            <Button
-                              size="sm" variant="outline"
-                              className="h-7 text-xs gap-1"
-                              onClick={() => setEditingId(null)}
-                            >
-                              <X className="h-3 w-3" /> Cancel·la
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <Button
-                              size="icon" variant="ghost" className="h-7 w-7"
-                              disabled={isMe} onClick={() => startEditing(u)}
-                              title="Edita"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            {!isMe && (
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" title="Elimina">
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      S'eliminarà <strong>{u.email}</strong> de forma permanent.
-                                      Aquesta acció no es pot desfer.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      className="bg-destructive hover:bg-destructive/90"
-                                      onClick={() => handleDelete(u.id, u.email)}
-                                    >
-                                      Elimina l'usuari
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            )}
-                          </>
-                        )}
                       </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {users.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-slate-400 text-sm">
-                    Cap usuari trobat
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    ) : (
+                      <div className="pt-2">
+                        <PermissionsMatrix
+                          permissions={u.section_permissions ?? { equips: "editor", gubimclass: "editor", fields: "editor", revit: "editor", projectes: "editor", rosmiman: "editor" }}
+                          globalRole={u.role}
+                          onChange={() => {}}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {users.length === 0 && !loading && (
+            <div className="px-5 py-12 text-center text-slate-400 text-sm">
+              Cap usuari trobat
+            </div>
+          )}
         </div>
       </Card>
     </div>
