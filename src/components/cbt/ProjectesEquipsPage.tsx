@@ -8,11 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Archive, ChevronRight, FolderOpen, FolderArchive,
   Plus, Trash2, Tags, CheckCircle2, XCircle, Pencil,
-  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck,
+  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { uid } from "@/lib/storage";
@@ -54,6 +53,31 @@ export interface Projecte {
 
 function buildTag(codiInstallacio: string, codiEquip: string, ccm: string, funcio: string, duplicitat: string): string {
   return `${codiInstallacio.toUpperCase()}_${codiEquip.toUpperCase()}_${ccm}${funcio.padStart(2,"0")}${duplicitat.toUpperCase()}`;
+}
+
+// Retorna la propera lletra de duplicitat disponible donada una llista de lletres ja usades
+function nextDuplicitatDisponible(usades: string[]): string | null {
+  const usadesUp = usades.map(l => l.toUpperCase());
+  for (let i = 0; i < 26; i++) {
+    const lletra = String.fromCharCode(65 + i); // A, B, C...
+    if (!usadesUp.includes(lletra)) return lletra;
+  }
+  return null; // totes 26 lletres usades
+}
+
+// Comprova si el tag (sense duplicitat) ja existeix i retorna les duplicitats usades
+function duplicitatsUsades(
+  tags: ProjectTag[],
+  codiInstallacio: string,
+  codiEquip: string,
+  ccm: string,
+  funcio: string,
+  excludeTagId?: string
+): string[] {
+  const prefix = `${codiInstallacio.toUpperCase()}_${codiEquip.toUpperCase()}_${ccm}${funcio.padStart(2,"0")}`;
+  return tags
+    .filter(t => t.id !== excludeTagId && t.tagComplet.startsWith(prefix) && t.tagComplet.length === prefix.length + 1)
+    .map(t => t.duplicitat.toUpperCase());
 }
 
 function validateTagFields(codiInstallacio: string, ccm: string, funcio: string, duplicitat: string): string | null {
@@ -112,6 +136,7 @@ export function ProjectesEquipsPage() {
   const [tagDuplicitat, setTagDuplicitat] = useState("A");
   const [tagComentari, setTagComentari] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
+  const [equipSearch, setEquipSearch] = useState("");
 
   // Derived
   const projecteFiltrats = useMemo(() =>
@@ -126,6 +151,14 @@ export function ProjectesEquipsPage() {
   );
 
   const equipMap = useMemo(() => new Map(equipments.map(e => [e.id, e])), [equipments]);
+
+  // Equips disponibles per selector: només els que tenen codi, ordenats
+  const equipmentsAmbCodi = useMemo(() =>
+    equipments
+      .filter(e => e.equipCode && e.equipCode.trim() !== "")
+      .sort((a, b) => a.equipCode.localeCompare(b.equipCode)),
+    [equipments]
+  );
 
   const detallEquipObj = detallEquip ? equipMap.get(detallEquip) ?? null : null;
   const editEquipObj = editEquip ? equipMap.get(editEquip) ?? null : null;
@@ -163,6 +196,14 @@ export function ProjectesEquipsPage() {
     if (!equip) { setTagError("Selecciona un equip de la Taula Master."); return; }
     const err = validateTagFields(tagCodiInstallacio, tagCcm, tagFuncio, tagDuplicitat);
     if (err) { setTagError(err); return; }
+    // Comprova duplicitat de TAG complet
+    const projecteActual = projectes.find(p => p.id === projecteActiu);
+    const tagCandidat = buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, tagDuplicitat);
+    if (projecteActual?.tags.some(t => t.tagComplet === tagCandidat)) {
+      setTagError(`El TAG "${tagCandidat}" ja existeix en aquest projecte.`);
+      return;
+    }
+
     const tag: ProjectTag = {
       id: uid(),
       equipId: tagEquipId,
@@ -170,13 +211,14 @@ export function ProjectesEquipsPage() {
       ccm: tagCcm,
       funcio: tagFuncio.padStart(2, "0"),
       duplicitat: tagDuplicitat.toUpperCase(),
-      tagComplet: buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, tagDuplicitat),
+      tagComplet: tagCandidat,
       status: "pendent",
       comentari: tagComentari,
       createdAt: Date.now(),
     };
     setProjectes(prev => prev.map(p => p.id === projecteActiu ? { ...p, tags: [...p.tags, tag] } : p));
     setDialogNouTag(false);
+    setEquipSearch("");
     toast.success("Tag creat");
   }
 
@@ -186,13 +228,19 @@ export function ProjectesEquipsPage() {
     if (!equip) return;
     const err = validateTagFields(tagCodiInstallacio, tagCcm, tagFuncio, tagDuplicitat);
     if (err) { setTagError(err); return; }
+    const tagCandidatEdit = buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, tagDuplicitat);
+    const projecteActual2 = projectes.find(p => p.id === projecteActiu);
+    if (projecteActual2?.tags.some(t => t.id !== dialogEditTag.id && t.tagComplet === tagCandidatEdit)) {
+      setTagError(`El TAG "${tagCandidatEdit}" ja existeix en aquest projecte.`);
+      return;
+    }
     const updated: ProjectTag = {
       ...dialogEditTag,
       codiInstallacio: tagCodiInstallacio.toUpperCase(),
       ccm: tagCcm,
       funcio: tagFuncio.padStart(2, "0"),
       duplicitat: tagDuplicitat.toUpperCase(),
-      tagComplet: buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, tagDuplicitat),
+      tagComplet: tagCandidatEdit,
       comentari: tagComentari,
     };
     setProjectes(prev => prev.map(p => p.id === projecteActiu
@@ -231,11 +279,33 @@ export function ProjectesEquipsPage() {
     setDialogEditTag(tag);
   }
 
-  // ─── preview tag en temps real ─────────────────────────────────────────────
+  // ─── preview tag en temps real + suggeriment duplicitat ──────────────────
   const previewEquip = tagEquipId ? equipMap.get(tagEquipId) : null;
   const previewTag = previewEquip && tagCodiInstallacio.length === 5 && tagCcm && tagFuncio && tagDuplicitat
     ? buildTag(tagCodiInstallacio, previewEquip.equipCode, tagCcm, tagFuncio, tagDuplicitat)
     : null;
+
+  // Si el TAG fins a funció coincideix amb un existent, calcula la propera duplicitat disponible
+  const suggerimentDuplicitatInfo = useMemo(() => {
+    const projecteActual = projectes.find(p => p.id === projecteActiu);
+    if (!projecteActual || !previewEquip || tagCodiInstallacio.length !== 5 || !tagCcm || !tagFuncio) return null;
+    const usades = duplicitatsUsades(
+      projecteActual.tags, tagCodiInstallacio, previewEquip.equipCode, tagCcm, tagFuncio,
+      dialogEditTag?.id
+    );
+    if (usades.length === 0) return null;
+    const propera = nextDuplicitatDisponible(usades);
+    return { usades, propera };
+  }, [projectes, projecteActiu, previewEquip, tagCodiInstallacio, tagCcm, tagFuncio, dialogEditTag]);
+
+  // Equips filtrats per cerca
+  const equipsFiltrats = useMemo(() => {
+    const q = equipSearch.toLowerCase().trim();
+    if (!q) return equipmentsAmbCodi;
+    return equipmentsAmbCodi.filter(e =>
+      e.equipCode.toLowerCase().includes(q) || e.equipName.toLowerCase().includes(q)
+    );
+  }, [equipmentsAmbCodi, equipSearch]);
 
   // ─── render ─────────────────────────────────────────────────────────────────
   return (
@@ -529,19 +599,39 @@ export function ProjectesEquipsPage() {
                 {!dialogEditTag && (
                   <div>
                     <Label className="text-xs font-medium">Equip de la Taula Master *</Label>
-                    <Select value={tagEquipId} onValueChange={setTagEquipId}>
-                      <SelectTrigger className="mt-1 font-mono text-xs">
-                        <SelectValue placeholder="Selecciona equip..." />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-60">
-                        {equipments.map(e => (
-                          <SelectItem key={e.id} value={e.id}>
-                            <span className="font-mono text-xs">{e.equipCode}</span>
-                            <span className="text-slate-500 ml-2">{e.equipName}</span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="mt-1 border rounded-md overflow-hidden">
+                      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b bg-slate-50">
+                        <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                        <input
+                          className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
+                          placeholder="Cerca per codi o nom..."
+                          value={equipSearch}
+                          onChange={e => setEquipSearch(e.target.value)}
+                        />
+                        {equipSearch && (
+                          <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
+                            <XCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-44 overflow-y-auto">
+                        {equipsFiltrats.length === 0 ? (
+                          <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
+                        ) : (
+                          equipsFiltrats.map(e => (
+                            <button key={e.id} onClick={() => setTagEquipId(e.id)}
+                              className={cn(
+                                "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
+                                tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
+                              )}>
+                              <span className="font-mono shrink-0">{e.equipCode}</span>
+                              <span className="text-slate-500 truncate">{e.equipName}</span>
+                              {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   </div>
                 )}
                 {dialogEditTag && (
@@ -577,6 +667,26 @@ export function ProjectesEquipsPage() {
                   <div className="p-2.5 bg-[#0099A8]/8 border border-[#0099A8]/20 rounded-lg">
                     <p className="text-[10px] text-[#006E7A] font-medium uppercase tracking-wider mb-1">Preview TAG</p>
                     <p className="font-mono text-sm font-bold text-slate-700">{previewTag}</p>
+                  </div>
+                )}
+                {suggerimentDuplicitatInfo && (
+                  <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg space-y-1.5">
+                    <p className="text-[10px] text-amber-700 font-semibold uppercase tracking-wider flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Duplicitat detectada
+                    </p>
+                    <p className="text-xs text-amber-700">
+                      Ja existeix un TAG amb el mateix codi fins a funció. Lletres usades:{" "}
+                      <span className="font-mono font-bold">{suggerimentDuplicitatInfo.usades.join(", ")}</span>
+                    </p>
+                    {suggerimentDuplicitatInfo.propera && (
+                      <button
+                        type="button"
+                        onClick={() => setTagDuplicitat(suggerimentDuplicitatInfo.propera!)}
+                        className="text-xs font-semibold text-[#006E7A] underline underline-offset-2 hover:text-[#0099A8]"
+                      >
+                        Usar propera disponible: <span className="font-mono">{suggerimentDuplicitatInfo.propera}</span>
+                      </button>
+                    )}
                   </div>
                 )}
 
