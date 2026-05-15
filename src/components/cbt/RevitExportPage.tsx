@@ -302,9 +302,9 @@ const VALID_CATEGORIES = new Set(REVIT_CATEGORIES_FLAT);
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 // ─── Helper: nom de fitxer .rfa ───────────────────────────────────────────────
-// MAJÚSCULES + espais → "_"
+// MAJÚSCULES + espais → "-"
 function toFileName(nom: string): string {
-  return nom.toUpperCase().replace(/\s+/g, "_");
+  return nom.toUpperCase().replace(/\s+/g, "-");
 }
 
 // ─── Component principal ──────────────────────────────────────────────────────
@@ -333,6 +333,7 @@ export function RevitExportPage() {
       cat: string;
       params: { name: string; codi: string | null }[];
       fieldCols: string[];
+      equipCode: string;
       tableCode: string;
     }[] = [];
     const skipped: { nom: string; reason: string }[] = [];
@@ -369,6 +370,7 @@ export function RevitExportPage() {
         cat,
         params,
         fieldCols: eq.fieldCols,
+        equipCode: eq.equipCode ?? "",
         tableCode: eq.tableCode ?? "",
       });
     }
@@ -399,9 +401,10 @@ export function RevitExportPage() {
       shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
       total: exportable.length,
       equipments: exportable.map((eq) => ({
-        nom: "CBT_" + eq.fileName,
+        nom: eq.fileName,
         cat: eq.cat,
         template: CATEGORY_CONFIG[eq.cat].template,
+        equip_code: eq.equipCode,
         table_code: eq.tableCode,
         params: eq.params,
       })),
@@ -627,22 +630,92 @@ export function RevitExportPage() {
       {/* Nota informativa */}
       <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
         <Info className="h-4 w-4 shrink-0 mt-0.5" />
-        <div className="space-y-1">
+        <div className="space-y-3">
           <div>
-            <span className="font-medium">Com funciona: </span>
-            Descarrega el JSON i guarda'l com{" "}
-            <code className="bg-blue-100 px-1 rounded text-xs font-mono">CBT_Revit_Config.json</code>{" "}
-            a qualsevol d'aquestes ubicacions — el script el trobarà automàticament:
+            <span className="font-semibold">Com funciona</span>
           </div>
-          <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {["Documents", "Escriptori", "Descàrregues", "OneDrive\\Documents"].map((loc) => (
-              <span key={loc} className="bg-blue-100 text-blue-600 text-[11px] font-mono px-2 py-0.5 rounded">
-                {loc}
-              </span>
-            ))}
+
+          {/* Fitxer 1: JSON */}
+          <div className="space-y-1">
+            <div className="font-medium text-blue-800">
+              1. Fitxer de configuració JSON{" "}
+              <code className="bg-blue-100 px-1 rounded text-xs font-mono">CBT_Revit_Config.json</code>
+            </div>
+            <div className="text-xs text-blue-600">
+              Descarrega'l des d'aquesta pàgina amb el botó{" "}
+              <span className="font-semibold">Config Revit (JSON)</span>. Conté la llista de tots els
+              equips, les categories Revit i els paràmetres CBT a crear. Guarda'l amb el nom exacte{" "}
+              <code className="bg-blue-100 px-1 rounded font-mono">CBT_Revit_Config.json</code>{" "}
+              a qualsevol d'aquestes ubicacions — el script el trobarà automàticament:
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {["Documents", "Escriptori", "Descàrregues", "OneDrive\\Documents"].map((loc) => (
+                <span key={loc} className="bg-blue-100 text-blue-600 text-[11px] font-mono px-2 py-0.5 rounded">
+                  {loc}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="text-[11px] text-blue-500 mt-1">
-            Compatible amb Revit 2020–2030 · Detecta automàticament la versió instal·lada
+
+          {/* Fitxer 2: Paràmetres compartits */}
+          <div className="space-y-1">
+            <div className="font-medium text-blue-800">
+              2. Fitxer de paràmetres compartits{" "}
+              <code className="bg-blue-100 px-1 rounded text-xs font-mono">CBT_PARAMETRES-COMPARTITS.txt</code>
+            </div>
+            <div className="text-xs text-blue-600">
+              Aquest fitxer el proporciona l'administrador BIM del projecte. Defineix tots els
+              paràmetres compartits CBT que s'afegiran a les famílies Revit. Ha d'estar guardat
+              obligatòriament a:
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {["Documents"].map((loc) => (
+                <span key={loc} className="bg-blue-100 text-blue-600 text-[11px] font-mono px-2 py-0.5 rounded">
+                  {loc}
+                </span>
+              ))}
+            </div>
+            <div className="text-xs text-blue-500">
+              ⚠️ No canviïs el nom del fitxer. El script el cerca exactament amb aquest nom.
+            </div>
+          </div>
+
+          {/* Fitxer 3: Scripts pyRevit */}
+          <div className="space-y-1">
+            <div className="font-medium text-blue-800">
+              3. Scripts pyRevit{" "}
+              <code className="bg-blue-100 px-1 rounded text-xs font-mono">script.py</code>
+            </div>
+            <div className="text-xs text-blue-600">
+              Descarrega els scripts des dels botons <span className="font-semibold">Script TEST</span> i{" "}
+              <span className="font-semibold">Script FULL</span> d'aquesta pàgina i guarda'ls
+              exactament a les rutes següents (crea les carpetes si no existeixen).
+              Pots accedir a <code className="bg-blue-100 px-1 rounded font-mono">%APPDATA%</code> escrivint-ho
+              directament a la barra d'adreces de l'Explorador de Windows:
+            </div>
+            <div className="space-y-1.5 mt-1.5">
+              <div>
+                <div className="text-[11px] text-blue-500 mb-0.5 font-medium">Script TEST (1 família per categoria — per validar):</div>
+                <code className="text-[11px] text-blue-700 font-mono bg-blue-100 px-2 py-1 rounded block break-all">
+                  %APPDATA%\pyRevit-Master\Extensions\CBT.extension\CBT.tab\CBT Tools.panel\Crear Families TEST.pushbutton\script.py
+                </code>
+              </div>
+              <div>
+                <div className="text-[11px] text-blue-500 mb-0.5 font-medium">Script FULL (totes les famílies):</div>
+                <code className="text-[11px] text-blue-700 font-mono bg-blue-100 px-2 py-1 rounded block break-all">
+                  %APPDATA%\pyRevit-Master\Extensions\CBT.extension\CBT.tab\CBT Tools.panel\Crear Families FULL.pushbutton\script.py
+                </code>
+              </div>
+            </div>
+            <div className="text-xs text-blue-500">
+              ⚠️ El fitxer s'ha d'anomenar exactament <code className="bg-blue-100 px-1 rounded font-mono">script.py</code> dins de cada carpeta .pushbutton
+            </div>
+          </div>
+
+          {/* Nota final */}
+          <div className="text-[11px] text-blue-500 border-t border-blue-200 pt-2">
+            Compatible amb Revit 2020–2030 · Detecta automàticament la versió instal·lada ·
+            Les famílies es generen a <code className="font-mono">Documents\Families_Output\</code>
           </div>
         </div>
       </div>
@@ -691,11 +764,9 @@ export function RevitExportPage() {
                         <TableCell className="py-2.5">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-mono text-xs font-semibold text-slate-800 tracking-tight">
-                              {eq.fileName}
+                              {"CBT_" + eq.fileName + (eq.equipCode ? "_" + eq.equipCode.toUpperCase() : "") + ".rfa"}
                             </span>
-                            {eq.nom !== eq.fileName.replace(/_/g, " ").toLowerCase() && (
-                              <span className="text-[11px] text-slate-400">{eq.nom}</span>
-                            )}
+                            <span className="text-[11px] text-slate-400">{eq.nom}</span>
                           </div>
                         </TableCell>
                         <TableCell className="py-2.5">

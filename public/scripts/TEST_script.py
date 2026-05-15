@@ -162,10 +162,12 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
     errors  = []
 
     for i, equip in enumerate(equips):
-        nom      = equip["nom"]
-        cat      = equip["cat"]
-        params   = equip["params"]
-        template = equip["template"]
+        nom        = equip["nom"]
+        cat        = equip["cat"]
+        params     = equip["params"]
+        template   = equip["template"]
+        table_code = equip.get("table_code", "")
+        equip_code = equip.get("equip_code", "")
 
         output.print_md("**[{}/{}]** {} — *{}*".format(i + 1, len(equips), nom, cat))
 
@@ -176,7 +178,13 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
             output.print_md("  ⚠️ " + msg)
             continue
 
-        out_path = os.path.join(output_folder, "CBT_" + nom + ".rfa")
+        # Nom del fitxer: CBT_NOM-EQUIP_CODI-EQUIP.rfa (majúscules, espais substituïts per -)
+        nom_safe = nom.upper().replace(" ", "-")
+        if equip_code:
+            file_stem = "CBT_{}_{}".format(nom_safe, equip_code.upper())
+        else:
+            file_stem = "CBT_{}".format(nom_safe)
+        out_path = os.path.join(output_folder, file_stem + ".rfa")
         if os.path.exists(out_path):
             output.print_md("  ⏭ Ja existeix, saltant.")
             continue
@@ -219,7 +227,6 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
                     pass
 
             # Paràmetre CBT_TAULA: afegir i omplir amb el codi de taula
-            table_code = equip.get("table_code", "")
             if "CBT_TAULA" in param_index:
                 try:
                     fp = fam_mgr.AddParameter(param_index["CBT_TAULA"], _PARAM_GROUP_GENERAL, True)
@@ -289,13 +296,17 @@ output.print_md("## [TEST] Cercant fitxers de configuració CBT...")
 json_path = find_json_config()
 if json_path is None:
     forms.alert(
-        "No s'ha trobat el fitxer: {}\n\n"
-        "S'ha cercat a:\n"
-        "  • Documents / Documentos\n"
-        "  • Escriptori / Desktop / Escritorio\n"
-        "  • Descàrregues / Downloads / Descargas\n"
-        "  • OneDrive\n\n"
-        "Descarrega'l des de la plataforma TaulaMaster CBT-BIM.".format(JSON_FILENAME),
+        "No s'ha trobat el fitxer de configuració: {}\n\n"
+        "On obtenir-lo:\n"
+        "  Accedeix a la plataforma TaulaMaster CBT-BIM, ves a\n"
+        "  l'apartat d'exportació Revit i descarrega el fitxer JSON.\n"
+        "  Ha de tenir exactament aquest nom: {}\n\n"
+        "On guardar-lo (qualsevol d'aquestes ubicacions):\n"
+        "  - C:\\Users\\<usuari>\\Documents\\\n"
+        "  - C:\\Users\\<usuari>\\Desktop\\\n"
+        "  - C:\\Users\\<usuari>\\Downloads\\\n"
+        "  - C:\\Users\\<usuari>\\OneDrive\\Documents\\\n\n"
+        "No canviis el nom del fitxer.".format(JSON_FILENAME, JSON_FILENAME),
         exitscript=True
     )
 
@@ -304,8 +315,15 @@ output.print_md("  ✅ JSON: `{}`".format(json_path))
 shared_params_path = find_shared_params()
 if shared_params_path is None:
     forms.alert(
-        "No s'ha trobat el fitxer: {}\n\n"
-        "Posa'l a la carpeta Documents de l'usuari.".format(SHARED_PARAMS_FILE),
+        "No s'ha trobat el fitxer de paràmetres compartits: {}\n\n"
+        "On obtenir-lo:\n"
+        "  El fitxer el proporciona l'equip CBT. Si no el tens,\n"
+        "  contacta amb el teu administrador BIM o descarrega'l\n"
+        "  des de la plataforma TaulaMaster CBT-BIM.\n\n"
+        "On guardar-lo:\n"
+        "  Ha d'estar a: C:\\Users\\<usuari>\\Documents\\\n"
+        "  amb el nom exacte: {}\n\n"
+        "No canviis el nom del fitxer.".format(SHARED_PARAMS_FILE, SHARED_PARAMS_FILE),
         exitscript=True
     )
 
@@ -353,10 +371,21 @@ cat_lines = "\n".join(
 )
 res = forms.alert(
     "MODE TEST — Es crearan {} famílies (1 per categoria):\n\n{}\n\n"
-    "JSON: {}\n"
-    "Plantilles: {}\n"
-    "Sortida: {}\n\n"
-    "Continuar?".format(len(test_equips), cat_lines, json_path, templates_folder, output_folder),
+    "─── FITXERS DETECTATS ───────────────────────────\n"
+    "JSON de configuració:\n  {}\n\n"
+    "Paràmetres compartits:\n  {}\n\n"
+    "Plantilles Revit:\n  {}\n\n"
+    "─── CARPETA DE SORTIDA ──────────────────────────\n"
+    "  {}\n\n"
+    "─── QUÈ PASSARÀ ─────────────────────────────────\n"
+    "  Es crearan {} arxius .rfa amb el format:\n"
+    "  CBT_<nom-equip>_<codi>.rfa\n"
+    "  Les famílies ja existents es saltaran.\n\n"
+    "Continuar?".format(
+        len(test_equips), cat_lines,
+        json_path, shared_params_path, templates_folder,
+        output_folder, len(test_equips)
+    ),
     ok=True, cancel=True
 )
 if not res:
