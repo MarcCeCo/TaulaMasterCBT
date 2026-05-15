@@ -54,7 +54,8 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
 export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   const { fields, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines } = useFields();
   const { removeFieldColFromAll } = useEquipments();
-  const { canEdit } = useAuth();
+  const { canEditView } = useAuth();
+  const canEdit = canEditView("fields");
   const [q, setQ]             = useState("");
   const [grp, setGrp]         = useState("__all__");
   const [cls, setCls]         = useState("__all__");

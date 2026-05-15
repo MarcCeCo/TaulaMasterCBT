@@ -156,7 +156,8 @@ export function EquipmentsTable() {
     gubimNodeMap: nodeMap,
   } = useDataStore();
 
-  const { canEdit } = useAuth();
+  const { canEditView } = useAuth();
+  const canEdit = canEditView("equips");
   const [q, setQ] = useState("");
 
   // Reset filtre quan el component es desmunta (canvi de secció)

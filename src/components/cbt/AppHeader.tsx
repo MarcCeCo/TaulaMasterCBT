@@ -12,7 +12,9 @@ interface Props {
 }
 
 export function AppHeader({ onOpenGubim, onOpenFields, onOpenUsers }: Props) {
-  const { profile, isAdmin, canEdit, canSeeView, signOut } = useAuth();
+  const { profile, isAdmin, canEditView, canSeeView, signOut } = useAuth();
+  const ALL_VIEWS_LIST = ["equips","gubimclass","fields","revit","projectes","rosmiman"] as const;
+  const hasAnyEditor = ALL_VIEWS_LIST.some((v) => canEditView(v));
 
   return (
     <header
@@ -88,12 +90,12 @@ export function AppHeader({ onOpenGubim, onOpenFields, onOpenUsers }: Props) {
             className={`text-[10px] px-1.5 py-0 border-0 mt-0.5 ${
               isAdmin
                 ? "bg-violet-400/30 text-violet-100"
-                : canEdit
+                : hasAnyEditor
                   ? "bg-blue-400/30 text-blue-100"
                   : "bg-white/20 text-white/70"
             }`}
           >
-            {isAdmin ? "Admin" : canEdit ? "Editor" : "Visualitzador"}
+            {isAdmin ? "Admin" : hasAnyEditor ? "Editor" : "Visualitzador"}
           </Badge>
         </div>
         <Button

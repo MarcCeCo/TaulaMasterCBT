@@ -30,7 +30,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import {
   useAuth,
-  type UserRole,
+  type UserPermissionLevel,
   type UserProfile,
   type AppView,
   type SectionRole,
@@ -42,6 +42,7 @@ import {
   DEFAULT_SECTION_PERMISSIONS,
   FULL_SECTION_PERMISSIONS,
   parseSectionPermissions,
+  parseUserPermissionLevel,
 } from "@/lib/auth";
 import {
   Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X,
@@ -55,16 +56,14 @@ interface Props {
   onOpenChange: (b: boolean) => void;
 }
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  viewer: "Visualitzador",
-  editor: "Editor",
-  admin:  "Administrador",
+const LEVEL_LABELS: Record<UserPermissionLevel, string> = {
+  user:  "Usuari",
+  admin: "Administrador",
 };
 
-const ROLE_COLORS: Record<UserRole, string> = {
-  viewer: "bg-slate-100 text-slate-600",
-  editor: "bg-blue-100 text-blue-700",
-  admin:  "bg-violet-100 text-violet-700",
+const LEVEL_COLORS: Record<UserPermissionLevel, string> = {
+  user:  "bg-slate-100 text-slate-600",
+  admin: "bg-violet-100 text-violet-700",
 };
 
 // ── Selector de rol per secció ────────────────────────────────────────────────
@@ -86,7 +85,15 @@ function SectionRoleSelect({
         role === "admin" ? "text-violet-500" : "text-slate-400"
       )}>
         {role === "admin" && <Shield className="h-3 w-3" />}
-        <span>{role === "admin" ? "Accés complet" : ROLE_LABELS[role as UserRole] ?? role}</span>
+        <span>
+          {role === "admin"
+            ? "Accés complet"
+            : role === "none"
+            ? "Sense accés"
+            : role === "viewer"
+            ? "Visualitzador"
+            : "Editor"}
+        </span>
       </div>
     );
   }
@@ -113,15 +120,15 @@ function SectionRoleSelect({
 
 // ── Panell dret: permisos d'un usuari existent ────────────────────────────────
 function PermissionsPanel({
-  user, isEditing, editRole, editPerms,
-  onRoleChange, onPermChange, onSave, onStartEdit, onCancel,
+  user, isEditing, editLevel, editPerms,
+  onLevelChange, onPermChange, onSave, onStartEdit, onCancel,
   onDelete, isMe, isSaving,
 }: {
   user: UserProfile;
   isEditing: boolean;
-  editRole: UserRole;
+  editLevel: UserPermissionLevel;
   editPerms: SectionPermissions;
-  onRoleChange: (r: UserRole) => void;
+  onLevelChange: (l: UserPermissionLevel) => void;
   onPermChange: (view: AppView, role: SectionRole) => void;
   onSave: () => void;
   onStartEdit: () => void;
@@ -130,8 +137,10 @@ function PermissionsPanel({
   isMe: boolean;
   isSaving: boolean;
 }) {
-  const displayRole  = isEditing ? editRole  : user.role;
-  const displayPerms = isEditing ? editPerms : (user.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
+  const displayLevel = isEditing ? editLevel : user.role;
+  const displayPerms = isEditing
+    ? editPerms
+    : (user.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
 
   return (
     <div className="flex flex-col h-full">
@@ -154,29 +163,41 @@ function PermissionsPanel({
           </div>
         </div>
 
-        <div className="mt-3 space-y-1">
-          <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Rol global</label>
-          {isEditing && !isMe ? (
-            <Select value={editRole} onValueChange={(v) => onRoleChange(v as UserRole)}>
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="viewer">Visualitzador</SelectItem>
-                <SelectItem value="editor">Editor</SelectItem>
-                <SelectItem value="admin">Administrador</SelectItem>
-              </SelectContent>
-            </Select>
-          ) : (
-            <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium", ROLE_COLORS[displayRole])}>
-              {displayRole === "admin" && <Shield className="h-3 w-3" />}
-              {ROLE_LABELS[displayRole]}
+        {/* Toggle admin / usuari normal */}
+        {!isMe && (
+          <div className="mt-3 space-y-1">
+            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">
+              Tipus d'accés
+            </label>
+            {isEditing ? (
+              <Select value={editLevel} onValueChange={(v) => onLevelChange(v as UserPermissionLevel)}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
+                  <SelectItem value="admin">Administrador (accés complet)</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : (
+              <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium", LEVEL_COLORS[displayLevel])}>
+                {displayLevel === "admin" && <Shield className="h-3 w-3" />}
+                {LEVEL_LABELS[displayLevel]}
+              </span>
+            )}
+          </div>
+        )}
+        {isMe && (
+          <div className="mt-3">
+            <span className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium", LEVEL_COLORS[displayLevel])}>
+              {displayLevel === "admin" && <Shield className="h-3 w-3" />}
+              {LEVEL_LABELS[displayLevel]}
             </span>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Permisos per secció */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        {displayRole === "admin" ? (
+        {displayLevel === "admin" ? (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-violet-50 border border-violet-100 text-xs text-violet-700">
             <Shield className="h-3.5 w-3.5 shrink-0" />
             Els administradors tenen accés complet a totes les seccions.
@@ -257,7 +278,7 @@ function PermissionsPanel({
 function NewUserPanel({ onInvited, getToken }: { onInvited: () => void; getToken: () => string }) {
   const [email, setEmail]       = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole]         = useState<UserRole>("viewer");
+  const [level, setLevel]       = useState<UserPermissionLevel>("user");
   const [perms, setPerms]       = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
   const [submitting, setSubmitting] = useState(false);
 
@@ -273,14 +294,14 @@ function NewUserPanel({ onInvited, getToken }: { onInvited: () => void; getToken
         body: JSON.stringify({
           email:         email.trim(),
           full_name:     fullName.trim(),
-          role,
-          allowed_views: role === "admin" ? null : perms,
+          role:          level,
+          allowed_views: level === "admin" ? null : perms,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error convidant usuari");
       toast.success(`Invitació enviada a ${email}`);
-      setEmail(""); setFullName(""); setRole("viewer");
+      setEmail(""); setFullName(""); setLevel("user");
       setPerms({ ...DEFAULT_SECTION_PERMISSIONS });
       onInvited();
     } catch (err: any) {
@@ -317,13 +338,12 @@ function NewUserPanel({ onInvited, getToken }: { onInvited: () => void; getToken
             <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Nom i cognoms" className="h-8 text-xs" />
           </div>
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-700">Rol global</label>
-            <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+            <label className="text-xs font-medium text-slate-700">Tipus d'accés</label>
+            <Select value={level} onValueChange={(v) => setLevel(v as UserPermissionLevel)}>
               <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="viewer">Visualitzador</SelectItem>
-                <SelectItem value="editor">Editor</SelectItem>
-                <SelectItem value="admin">Administrador</SelectItem>
+                <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
+                <SelectItem value="admin">Administrador (accés complet)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -331,7 +351,7 @@ function NewUserPanel({ onInvited, getToken }: { onInvited: () => void; getToken
       </div>
 
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-        {role === "admin" ? (
+        {level === "admin" ? (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-violet-50 border border-violet-100 text-xs text-violet-700">
             <Shield className="h-3.5 w-3.5 shrink-0" />
             Els administradors tenen accés complet a totes les seccions.
@@ -378,7 +398,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   const [selectedId, setSelectedId] = useState<string | "new" | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving]   = useState(false);
-  const [editRole, setEditRole]   = useState<UserRole>("viewer");
+  const [editLevel, setEditLevel] = useState<UserPermissionLevel>("user");
   const [editPerms, setEditPerms] = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
 
   const selectedUser = users.find((u) => u.id === selectedId) ?? null;
@@ -397,6 +417,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
           const json = await res.json();
           setUsers((json.users ?? []).map((u: any) => ({
             ...u,
+            role: parseUserPermissionLevel(u.role),
             section_permissions: parseSectionPermissions(u.allowed_views ?? u.section_permissions),
           })));
           usedApi = true;
@@ -405,7 +426,11 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
       if (!usedApi) {
         const { data, error } = await supabase.from("user_profiles").select("id, email, full_name, role, allowed_views").order("email");
         if (!error && data) {
-          setUsers(data.map((u: any) => ({ ...u, section_permissions: parseSectionPermissions(u.allowed_views) })));
+          setUsers(data.map((u: any) => ({
+            ...u,
+            role: parseUserPermissionLevel(u.role),
+            section_permissions: parseSectionPermissions(u.allowed_views),
+          })));
         } else {
           toast.error("Error carregant usuaris");
         }
@@ -424,7 +449,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
   const selectUser = (user: UserProfile) => {
     setSelectedId(user.id);
     setIsEditing(false);
-    setEditRole(user.role);
+    setEditLevel(user.role);
     setEditPerms(user.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
   };
 
@@ -437,8 +462,8 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({
           user_id:       selectedUser.id,
-          role:          editRole,
-          allowed_views: editRole === "admin" ? null : editPerms,
+          role:          editLevel,
+          allowed_views: editLevel === "admin" ? null : editPerms,
         }),
       });
       const json = await res.json();
@@ -477,7 +502,7 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
         <DialogHeader className="px-5 pt-4 pb-3 border-b border-slate-100 shrink-0">
           <DialogTitle className="flex items-center gap-2 text-base">
             <Users className="h-4 w-4 text-[#0099A8]" />
-            Miembros: gestió d'usuaris i permisos
+            Membres: gestió d'usuaris i permisos
           </DialogTitle>
         </DialogHeader>
 
@@ -541,8 +566,8 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
                         <p className="text-xs font-medium text-slate-700 truncate">{u.full_name || u.email}</p>
                         {isMe && <span className="shrink-0 text-[9px] px-1 rounded bg-[#0099A8]/10 text-[#0099A8] font-medium">Jo</span>}
                       </div>
-                      <span className={cn("text-[10px] px-1.5 rounded font-medium mt-0.5 inline-block", ROLE_COLORS[u.role])}>
-                        {ROLE_LABELS[u.role]}
+                      <span className={cn("text-[10px] px-1.5 rounded font-medium mt-0.5 inline-block", LEVEL_COLORS[u.role])}>
+                        {LEVEL_LABELS[u.role]}
                       </span>
                     </div>
                     {isSelected && <ChevronRight className="h-3.5 w-3.5 text-[#0099A8] shrink-0" />}
@@ -564,9 +589,9 @@ export function UserManagerDialog({ open, onOpenChange }: Props) {
               <PermissionsPanel
                 user={selectedUser}
                 isEditing={isEditing}
-                editRole={editRole}
+                editLevel={editLevel}
                 editPerms={editPerms}
-                onRoleChange={setEditRole}
+                onLevelChange={setEditLevel}
                 onPermChange={(view, role) => setEditPerms((p) => ({ ...p, [view]: role }))}
                 onSave={handleSave}
                 onStartEdit={() => setIsEditing(true)}

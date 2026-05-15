@@ -2,7 +2,10 @@
 import { createContext, useContext } from "react";
 import type { User } from "@supabase/supabase-js";
 
-export type UserRole = "viewer" | "editor" | "admin";
+// Únic nivell d'accés "global": usuari normal o administrador.
+// No hi ha cap "rol global" que determini si es pot veure o editar —
+// això s'configura finestra per finestra mitjançant SectionPermissions.
+export type UserPermissionLevel = "user" | "admin";
 
 // Rol per secció individual
 export type SectionRole = "none" | "viewer" | "editor";
@@ -54,16 +57,16 @@ export const VIEW_GROUPS: { label: string; views: AppView[] }[] = [
   },
 ];
 
-// Permisos per secció: cada secció té el seu propi rol
+// Permisos per secció: cada secció té el seu propi rol independent
 export type SectionPermissions = Record<AppView, SectionRole>;
 
 export const DEFAULT_SECTION_PERMISSIONS: SectionPermissions = {
-  equips:     "viewer",
-  gubimclass: "viewer",
-  fields:     "viewer",
-  revit:      "viewer",
-  projectes:  "viewer",
-  rosmiman:   "viewer",
+  equips:     "none",
+  gubimclass: "none",
+  fields:     "none",
+  revit:      "none",
+  projectes:  "none",
+  rosmiman:   "none",
 };
 
 export const FULL_SECTION_PERMISSIONS: SectionPermissions = {
@@ -79,8 +82,10 @@ export interface UserProfile {
   id: string;
   email: string;
   full_name: string | null;
-  role: UserRole;
-  // Guardat com a JSON al camp allowed_views de Supabase
+  // "admin" té accés complet; "user" té els permisos definits a section_permissions
+  role: UserPermissionLevel;
+  // Guardat com a JSON al camp allowed_views de Supabase.
+  // null = accés complet (per compatibilitat amb admins migrats)
   section_permissions: SectionPermissions | null;
 }
 
@@ -88,8 +93,6 @@ export interface AuthContextValue {
   user: User | null;
   profile: UserProfile | null;
   loading: boolean;
-  canView: boolean;
-  canEdit: boolean;
   isAdmin: boolean;
   getSectionRole: (view: AppView) => SectionRole | "admin";
   canSeeView: (view: AppView) => boolean;
@@ -103,11 +106,9 @@ export const AuthContext = createContext<AuthContextValue>({
   user: null,
   profile: null,
   loading: true,
-  canView: false,
-  canEdit: false,
   isAdmin: false,
-  getSectionRole: () => "viewer",
-  canSeeView: () => true,
+  getSectionRole: () => "none",
+  canSeeView: () => false,
   canEditView: () => false,
   getToken: () => "",
   signIn: async () => {},
@@ -116,15 +117,17 @@ export const AuthContext = createContext<AuthContextValue>({
 
 export const useAuth = () => useContext(AuthContext);
 
-export const canViewRole = (role: UserRole) =>
-  ["viewer", "editor", "admin"].includes(role);
+export const isAdminRole = (role: UserPermissionLevel) => role === "admin";
 
-export const canEditRole = (role: UserRole) =>
-  ["editor", "admin"].includes(role);
+// Normalitza el camp `role` de Supabase al nou UserPermissionLevel.
+// Els valors legacy "viewer" i "editor" es mapegen a "user".
+export function parseUserPermissionLevel(raw: any): UserPermissionLevel {
+  if (raw === "admin") return "admin";
+  return "user";
+}
 
-export const isAdminRole = (role: UserRole) => role === "admin";
-
-// Converteix el camp allowed_views de Supabase al nou format SectionPermissions
+// Converteix el camp allowed_views de Supabase al format SectionPermissions.
+// Suporta el format antic (array AppView[]) i el nou (objecte { view: role }).
 export function parseSectionPermissions(raw: any): SectionPermissions | null {
   if (raw === null || raw === undefined) return null;
 

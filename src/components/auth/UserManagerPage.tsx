@@ -15,7 +15,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import {
   useAuth,
-  type UserRole,
+  type UserPermissionLevel,
   type UserProfile,
   type AppView,
   type SectionRole,
@@ -27,6 +27,7 @@ import {
   DEFAULT_SECTION_PERMISSIONS,
   FULL_SECTION_PERMISSIONS,
   parseSectionPermissions,
+  parseUserPermissionLevel,
 } from "@/lib/auth";
 import {
   Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X,
@@ -35,22 +36,20 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  viewer: "Visualitzador",
-  editor: "Editor",
-  admin:  "Administrador",
+const LEVEL_LABELS: Record<UserPermissionLevel, string> = {
+  user:  "Usuari",
+  admin: "Administrador",
 };
 
-const ROLE_COLORS: Record<UserRole, string> = {
-  viewer: "bg-slate-100 text-slate-600",
-  editor: "bg-blue-100 text-blue-700",
-  admin:  "bg-violet-100 text-violet-700",
+const LEVEL_COLORS: Record<UserPermissionLevel, string> = {
+  user:  "bg-slate-100 text-slate-600",
+  admin: "bg-violet-100 text-violet-700",
 };
 
 const SECTION_ROLE_CONFIG: Record<SectionRole, { label: string; color: string; icon: React.ReactNode }> = {
-  none:   { label: "Sense accés", color: "bg-slate-100 text-slate-400 border-slate-200",  icon: <EyeOff className="h-3 w-3" /> },
-  viewer: { label: "Visualitzador", color: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: <Eye className="h-3 w-3" /> },
-  editor: { label: "Editor",        color: "bg-blue-50 text-blue-700 border-blue-200",          icon: <Pencil className="h-3 w-3" /> },
+  none:   { label: "Sense accés",  color: "bg-slate-100 text-slate-400 border-slate-200",        icon: <EyeOff className="h-3 w-3" /> },
+  viewer: { label: "Visualitzador", color: "bg-emerald-50 text-emerald-700 border-emerald-200",  icon: <Eye className="h-3 w-3" /> },
+  editor: { label: "Editor",        color: "bg-blue-50 text-blue-700 border-blue-200",            icon: <Pencil className="h-3 w-3" /> },
 };
 
 // Cicle: none → viewer → editor → none
@@ -96,18 +95,16 @@ function SectionRolePill({
   );
 }
 
-// ── Matriu de permisos per a un usuari en edició ─────────────────────────────
+// ── Matriu de permisos per a un usuari ───────────────────────────────────────
 function PermissionsMatrix({
   permissions,
-  globalRole,
+  isAdmin,
   onChange,
 }: {
   permissions: SectionPermissions;
-  globalRole: UserRole;
+  isAdmin: boolean;
   onChange: (next: SectionPermissions) => void;
 }) {
-  const isAdmin = globalRole === "admin";
-
   const setAll = (role: SectionRole) => {
     const next = { ...permissions };
     ALL_VIEWS.forEach((v) => { next[v] = role; });
@@ -188,11 +185,7 @@ function PermissionsMatrix({
 }
 
 // ── Resum compacte de permisos (mode lectura) ────────────────────────────────
-function PermissionsSummary({
-  profile,
-}: {
-  profile: UserProfile;
-}) {
+function PermissionsSummary({ profile }: { profile: UserProfile }) {
   if (profile.role === "admin") {
     return (
       <span className="text-[11px] text-violet-600 italic flex items-center gap-1">
@@ -204,8 +197,8 @@ function PermissionsSummary({
   const perms = profile.section_permissions;
   if (!perms) return <span className="text-[11px] text-slate-400 italic">Accés complet</span>;
 
-  const editors  = ALL_VIEWS.filter((v) => perms[v] === "editor");
-  const viewers  = ALL_VIEWS.filter((v) => perms[v] === "viewer");
+  const editors   = ALL_VIEWS.filter((v) => perms[v] === "editor");
+  const viewers   = ALL_VIEWS.filter((v) => perms[v] === "viewer");
   const noneCount = ALL_VIEWS.filter((v) => perms[v] === "none").length;
 
   if (noneCount === ALL_VIEWS.length) {
@@ -238,13 +231,13 @@ export function UserManagerPage() {
   // Formulari nou usuari
   const [email, setEmail]       = useState("");
   const [fullName, setFullName] = useState("");
-  const [role, setRole]         = useState<UserRole>("viewer");
+  const [level, setLevel]       = useState<UserPermissionLevel>("user");
   const [newPerms, setNewPerms] = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
   const [submitting, setSubmitting] = useState(false);
 
   // Edició usuari existent
   const [editingId, setEditingId]   = useState<string | null>(null);
-  const [editRole, setEditRole]     = useState<UserRole>("viewer");
+  const [editLevel, setEditLevel]   = useState<UserPermissionLevel>("user");
   const [editPerms, setEditPerms]   = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
 
   const fetchUsers = async () => {
@@ -261,6 +254,7 @@ export function UserManagerPage() {
           const json = await res.json();
           const raw: UserProfile[] = (json.users ?? []).map((u: any) => ({
             ...u,
+            role: parseUserPermissionLevel(u.role),
             section_permissions: parseSectionPermissions(u.allowed_views ?? u.section_permissions),
           }));
           setUsers(raw);
@@ -275,6 +269,7 @@ export function UserManagerPage() {
         if (!error && data) {
           setUsers(data.map((u: any) => ({
             ...u,
+            role: parseUserPermissionLevel(u.role),
             section_permissions: parseSectionPermissions(u.allowed_views),
           })));
         } else {
@@ -303,14 +298,14 @@ export function UserManagerPage() {
         body: JSON.stringify({
           email:         email.trim(),
           full_name:     fullName.trim(),
-          role,
-          allowed_views: role === "admin" ? null : newPerms,
+          role:          level,
+          allowed_views: level === "admin" ? null : newPerms,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error convidant usuari");
       toast.success(`Invitació enviada a ${email}`);
-      setEmail(""); setFullName(""); setRole("viewer");
+      setEmail(""); setFullName(""); setLevel("user");
       setNewPerms({ ...DEFAULT_SECTION_PERMISSIONS });
       await fetchUsers();
     } catch (err: any) {
@@ -326,7 +321,7 @@ export function UserManagerPage() {
 
   const startEditing = (u: UserProfile) => {
     setEditingId(u.id);
-    setEditRole(u.role);
+    setEditLevel(u.role);
     setEditPerms(u.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
     setExpanded(u.id);
   };
@@ -339,8 +334,8 @@ export function UserManagerPage() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           user_id:       userId,
-          role:          editRole,
-          allowed_views: editRole === "admin" ? null : editPerms,
+          role:          editLevel,
+          allowed_views: editLevel === "admin" ? null : editPerms,
         }),
       });
       const json = await res.json();
@@ -380,7 +375,7 @@ export function UserManagerPage() {
           Gestió d'usuaris
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          Administra els usuaris i configura els permisos per secció
+          Administra els usuaris i configura els permisos per cada finestra
         </p>
       </div>
 
@@ -426,14 +421,13 @@ export function UserManagerPage() {
               <Input value={fullName} onChange={(e) => setFullName(e.target.value)}
                 placeholder="Nom i cognoms" className="h-9" />
             </div>
-            <div className="space-y-1 w-44">
-              <label className="text-xs font-medium text-slate-700">Rol global</label>
-              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+            <div className="space-y-1 w-52">
+              <label className="text-xs font-medium text-slate-700">Tipus d'accés</label>
+              <Select value={level} onValueChange={(v) => setLevel(v as UserPermissionLevel)}>
                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="viewer">Visualitzador</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="admin">Administrador</SelectItem>
+                  <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
+                  <SelectItem value="admin">Administrador (accés complet)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -441,10 +435,10 @@ export function UserManagerPage() {
 
           {/* Matriu de permisos per al nou usuari */}
           <div className="border border-slate-100 rounded-xl p-4 bg-slate-50/50">
-            <p className="text-xs font-semibold text-slate-600 mb-3">Permisos per secció</p>
+            <p className="text-xs font-semibold text-slate-600 mb-3">Permisos per finestra</p>
             <PermissionsMatrix
               permissions={newPerms}
-              globalRole={role}
+              isAdmin={level === "admin"}
               onChange={setNewPerms}
             />
           </div>
@@ -495,8 +489,9 @@ export function UserManagerPage() {
                       {isMe && (
                         <Badge className="text-[10px] px-1.5 py-0 bg-[#0099A8] text-white border-0">Jo</Badge>
                       )}
-                      <Badge className={cn("text-[10px] px-1.5 py-0 border-0 font-normal", ROLE_COLORS[u.role])}>
-                        {ROLE_LABELS[u.role]}
+                      <Badge className={cn("text-[10px] px-1.5 py-0 border-0 font-normal", LEVEL_COLORS[u.role])}>
+                        {u.role === "admin" && <Shield className="h-2.5 w-2.5 mr-0.5 inline" />}
+                        {LEVEL_LABELS[u.role]}
                       </Badge>
                     </div>
                     <p className="text-[11px] text-slate-400 font-mono mt-0.5">{u.email}</p>
@@ -562,23 +557,21 @@ export function UserManagerPage() {
                   <div className="px-5 pb-5 pt-1 border-t border-slate-50 bg-slate-50/40">
                     {isEditing ? (
                       <div className="space-y-4">
-                        <div className="flex items-center gap-3">
-                          <div className="space-y-1 w-44">
-                            <label className="text-xs font-medium text-slate-600">Rol global</label>
-                            <Select value={editRole} onValueChange={(v) => setEditRole(v as UserRole)}>
-                              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="viewer">Visualitzador</SelectItem>
-                                <SelectItem value="editor">Editor</SelectItem>
-                                <SelectItem value="admin">Administrador</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
+                        {/* Selector d'accés admin/usuari */}
+                        <div className="space-y-1 w-52">
+                          <label className="text-xs font-medium text-slate-600">Tipus d'accés</label>
+                          <Select value={editLevel} onValueChange={(v) => setEditLevel(v as UserPermissionLevel)}>
+                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
+                              <SelectItem value="admin">Administrador (accés complet)</SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
 
                         <PermissionsMatrix
                           permissions={editPerms}
-                          globalRole={editRole}
+                          isAdmin={editLevel === "admin"}
                           onChange={setEditPerms}
                         />
 
@@ -602,7 +595,7 @@ export function UserManagerPage() {
                       <div className="pt-2">
                         <PermissionsMatrix
                           permissions={u.section_permissions ?? { equips: "editor", gubimclass: "editor", fields: "editor", revit: "editor", projectes: "editor", rosmiman: "editor" }}
-                          globalRole={u.role}
+                          isAdmin={u.role === "admin"}
                           onChange={() => {}}
                         />
                       </div>

@@ -38,7 +38,8 @@ function extractCodiInstallacio(tag: string): string {
 // ─── component ────────────────────────────────────────────────────────────────
 
 export function RosmimanEquipsPage() {
-  const { canEdit } = useAuth();
+  const { canEditView } = useAuth();
+  const canEdit = canEditView("rosmiman");
   const {
     rosmimanEquips,
     loadingRosmiman,

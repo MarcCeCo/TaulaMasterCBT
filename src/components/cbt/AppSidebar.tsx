@@ -55,7 +55,9 @@ export function AppSidebar({
   onOpenFields,
   onGoHome,
 }: Props) {
-  const { profile, isAdmin, canEdit, canSeeView, signOut } = useAuth();
+  const { profile, isAdmin, canEditView, canSeeView, signOut } = useAuth();
+  const ALL_VIEWS_LIST = ["equips","gubimclass","fields","revit","projectes","rosmiman"] as const;
+  const hasAnyEditor = ALL_VIEWS_LIST.some((v) => canEditView(v));
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const groups: NavGroup[] = [
@@ -242,12 +244,12 @@ export function AppSidebar({
                 "text-[9px] px-1.5 py-0 border-0 mt-0.5",
                 isAdmin
                   ? "bg-violet-100 text-violet-700"
-                  : canEdit
+                  : hasAnyEditor
                   ? "bg-blue-100 text-blue-700"
                   : "bg-slate-100 text-slate-500"
               )}
             >
-              {isAdmin ? "Admin" : canEdit ? "Editor" : "Visualitzador"}
+              {isAdmin ? "Admin" : hasAnyEditor ? "Editor" : "Visualitzador"}
             </Badge>
           </div>
           <Button

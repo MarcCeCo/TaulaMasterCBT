@@ -42,8 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { user_id, role, allowed_views } = req.body;
 
   if (!user_id) return res.status(400).json({ error: "user_id és obligatori" });
-  if (!role || !["viewer", "editor", "admin"].includes(role)) {
-    return res.status(400).json({ error: "Rol no vàlid" });
+  // Ara el rol només pot ser "user" o "admin"
+  if (!role || !["user", "admin"].includes(role)) {
+    return res.status(400).json({ error: "Rol no vàlid. Valors acceptats: user, admin" });
   }
 
   // No es pot canviar el propi rol
@@ -55,6 +56,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .from("user_profiles")
     .update({
       role,
+      // null = accés complet (admin); objecte = permisos per secció (user)
       allowed_views: role === "admin" ? null : (allowed_views ?? null),
     })
     .eq("id", user_id);

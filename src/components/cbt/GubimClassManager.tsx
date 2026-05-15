@@ -23,7 +23,8 @@ interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
 
 export function GubimClassManager({ open, onOpenChange }: Props) {
   const { nodes, nodeMap, addNode, addMany, updateNode, removeNode, hasChildren, clearAll } = useGubimClass();
-  const { canEdit } = useAuth();
+  const { canEditView } = useAuth();
+  const canEdit = canEditView("gubimclass");
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<GubimNode | null>(null);
