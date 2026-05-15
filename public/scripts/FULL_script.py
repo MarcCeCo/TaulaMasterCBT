@@ -251,11 +251,13 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
             for param_entry in params:
                 # Suport tant del format nou (dict) com de l'antic (string)
                 if isinstance(param_entry, dict):
-                    pname = param_entry.get("name", "")
-                    has_codi = bool(param_entry.get("codi"))
+                    pname       = param_entry.get("name", "")
+                    has_codi    = bool(param_entry.get("codi"))
+                    is_instance = param_entry.get("instance", True)
                 else:
-                    pname = param_entry
-                    has_codi = False
+                    pname       = param_entry
+                    has_codi    = False
+                    is_instance = True
 
                 if not pname or pname not in param_index:
                     if pname:
@@ -269,7 +271,7 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
                     grp = _PARAM_GROUP_GENERAL
 
                 try:
-                    fam_mgr.AddParameter(param_index[pname], grp, True)
+                    fam_mgr.AddParameter(param_index[pname], grp, is_instance)
                 except Exception:
                     pass  # Ja existeix o incompatible
 
