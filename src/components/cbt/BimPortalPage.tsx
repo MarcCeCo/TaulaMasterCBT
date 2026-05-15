@@ -42,6 +42,7 @@ import {
   Building2,
 } from "lucide-react";
 import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
+import { CATEGORY_CONFIG } from "./RevitExportPage";
 
 // ─── Helpers (els mateixos que RevitExportPage per consistència) ───────────────
 
@@ -120,6 +121,7 @@ export function BimPortalPage() {
         return {
           nom: toFileName(nomComplet),
           cat,
+          template: CATEGORY_CONFIG[cat]?.template ?? "Metric Generic Model.rft",
           equip_code: eq.equipCode,
           table_code: eq.tableCode ?? "",
           params,
@@ -147,10 +149,20 @@ export function BimPortalPage() {
   };
 
   const handleTestDownload = () => {
-    const a = document.createElement("a");
-    a.href = "/scripts/TEST_script.py";
-    a.download = "CBT_TEST_script.py";
-    a.click();
+    fetch("/scripts/TEST_script.py")
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "CBT_TEST_script.py";
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch(() => alert("No s'ha pogut descarregar el script TEST. Contacta amb l'administrador BIM."));
     setTestDownloaded(true);
     setTimeout(() => setTestDownloaded(false), 3000);
   };

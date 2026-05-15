@@ -53,7 +53,7 @@ import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
 
 // ─── Configuració de categories Revit ────────────────────────────────────────
 
-const CATEGORY_CONFIG: Record<
+export const CATEGORY_CONFIG: Record<
   string,
   { label: string; template: string; color: string; icon: React.ReactNode; group: string }
 > = {
@@ -438,17 +438,26 @@ export function RevitExportPage() {
   };
 
   const handleScriptDownload = (type: "FULL" | "TEST") => {
-    // Els scripts estan embedits com a text estàtic.
-    // En producció, podrien estar servits com a assets estàtics.
-    const scriptUrl =
-      type === "FULL"
-        ? "/scripts/FULL_script.py"
-        : "/scripts/TEST_script.py";
-
-    const a = document.createElement("a");
-    a.href = scriptUrl;
-    a.download = `CBT_${type}_script.py`;
-    a.click();
+    const scriptUrl = type === "FULL" ? "/scripts/FULL_script.py" : "/scripts/TEST_script.py";
+    fetch(scriptUrl)
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `CBT_${type}_script.py`;
+        a.click();
+        URL.revokeObjectURL(url);
+      })
+      .catch(() =>
+        alert(
+          `No s'ha pogut descarregar el Script ${type}.\n` +
+          "Assegura't que el servidor serveix la carpeta /public/scripts/."
+        )
+      );
     setScriptDownloaded(type);
     setShowScriptInstructions(true);
     setTimeout(() => setScriptDownloaded(null), 3000);
