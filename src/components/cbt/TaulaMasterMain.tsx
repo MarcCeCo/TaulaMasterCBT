@@ -6,6 +6,7 @@ import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
 import { RevitExportPage } from "./RevitExportPage";
+import { BimPortalPage } from "./BimPortalPage";
 import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
 import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
@@ -114,6 +115,10 @@ export function TaulaMasterMain() {
       case "revit":
         if (!canSeeView("revit")) return <AccessDenied />;
         return <RevitExportPage />;
+
+      case "portal-bim":
+        if (!canSeeView("revit")) return <AccessDenied />;
+        return <BimPortalPage />;
 
       case "projectes-equips":
         if (!canSeeView("projectes")) return <AccessDenied />;
