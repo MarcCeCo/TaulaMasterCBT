@@ -18,6 +18,7 @@ import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
 import type { ProjectTag, Projecte, ProjectStatus, TagStatus } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
+import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -103,8 +104,10 @@ function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
 
 // ─── component principal ──────────────────────────────────────────────────────
 export function ProjectesEquipsPage() {
-  const { canEditView, isAdmin, profile: myProfile, getToken } = useAuth();
+  const { canEditView, canSeeView, isAdmin, profile: myProfile, getToken } = useAuth();
   const canEdit = canEditView("projectes");
+  const canSeeRosmiman = canSeeView("rosmiman");
+  const [tabActiva, setTabActiva] = useState<"projectes" | "rosmiman">("projectes");
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
@@ -546,6 +549,43 @@ export function ProjectesEquipsPage() {
   }, [equipmentsAmbCodi, equipSearch]);
 
   // ─── render ─────────────────────────────────────────────────────────────────
+  // Pestanya Rosmiman — retorn anticipat quan està activa i estem al llistat
+  if (vista === "llistat" && tabActiva === "rosmiman" && canSeeRosmiman) {
+    return (
+      <TooltipProvider>
+        <div className="space-y-6">
+          {/* Capçalera */}
+          <div className="flex items-start justify-between flex-wrap gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Projectes</h1>
+              <p className="text-sm text-slate-500 mt-0.5">Gestió de projectes i TAGs d&apos;equips</p>
+            </div>
+          </div>
+          {/* Pestanyes */}
+          <div className="flex border-b border-slate-200 gap-1">
+            <button
+              onClick={() => setTabActiva("projectes")}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              Llistat de projectes
+            </button>
+            {canSeeRosmiman && (
+              <button
+                onClick={() => setTabActiva("rosmiman")}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-[#0099A8] text-[#006E7A]"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
+                TAGs Rosmiman
+              </button>
+            )}
+          </div>
+          <RosmimanEquipsPage />
+        </div>
+      </TooltipProvider>
+    );
+  }
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -560,11 +600,11 @@ export function ProjectesEquipsPage() {
             )}
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-                {vista === "llistat" ? "Llistat d'equips per projectes" : projecteSeleccionat?.nom ?? "Projecte"}
+                {vista === "llistat" ? "Projectes" : projecteSeleccionat?.nom ?? "Projecte"}
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 {vista === "llistat"
-                  ? "Gestió de projectes i tags d'equips"
+                  ? "Gestió de projectes i TAGs d'equips"
                   : `Tags i equips del projecte · ${projecteSeleccionat?.descripcio || "sense descripció"}`}
               </p>
             </div>
@@ -587,6 +627,29 @@ export function ProjectesEquipsPage() {
             </div>
           )}
         </div>
+
+
+        {/* Pestanyes — només a la vista de llistat */}
+        {vista === "llistat" && (
+          <div className="flex border-b border-slate-200 gap-1">
+            <button
+              onClick={() => setTabActiva("projectes")}
+              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-[#0099A8] text-[#006E7A]"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              Llistat de projectes
+            </button>
+            {canSeeRosmiman && (
+              <button
+                onClick={() => setTabActiva("rosmiman")}
+                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
+                TAGs Rosmiman
+              </button>
+            )}
+          </div>
+        )}
 
         {/* ── VISTA: LLISTAT DE PROJECTES ─────────────────────────────────── */}
         {vista === "llistat" && (

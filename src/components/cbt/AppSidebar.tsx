@@ -4,18 +4,17 @@ import {
   BookOpen,
   Building2,
   FolderOpen,
-  ClipboardList,
   GitBranch,
-  List,
+  KeyRound,
   LogOut,
+  Menu,
   Package,
   Settings2,
   Shield,
-  Users,
-  X,
-  Menu,
-  KeyRound,
   Table2,
+  Users,
+  LayoutDashboard,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,8 +28,7 @@ interface NavItem {
   icon: React.ReactNode;
   adminOnly?: boolean;
   view?: string;
-  section?: string;
-  isDialog?: boolean; // items que obren un diàleg (GuBIMClass, Camps)
+  section: string;
 }
 
 interface NavGroup {
@@ -44,27 +42,31 @@ interface NavGroup {
 interface Props {
   activeSection: string;
   onSectionChange: (section: string) => void;
-  onOpenGubim: () => void;
-  onOpenFields: () => void;
-  onGoHome: () => void;
 }
 
-export function AppSidebar({
-  activeSection,
-  onSectionChange,
-  onOpenGubim,
-  onOpenFields,
-  onGoHome,
-}: Props) {
+export function AppSidebar({ activeSection, onSectionChange }: Props) {
   const { profile, isAdmin, canEditView, canSeeView, signOut } = useAuth();
-  const ALL_VIEWS_LIST = ["equips","gubimclass","fields","revit","projectes","rosmiman"] as const;
+  const ALL_VIEWS_LIST = ["equips", "gubimclass", "fields", "revit", "projectes", "rosmiman"] as const;
   const hasAnyEditor = ALL_VIEWS_LIST.some((v) => canEditView(v));
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const groups: NavGroup[] = [
     {
-      id: "taulaMaster",
-      label: "Equips i Taules",
+      id: "inici",
+      label: "Inici",
+      icon: <LayoutDashboard className="h-4 w-4" />,
+      items: [
+        {
+          id: "dashboard",
+          label: "Resum",
+          icon: <LayoutDashboard className="h-4 w-4" />,
+          section: "dashboard",
+        },
+      ],
+    },
+    {
+      id: "dades",
+      label: "Dades",
       icon: <Table2 className="h-4 w-4" />,
       items: [
         {
@@ -80,36 +82,20 @@ export function AppSidebar({
           icon: <GitBranch className="h-4 w-4" />,
           section: "gubimclass",
           view: "gubimclass",
-          isDialog: true,
         },
         {
           id: "camps",
           label: "Diccionari de camps",
           icon: <Settings2 className="h-4 w-4" />,
-          section: "fields",
+          section: "camps",
           view: "fields",
-          isDialog: true,
         },
         {
-          id: "revit",
-          label: "Exportació Revit",
+          id: "revit-bim",
+          label: "Revit & BIM",
           icon: <Building2 className="h-4 w-4" />,
-          section: "revit",
+          section: "revit-bim",
           view: "revit",
-        },
-      ],
-    },
-    {
-      id: "bim",
-      label: "BIM",
-      icon: <Building2 className="h-4 w-4" />,
-      items: [
-        {
-          id: "portal-bim",
-          label: "Portal BIM",
-          icon: <BookOpen className="h-4 w-4" />,
-          section: "portal-bim",
-          view: "revit", // mateixos permisos que Exportació Revit
         },
       ],
     },
@@ -120,17 +106,10 @@ export function AppSidebar({
       items: [
         {
           id: "projectes-equips",
-          label: "Llistat de projectes",
-          icon: <List className="h-4 w-4" />,
+          label: "Projectes",
+          icon: <FolderOpen className="h-4 w-4" />,
           section: "projectes-equips",
           view: "projectes",
-        },
-        {
-          id: "rosmiman-equips",
-          label: "Llistat d'equips",
-          icon: <ClipboardList className="h-4 w-4" />,
-          section: "rosmiman-equips",
-          view: "rosmiman",
         },
       ],
     },
@@ -157,67 +136,53 @@ export function AppSidebar({
   ];
 
   const handleItemClick = (item: NavItem) => {
-    if (item.id === "gubimclass") {
-      onOpenGubim();
-    } else if (item.id === "camps") {
-      onOpenFields();
-    } else if (item.section) {
-      onSectionChange(item.section);
-    }
+    onSectionChange(item.section);
     setMobileOpen(false);
   };
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      {/* Logo + Title */}
+      {/* Logo */}
       <div
         className="px-4 py-5 flex items-center gap-3 border-b border-white/10 cursor-pointer"
         style={{ background: "linear-gradient(135deg, #006E7A 0%, #0099A8 100%)" }}
-        onClick={() => { onGoHome(); setMobileOpen(false); }}
+        onClick={() => { onSectionChange("dashboard"); setMobileOpen(false); }}
         title="Inici · Resum"
       >
         <div className="h-10 w-10 rounded-full overflow-hidden bg-white/15 flex items-center justify-center shadow-inner shrink-0">
           <img src={logo} alt="CBT" className="h-9 w-9 object-contain rounded-full" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[9px] text-white/60 uppercase tracking-widest font-medium leading-none">
-            Consorci
-          </div>
+          <div className="text-[9px] text-white/60 uppercase tracking-widest font-medium leading-none">Consorci</div>
           <div className="text-sm font-bold text-white leading-tight truncate">Besòs · Tordera</div>
           <div className="text-[10px] text-white/60 leading-tight">TaulaMaster</div>
         </div>
-        <button
-          className="lg:hidden text-white/70 hover:text-white ml-1"
-          onClick={() => setMobileOpen(false)}
-        >
+        <button className="lg:hidden text-white/70 hover:text-white ml-1" onClick={() => setMobileOpen(false)}>
           <X className="h-5 w-5" />
         </button>
       </div>
 
-      {/* Nav Groups */}
+      {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
         {groups.map((group) => {
           if (group.adminOnly && !isAdmin) return null;
 
           const visibleItems = group.items.filter((item) => {
             if (item.adminOnly && !isAdmin) return false;
-            if (item.view && !canSeeView(item.view as any)) return false;
+            if (item.view && !canSeeView(item.view as Parameters<typeof canSeeView>[0])) return false;
             return true;
           });
           if (visibleItems.length === 0) return null;
 
           return (
             <div key={group.id}>
-              {/* Group header — només títol, igual que Administració */}
               <div className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#006E7A]">
                 <span className="text-[#0099A8]">{group.icon}</span>
                 <span className="flex-1 text-left">{group.label}</span>
               </div>
-
-              {/* Group items */}
               <div className="ml-2 mt-0.5 space-y-0.5">
                 {visibleItems.map((item) => {
-                  const isActive = activeSection === item.section && !item.isDialog;
+                  const isActive = activeSection === item.section;
                   return (
                     <button
                       key={item.id}
@@ -257,10 +222,8 @@ export function AppSidebar({
             <Badge
               className={cn(
                 "text-[9px] px-1.5 py-0 border-0 mt-0.5",
-                isAdmin
-                  ? "bg-violet-100 text-violet-700"
-                  : hasAnyEditor
-                  ? "bg-blue-100 text-blue-700"
+                isAdmin ? "bg-violet-100 text-violet-700"
+                  : hasAnyEditor ? "bg-blue-100 text-blue-700"
                   : "bg-slate-100 text-slate-500"
               )}
             >
@@ -268,9 +231,7 @@ export function AppSidebar({
             </Badge>
           </div>
           <Button
-            variant="ghost"
-            size="icon"
-            onClick={signOut}
+            variant="ghost" size="icon" onClick={signOut}
             className="h-7 w-7 text-slate-400 hover:text-slate-700 hover:bg-slate-200 shrink-0"
             title="Tanca sessió"
           >
@@ -291,10 +252,7 @@ export function AppSidebar({
       </button>
 
       {mobileOpen && (
-        <div
-          className="lg:hidden fixed inset-0 z-40 bg-black/40"
-          onClick={() => setMobileOpen(false)}
-        />
+        <div className="lg:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMobileOpen(false)} />
       )}
 
       <div

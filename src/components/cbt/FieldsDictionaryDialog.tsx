@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,11 +14,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 
-interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface Props {}
 
 const ROW_H = 38;
 const OVERSCAN = 8;
-const CONTAINER_H = 480;
+const CONTAINER_H = 560;
 
 function useDebounce<T>(value: T, ms = 180): T {
   const [dv, setDv] = useState(value);
@@ -51,7 +51,7 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
   return result;
 }
 
-export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
+export function FieldsDictionaryDialog(_props: Props = {}) {
   const { fields, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines } = useFields();
   const { removeFieldColFromAll } = useEquipments();
   const { canEditView } = useAuth();
@@ -164,9 +164,11 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[92vh] overflow-hidden flex flex-col">
-        <DialogHeader><DialogTitle>Diccionari de camps</DialogTitle></DialogHeader>
+    <div className="space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Diccionari de camps</h1>
+        <p className="text-sm text-slate-500 mt-1">Defineix i organitza els paràmetres tècnics CBT</p>
+      </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
           <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -309,7 +311,6 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
             }
           }}
         />
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }

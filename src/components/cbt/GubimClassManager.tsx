@@ -6,7 +6,6 @@ function useDebounce<T>(value: T, ms = 180): T {
   useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
   return dv;
 }
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -19,9 +18,10 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 
-interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface Props {}
 
-export function GubimClassManager({ open, onOpenChange }: Props) {
+export function GubimClassManager(_props: Props = {}) {
   const { nodes, nodeMap, addNode, addMany, updateNode, removeNode, hasChildren, clearAll } = useGubimClass();
   const { canEditView } = useAuth();
   const canEdit = canEditView("gubimclass");
@@ -152,21 +152,21 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   }, [sorted]);
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle>Gestió GuBIMClass</DialogTitle>
-            <div className="flex gap-2 mr-8">
-              {[1, 2, 3, 4].map((l) => (
-                <div key={l} className="flex items-center gap-1">
-                  <LevelBadge level={l as 1|2|3|4} />
-                  <span className="text-xs text-muted-foreground">{levelCounts[l]}</span>
-                </div>
-              ))}
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">GuBIMClass</h1>
+          <p className="text-sm text-slate-500 mt-1">Classificació jeràrquica d'elements BIM</p>
+        </div>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((l) => (
+            <div key={l} className="flex items-center gap-1">
+              <LevelBadge level={l as 1|2|3|4} />
+              <span className="text-xs text-muted-foreground">{levelCounts[l]}</span>
             </div>
-          </div>
-        </DialogHeader>
+          ))}
+        </div>
+      </div>
 
         {/* Formulari inline */}
         <div className="flex flex-wrap items-start gap-2 p-3 border rounded-md bg-muted/30">
@@ -344,8 +344,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
           </table>
           </TooltipProvider>
         </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }
 
