@@ -44,12 +44,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!email || !role) {
     return res.status(400).json({ error: "El correu i el rol són obligatoris" });
   }
-  if (!["viewer", "editor", "admin"].includes(role)) {
-    return res.status(400).json({ error: "Rol no vàlid" });
+  // Ara el rol només pot ser "user" o "admin"
+  if (!["user", "admin"].includes(role)) {
+    return res.status(400).json({ error: "Rol no vàlid. Valors acceptats: user, admin" });
   }
 
-  // Convidar l'usuari per correu: Supabase enviarà un email amb l'enllaç
-  // per establir la contrasenya. No cal que l'admin la creï.
+  // Convidar l'usuari per correu
   const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
     email,
     {
@@ -65,21 +65,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: "No s'ha pogut obtenir l'ID del nou usuari" });
   }
 
-  // Actualitzar el perfil amb rol, nom, vistes i qui ha fet la invitació
+  // Actualitzar el perfil amb rol, nom i permisos per secció
   const { error: profileError } = await supabaseAdmin
     .from("user_profiles")
     .update({
       role,
       full_name: full_name ?? null,
       created_by: user.id,
-      // null = accés a totes les vistes
+      // null = accés complet (admin); objecte = permisos per secció (user)
       allowed_views: allowed_views ?? null,
     })
     .eq("id", newUserId);
 
   if (profileError) {
-    // L'usuari s'ha creat però el perfil no s'ha actualitzat.
-    // Retornem advertència però no error crític.
     console.error("Error actualitzant perfil:", profileError);
     return res.status(200).json({
       success: true,

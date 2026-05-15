@@ -4,13 +4,12 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import {
   AuthContext,
-  canEditRole,
-  canViewRole,
   isAdminRole,
   canSeeViewFn,
   canEditViewFn,
   getSectionRoleFn,
   parseSectionPermissions,
+  parseUserPermissionLevel,
   type UserProfile,
 } from "@/lib/auth";
 
@@ -28,7 +27,13 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
         .select("id, email, full_name, role")
         .eq("id", u.id)
         .single();
-      return data2 ? { ...data2, section_permissions: null } as UserProfile : null;
+      return data2
+        ? {
+            ...data2,
+            role: parseUserPermissionLevel(data2.role),
+            section_permissions: null,
+          } as UserProfile
+        : null;
     }
 
     return data
@@ -36,7 +41,7 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
           id:                  data.id,
           email:               data.email,
           full_name:           data.full_name ?? null,
-          role:                data.role,
+          role:                parseUserPermissionLevel(data.role),
           section_permissions: parseSectionPermissions(data.allowed_views),
         } as UserProfile
       : null;
@@ -145,17 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }
 
-  const role = profile?.role ?? "viewer";
-
   return (
     <AuthContext.Provider
       value={{
         user,
         profile,
         loading,
-        canView:        canViewRole(role),
-        canEdit:        canEditRole(role),
-        isAdmin:        isAdminRole(role),
+        isAdmin:        isAdminRole(profile?.role ?? "user"),
         getSectionRole: getSectionRoleFn(profile),
         canSeeView:     canSeeViewFn(profile, user),
         canEditView:    canEditViewFn(profile),

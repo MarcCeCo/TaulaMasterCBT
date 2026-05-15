@@ -331,7 +331,7 @@ export function RevitExportPage() {
       nom: string;       // nom original per mostrar
       fileName: string;  // nom normalitzat per al fitxer .rfa
       cat: string;
-      params: { name: string; codi: string | null }[];
+      params: { name: string; codi: string | null; instance: boolean }[];
       fieldCols: string[];
       equipCode: string;
       tableCode: string;
@@ -357,8 +357,8 @@ export function RevitExportPage() {
         .filter(Boolean) as typeof fields;
 
       const params = equipFields
-        .map((f) => f.cbt ? { name: f.cbt, codi: f.codi ?? null } : null)
-        .filter(Boolean) as { name: string; codi: string | null }[];
+        .map((f) => f.cbt ? { name: f.cbt, codi: f.codi ?? null, instance: f.instancia_revit === "Y" } : null)
+        .filter(Boolean) as { name: string; codi: string | null; instance: boolean }[];
 
       // Nom complet: "Nom pare Nom equip" si té pare, sinó sol el nom
       const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) : null;

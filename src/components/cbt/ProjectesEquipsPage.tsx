@@ -103,7 +103,8 @@ function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
 
 // ─── component principal ──────────────────────────────────────────────────────
 export function ProjectesEquipsPage() {
-  const { canEdit, isAdmin, profile: myProfile, getToken } = useAuth();
+  const { canEditView, isAdmin, profile: myProfile, getToken } = useAuth();
+  const canEdit = canEditView("projectes");
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
@@ -1294,7 +1295,7 @@ export function ProjectesEquipsPage() {
                           <p className="text-[10px] text-slate-400 font-mono">{u.email}</p>
                         </div>
                         <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                          u.role === "editor" ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"
+                          u.role === "admin" ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-500"
                         )}>{u.role}</span>
                       </label>
                     );
