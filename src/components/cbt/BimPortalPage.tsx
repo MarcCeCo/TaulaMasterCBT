@@ -32,7 +32,6 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  FlaskConical,
   Package,
   RefreshCw,
   AlertCircle,
@@ -62,7 +61,6 @@ function buildRfaName(equipName: string, parentName: string | null, equipCode: s
 export function BimPortalPage() {
   const { equipments, fields, loading, error, retry } = useDataStore();
   const [kitDownloaded, setKitDownloaded] = useState(false);
-  const [testDownloaded, setTestDownloaded] = useState(false);
   const [search, setSearch] = useState("");
 
   // Mapa equipCode → equipName per resoldre pares
@@ -306,24 +304,7 @@ Compatible amb Revit 2020-2030.
     setTimeout(() => setKitDownloaded(false), 3000);
   };
 
-  const handleTestDownload = () => {
-    fetch("/scripts/TEST_script.py")
-      .then((r) => {
-        if (!r.ok) throw new Error("not found");
-        return r.blob();
-      })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "CBT_TEST_script.py";
-        a.click();
-        URL.revokeObjectURL(url);
-      })
-      .catch(() => alert("No s'ha pogut descarregar el script TEST. Contacta amb l'administrador BIM."));
-    setTestDownloaded(true);
-    setTimeout(() => setTestDownloaded(false), 3000);
-  };
+
 
   const handleRfaDownload = (rfaName: string) => {
     const a = document.createElement("a");
@@ -474,7 +455,7 @@ Compatible amb Revit 2020-2030.
                     <div>
                       <p className="text-sm font-semibold text-slate-800">CBT_FamiliesKit</p>
                       <p className="text-xs text-slate-500 mt-0.5">
-                        Script FULL + configuració JSON (generada ara) + paràmetres compartits
+                        Script FULL + Script TEST + configuració JSON (generada ara) + paràmetres compartits
                       </p>
                     </div>
                     <Button
@@ -490,7 +471,7 @@ Compatible amb Revit 2020-2030.
                     </Button>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {["FULL_script.py", "CBT_Revit_Config.json", "CBT_PARAMETRES-COMPARTITS.txt", "README.txt"].map((f) => (
+                    {["FULL_script.py", "TEST_script.py", "CBT_Revit_Config.json", "CBT_PARAMETRES-COMPARTITS.txt", "README.txt"].map((f) => (
                       <span
                         key={f}
                         className="font-mono text-[11px] bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-600"
@@ -507,40 +488,6 @@ Compatible amb Revit 2020-2030.
                   </div>
                 </div>
 
-                {/* Separador */}
-                <div className="flex items-center gap-2 text-xs text-slate-400 font-medium uppercase tracking-wider">
-                  <div className="h-px flex-1 bg-slate-200" />
-                  Script auxiliar de validació
-                  <div className="h-px flex-1 bg-slate-200" />
-                </div>
-
-                {/* Script TEST */}
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="h-9 w-9 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                      <FlaskConical className="h-4.5 w-4.5 text-amber-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-amber-800">TEST_script.py</p>
-                      <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
-                        Genera <strong>1 família per categoria</strong>. Usa'l per verificar que pyRevit,
-                        les rutes i el JSON estan correctament configurats <em>abans</em> d'executar el FULL.
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="border-amber-300 text-amber-700 hover:bg-amber-100 gap-1.5 text-xs shrink-0"
-                      onClick={handleTestDownload}
-                    >
-                      {testDownloaded ? (
-                        <><CheckCircle2 className="h-3.5 w-3.5" /> Ok!</>
-                      ) : (
-                        <><Download className="h-3.5 w-3.5" /> .py</>
-                      )}
-                    </Button>
-                  </div>
-                </div>
 
                 {/* Flux d'ús resumit */}
                 <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
