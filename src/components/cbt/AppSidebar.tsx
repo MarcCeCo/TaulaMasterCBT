@@ -1,6 +1,7 @@
 // src/components/cbt/AppSidebar.tsx
 import { useState } from "react";
 import {
+  BookOpen,
   Building2,
   FolderOpen,
   ClipboardList,
@@ -95,6 +96,20 @@ export function AppSidebar({
           icon: <Building2 className="h-4 w-4" />,
           section: "revit",
           view: "revit",
+        },
+      ],
+    },
+    {
+      id: "bim",
+      label: "BIM",
+      icon: <Building2 className="h-4 w-4" />,
+      items: [
+        {
+          id: "portal-bim",
+          label: "Portal BIM",
+          icon: <BookOpen className="h-4 w-4" />,
+          section: "portal-bim",
+          view: "revit", // mateixos permisos que Exportació Revit
         },
       ],
     },
