@@ -178,6 +178,35 @@ def resolve_template(template_filename, templates_folder):
     return None
 
 
+# Mapa de categoria Revit → plantilla .rft (fallback si el JSON no té el camp "template")
+CATEGORY_TEMPLATES = {
+    "Mechanical Equipment":       "Metric Mechanical Equipment.rft",
+    "Specialty Equipment":        "Metric Specialty Equipment.rft",
+    "Plumbing Fixtures":          "Metric Plumbing Fixture.rft",
+    "Mechanical Control Devices": "Metric Mechanical Control Device.rft",
+    "Air Terminals":              "Metric Air Terminal.rft",
+    "Fire Protection":            "Metric Fire Protection.rft",
+    "Sprinklers":                 "Metric Sprinkler.rft",
+    "Pipe Accessories":           "Metric Pipe Accessory.rft",
+    "Pipe Fittings":              "Metric Pipe Fitting.rft",
+    "Pipes":                      "Metric Pipe.rft",
+    "Duct Accessories":           "Metric Duct Accessory.rft",
+    "Duct Fittings":              "Metric Duct Fitting.rft",
+    "Ducts":                      "Metric Duct.rft",
+    "Electrical Equipment":       "Metric Electrical Equipment.rft",
+    "Electrical Fixtures":        "Metric Electrical Fixture.rft",
+    "Lighting Fixtures":          "Metric Lighting Fixture.rft",
+    "Lighting Devices":           "Metric Lighting Device.rft",
+    "Communication Devices":      "Metric Communication Device.rft",
+    "Data Devices":               "Metric Data Device.rft",
+    "Fire Alarm Devices":         "Metric Fire Alarm Device.rft",
+    "Security Devices":           "Metric Security Device.rft",
+    "Cable Trays":                "Metric Cable Tray.rft",
+    "Conduits":                   "Metric Conduit.rft",
+    "Generic Models":             "Metric Generic Model.rft",
+}
+
+
 def run(equips, templates_folder, output_folder, shared_params_path, app, output):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -206,7 +235,7 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
         nom        = equip["nom"]
         cat        = equip["cat"]
         params     = equip["params"]
-        template   = equip["template"]
+        template   = equip.get("template") or CATEGORY_TEMPLATES.get(cat, "Metric Generic Model.rft")
         table_code = equip.get("table_code", "")
         equip_code = equip.get("equip_code", "")
 
