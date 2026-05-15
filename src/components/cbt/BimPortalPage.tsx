@@ -21,8 +21,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
-import {
+} from "@/components/ui/table";import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -56,16 +55,6 @@ function buildRfaName(equipName: string, parentName: string | null, equipCode: s
   const nomComplet = parentName ? `${parentName} ${equipName}` : equipName;
   return `CBT_${toFileName(nomComplet)}_${equipCode.toUpperCase()}.rfa`;
 }
-
-// ─── Dades estàtiques dels PEBs (en producció vindrien de Supabase) ───────────
-// Cada entrada té un nom de projecte i una URL de descàrrega de l'Excel.
-// L'admin pot gestionar aquesta llista des d'un futur pannell d'administració.
-
-const PEB_LIST = [
-  { id: "1", projecte: "Besòs Nord — Fase 2",   versio: "v1.3", vigent: true,  url: "/docs/PEB_Besos_Nord_F2_v1.3.xlsx" },
-  { id: "2", projecte: "Tordera Tram 3",         versio: "v0.9", vigent: false, url: "/docs/PEB_Tordera_Tram3_v0.9.xlsx" },
-  { id: "3", projecte: "Depuradora Maresme",     versio: "v2.0", vigent: true,  url: "/docs/PEB_Depuradora_Maresme_v2.0.xlsx" },
-];
 
 // ─── Component principal ───────────────────────────────────────────────────────
 
@@ -241,58 +230,30 @@ export function BimPortalPage() {
               </CardContent>
             </Card>
 
-            {/* PEB per projecte */}
+            {/* PEB */}
             <Card className="border-0 shadow-sm bg-white">
               <CardHeader className="pb-2 border-b border-slate-100">
                 <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
                   <FileSpreadsheet className="h-4 w-4 text-[#0099A8]" />
-                  PEB — Pla d'Execució BIM per projecte
+                  PEB — Pla d'Execució BIM
                 </CardTitle>
               </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-slate-50 hover:bg-slate-50">
-                      <TableHead className="text-xs font-semibold text-slate-500">Projecte</TableHead>
-                      <TableHead className="text-xs font-semibold text-slate-500 w-20">Versió</TableHead>
-                      <TableHead className="text-xs font-semibold text-slate-500 w-24">Estat</TableHead>
-                      <TableHead className="w-16" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {PEB_LIST.map((peb) => (
-                      <TableRow key={peb.id} className="hover:bg-slate-50/50">
-                        <TableCell className="py-2.5 text-sm font-medium text-slate-700">
-                          {peb.projecte}
-                        </TableCell>
-                        <TableCell className="py-2.5">
-                          <span className="font-mono text-xs text-slate-500">{peb.versio}</span>
-                        </TableCell>
-                        <TableCell className="py-2.5">
-                          <Badge
-                            className={peb.vigent
-                              ? "bg-emerald-100 text-emerald-700 border-0 text-xs"
-                              : "bg-amber-100 text-amber-700 border-0 text-xs"}
-                          >
-                            {peb.vigent ? "Vigent" : "Esborrany"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="py-2.5">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <a href={peb.url} download>
-                                <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8]">
-                                  <Download className="h-3.5 w-3.5" />
-                                </Button>
-                              </a>
-                            </TooltipTrigger>
-                            <TooltipContent>Descarregar Excel</TooltipContent>
-                          </Tooltip>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                    <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-800">PEB_CBT.xlsx</p>
+                    <p className="text-xs text-slate-500 mt-0.5">Pla d'Execució BIM del Consorci Besòs Tordera</p>
+                  </div>
+                  <a href="/docs/PEB_CBT.xlsx" download>
+                    <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                      <Download className="h-3.5 w-3.5" />
+                      Excel
+                    </Button>
+                  </a>
+                </div>
               </CardContent>
             </Card>
 
@@ -484,7 +445,11 @@ export function BimPortalPage() {
                       </TableCell>
                       <TableCell className="py-2.5">
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium text-slate-800">{eq.equipName}</span>
+                          <span className="text-sm font-medium text-slate-800">
+                            {equipByCode.get(eq.parentEquipCode)
+                              ? `${equipByCode.get(eq.parentEquipCode)} ${eq.equipName}`
+                              : eq.equipName}
+                          </span>
                           {cat && (
                             <span className="text-[11px] text-slate-400">{cat}</span>
                           )}
