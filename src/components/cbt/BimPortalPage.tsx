@@ -98,10 +98,17 @@ export function BimPortalPage() {
   );
 
   // ── Descàrrega del paquet CBT_FamiliesKit.zip ──────────────────────────────
-  // Genera el JSON de configuració dinàmicament i el combina amb els altres fitxers.
-  // En producció, el ZIP es generaria al servidor o via un endpoint de Supabase Edge Function.
-  // Aquí simulem la descàrrega del JSON (la lògica és idèntica a RevitExportPage).
-  const handleKitDownload = () => {
+  // Genera un ZIP real al client amb:
+  //   · CBT_Revit_Config.json  (generat dinàmicament)
+  //   · FULL_script.py         (des de /scripts/FULL_script.py)
+  //   · TEST_script.py         (des de /scripts/TEST_script.py)
+  //   · CBT_PARAMETRES-COMPARTITS.txt  (fitxer estàtic si existeix)
+  //   · README.txt             (instruccions en text pla)
+  //
+  // Usa fflate via CDN (carregat dinàmicament) per construir el ZIP sense
+  // afegir dependències al bundle principal.
+  const handleKitDownload = async () => {
+    // ── 1. Genera el JSON de configuració ──
     const exportable = equipments
       .filter((eq) => {
         if (!eq.needsTable) return false;
@@ -122,7 +129,7 @@ export function BimPortalPage() {
           nom: toFileName(nomComplet),
           cat,
           template: CATEGORY_CONFIG[cat]?.template ?? "Metric Generic Model.rft",
-          equip_code: eq.equipCode,
+          equip_code: eq.equipCode ?? "",
           table_code: eq.tableCode ?? "",
           params,
         };
@@ -135,14 +142,165 @@ export function BimPortalPage() {
       total: exportable.length,
       equipments: exportable,
     };
+    const jsonText = JSON.stringify(config, null, 2);
 
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
+    // ── 2. Fitxers estàtics a incloure al ZIP ──
+    const staticFiles: { url: string; zipName: string }[] = [
+      { url: "/scripts/FULL_script.py",   zipName: "FULL_script.py" },
+      { url: "/scripts/TEST_script.py",   zipName: "TEST_script.py" },
+    ];
+
+    const README = `CBT FamiliesKit — Instruccions
+================================
+
+CONTINGUT D'AQUEST ZIP:
+  · CBT_Revit_Config.json       — Configuració generada automàticament
+  · FULL_script.py              — Script pyRevit per crear TOTES les famílies
+  · TEST_script.py              — Script pyRevit per crear 1 família per categoria (test)
+  · README.txt                  — Aquest fitxer
+
+COM INSTAL·LAR:
+  1. Guarda CBT_Revit_Config.json a: C:\Users\<usuari>\Documents\CBT_Revit_Config.json
+  2. Guarda CBT_PARAMETRES-COMPARTITS.txt a: C:\Users\<usuari>\Documents\
+     (Obtén-lo de l'administrador BIM o descarrega'l des de la plataforma)
+  3. Copia FULL_script.py i TEST_script.py a les rutes de pyRevit:
+     TEST: %APPDATA%\pyRevit-Master\Extensions\CBT.extension\CBT.tab\CBT Tools.panel\Crear Families TEST.pushbutton\script.py
+     FULL: %APPDATA%\pyRevit-Master\Extensions\CBT.extension\CBT.tab\CBT Tools.panel\Crear Families FULL.pushbutton\script.py
+  4. Reinicia Revit i executa el botó "Crear Families TEST" per validar.
+  5. Si el TEST va bé, executa "Crear Families FULL" per generar totes les famílies.
+
+Compatible amb Revit 2020-2030.
+`;
+
+    // ── 3. Construeix el ZIP manualment (format ZIP sense compressió) ──
+    // Usem un builder mínim sense dependències externes.
+    const enc = new TextEncoder();
+
+    type ZipEntry = { name: string; data: Uint8Array };
+    const entries: ZipEntry[] = [];
+
+    // JSON dinàmic
+    entries.push({ name: "CBT_Revit_Config.json", data: enc.encode(jsonText) });
+    // README
+    entries.push({ name: "README.txt", data: enc.encode(README) });
+
+    // Fitxers estàtics (fetch)
+    const fetchResults = await Promise.allSettled(
+      staticFiles.map(({ url, zipName }) =>
+        fetch(url).then(async (r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status} per ${url}`);
+          const buf = await r.arrayBuffer();
+          return { name: zipName, data: new Uint8Array(buf) };
+        })
+      )
+    );
+
+    const errors: string[] = [];
+    for (const res of fetchResults) {
+      if (res.status === "fulfilled") {
+        entries.push(res.value);
+      } else {
+        errors.push((res.reason as Error).message);
+      }
+    }
+
+    if (errors.length > 0) {
+      console.warn("Alguns fitxers no s'han pogut incloure al ZIP:", errors);
+    }
+
+    // ── 4. Serialitza a format ZIP (Store, sense compressió) ──
+    function crc32(data: Uint8Array): number {
+      const table = new Uint32Array(256);
+      for (let i = 0; i < 256; i++) {
+        let c = i;
+        for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+        table[i] = c;
+      }
+      let crc = 0xffffffff;
+      for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+      return (crc ^ 0xffffffff) >>> 0;
+    }
+
+    function u16le(n: number): Uint8Array { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; }
+    function u32le(n: number): Uint8Array { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; }
+
+    const parts: Uint8Array[] = [];
+    const centralDir: Uint8Array[] = [];
+    let offset = 0;
+
+    for (const entry of entries) {
+      const nameBytes = enc.encode(entry.name);
+      const crc = crc32(entry.data);
+      const size = entry.data.length;
+
+      // Local file header
+      const localHeader = new Uint8Array([
+        0x50, 0x4b, 0x03, 0x04, // signature
+        20, 0,                   // version needed
+        0, 0,                    // flags
+        0, 0,                    // compression (Store)
+        0, 0, 0, 0,              // mod time/date (zeroed)
+        ...u32le(crc),
+        ...u32le(size),
+        ...u32le(size),
+        ...u16le(nameBytes.length),
+        0, 0,                    // extra field length
+        ...nameBytes,
+      ]);
+
+      // Central directory entry
+      const cdEntry = new Uint8Array([
+        0x50, 0x4b, 0x01, 0x02, // signature
+        20, 0,                   // version made by
+        20, 0,                   // version needed
+        0, 0,                    // flags
+        0, 0,                    // compression
+        0, 0, 0, 0,              // mod time/date
+        ...u32le(crc),
+        ...u32le(size),
+        ...u32le(size),
+        ...u16le(nameBytes.length),
+        0, 0,                    // extra field length
+        0, 0,                    // comment length
+        0, 0,                    // disk number start
+        0, 0,                    // internal attr
+        0, 0, 0, 0,              // external attr
+        ...u32le(offset),
+        ...nameBytes,
+      ]);
+
+      centralDir.push(cdEntry);
+      parts.push(localHeader, entry.data);
+      offset += localHeader.length + size;
+    }
+
+    const cdOffset = offset;
+    const cdSize = centralDir.reduce((s, b) => s + b.length, 0);
+
+    const eocd = new Uint8Array([
+      0x50, 0x4b, 0x05, 0x06,  // signature
+      0, 0,                     // disk number
+      0, 0,                     // disk with central dir
+      ...u16le(entries.length),
+      ...u16le(entries.length),
+      ...u32le(cdSize),
+      ...u32le(cdOffset),
+      0, 0,                     // comment length
+    ]);
+
+    const allParts = [...parts, ...centralDir, eocd];
+    const totalLen = allParts.reduce((s, b) => s + b.length, 0);
+    const zipBuffer = new Uint8Array(totalLen);
+    let pos = 0;
+    for (const p of allParts) { zipBuffer.set(p, pos); pos += p.length; }
+
+    const zipBlob = new Blob([zipBuffer], { type: "application/zip" });
+    const zipUrl = URL.createObjectURL(zipBlob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `CBT_Revit_Config_${new Date().toISOString().slice(0, 10)}.json`;
+    a.href = zipUrl;
+    a.download = `CBT_FamiliesKit_${new Date().toISOString().slice(0, 10)}.zip`;
     a.click();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(zipUrl);
 
     setKitDownloaded(true);
     setTimeout(() => setKitDownloaded(false), 3000);
@@ -232,7 +390,7 @@ export function BimPortalPage() {
                     <p className="text-sm font-medium text-slate-800">Manual BIM CBT v2.x</p>
                     <p className="text-xs text-slate-500 mt-0.5">Protocol, estàndards i requisits de lliurament</p>
                   </div>
-                  <a href="/docs/Manual_BIM_CBT.pdf" download>
+                  <a href="/docs/CBT_MANUAL-BIM.pdf" download>
                     <Button size="sm" variant="outline" className="gap-1.5 text-xs">
                       <Download className="h-3.5 w-3.5" />
                       PDF
@@ -259,7 +417,7 @@ export function BimPortalPage() {
                     <p className="text-sm font-medium text-slate-800">PEB_CBT.xlsx</p>
                     <p className="text-xs text-slate-500 mt-0.5">Pla d'Execució BIM del Consorci Besòs Tordera</p>
                   </div>
-                  <a href="/docs/PEB_CBT.xlsx" download>
+                  <a href="/docs/CBT_PEB.xlsm" download>
                     <Button size="sm" variant="outline" className="gap-1.5 text-xs">
                       <Download className="h-3.5 w-3.5" />
                       Excel
@@ -286,7 +444,7 @@ export function BimPortalPage() {
                     <p className="text-sm font-medium text-slate-800">CBT_Plantilla_Projecte.rvt</p>
                     <p className="text-xs text-slate-500 mt-0.5">Vistes, fulls i paràmetres CBT preconfigurats</p>
                   </div>
-                  <a href="/templates/CBT_Plantilla_Projecte.rvt" download>
+                  <a href="/templates/CBT_PLANTILLA.rte" download>
                     <Button size="sm" variant="outline" className="gap-1.5 text-xs">
                       <Download className="h-3.5 w-3.5" />
                       .rvt
