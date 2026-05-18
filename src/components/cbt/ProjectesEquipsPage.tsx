@@ -960,7 +960,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogNouProjecte(false)}>Cancel·la</Button>
-              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || nouCodisInstallacio.every(c => !c.trim())}>Crear projecte</Button>
+              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || nouCodisInstallacio.every(c => !c.codi.trim())}>Crear projecte</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1043,7 +1043,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogEditProjecte(null)}>Cancel·la</Button>
               <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={guardarEditProjecte}
-                disabled={!editNom.trim() || !editCodiProjecte.trim() || editCodisInstallacio.every(c => !c.trim())}>
+                disabled={!editNom.trim() || !editCodiProjecte.trim() || editCodisInstallacio.every(c => !c.codi.trim())}>
                 Guardar canvis
               </Button>
             </DialogFooter>
