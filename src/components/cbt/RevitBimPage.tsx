@@ -133,22 +133,26 @@ async function buildZip(entries: { name: string; data: Uint8Array }[]): Promise<
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-type Tab = "portal" | "exportacio";
+type Section = "documentacio" | "recursos";
 
-export function RevitBimPage() {
+interface RevitBimPageProps {
+  initialSection?: Section;
+}
+
+export function RevitBimPage({ initialSection = "documentacio" }: RevitBimPageProps) {
   const { equipments, fields, loading, error, retry } = useDataStore();
   const { canSeeView, canEditView } = useAuth();
 
-  // Permís: igual que les dues pàgines originals
   const canSee = canSeeView("revit");
+  const isEditor = canEditView("revit");
 
-  const [tab, setTab] = useState<Tab>("portal");
+  const [section, setSection] = useState<Section>(initialSection);
 
-  // ── Portal BIM state ──
-  const [kitDownloaded, setKitDownloaded] = useState(false);
+  // ── Documentació state ──
   const [search, setSearch] = useState("");
 
-  // ── Exportació state ──
+  // ── Recursos BIM state ──
+  const [kitDownloaded, setKitDownloaded] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [scriptDownloaded, setScriptDownloaded] = useState<"FULL" | "TEST" | null>(null);
   const [showScriptInstructions, setShowScriptInstructions] = useState(false);
@@ -389,31 +393,31 @@ Compatible amb Revit 2020-2030.`;
     <TooltipProvider>
       <div className="space-y-6">
 
-        {/* ── Capçalera + tabs ─────────────────────────────────────────────── */}
+        {/* ── Capçalera Portal BIM ─────────────────────────────────────────── */}
         <div>
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
                 <Building2 className="h-6 w-6 text-[#0099A8]" />
-                Revit & BIM
+                Portal BIM
               </h1>
               <p className="text-sm text-slate-500 mt-1">
-                Portal de documentació i exportació Revit del Consorci Besòs Tordera
+                Documentació, eines i recursos BIM del Consorci Besòs Tordera
               </p>
             </div>
           </div>
 
-          {/* Pestanyes */}
+          {/* Seccions */}
           <div className="flex border-b border-slate-200 gap-1">
             {([
-              { id: "portal" as Tab, label: "Portal BIM", icon: <BookOpen className="h-4 w-4" /> },
-              { id: "exportacio" as Tab, label: "Exportació Revit", icon: <Building2 className="h-4 w-4" />, adminOnly: false },
+              { id: "documentacio" as Section, label: "Documentació BIM", icon: <BookOpen className="h-4 w-4" /> },
+              { id: "recursos" as Section, label: "Recursos BIM", icon: <Package className="h-4 w-4" /> },
             ]).map(({ id, label, icon }) => (
               <button
                 key={id}
-                onClick={() => setTab(id)}
+                onClick={() => setSection(id)}
                 className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                  tab === id
+                  section === id
                     ? "border-[#0099A8] text-[#006E7A]"
                     : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
                 }`}
@@ -426,9 +430,9 @@ Compatible amb Revit 2020-2030.`;
         </div>
 
         {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* TAB: PORTAL BIM                                                   */}
+        {/* SECCIÓ: DOCUMENTACIÓ BIM                                          */}
         {/* ══════════════════════════════════════════════════════════════════ */}
-        {tab === "portal" && (
+        {section === "documentacio" && (
           <div className="space-y-6">
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -657,12 +661,12 @@ Compatible amb Revit 2020-2030.`;
         )}
 
         {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* TAB: EXPORTACIÓ REVIT                                             */}
+        {/* SECCIÓ: RECURSOS BIM                                              */}
         {/* ══════════════════════════════════════════════════════════════════ */}
-        {tab === "exportacio" && (
+        {section === "recursos" && (
           <div className="space-y-6">
 
-            {/* Botons d'acció */}
+            {/* Accions ràpides — scripts i JSON de configuració */}
             <div className="flex items-center gap-2 flex-wrap justify-end">
               <div className="flex items-center gap-1.5">
                 {(["TEST", "FULL"] as const).map((type) => (
