@@ -1,20 +1,19 @@
-// src/components/cbt/TaulaMasterMain.tsx
+// src/components/cbt/TaulaMasterMain.tsx — CBT redesign v2
 import { lazy, Suspense, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { ShieldOff, ChevronRight, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
-import { RevitExportPage } from "./RevitExportPage";
-import { BimPortalPage } from "./BimPortalPage";
+import { RevitBimPage } from "./RevitBimPage";
 import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
-import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
-import { ShieldOff } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
-// Lazy load dels diàlegs pesats (GuBIMClass i Camps segueixen com a diàlegs)
 const GubimClassManager = lazy(() =>
   import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager }))
 );
@@ -24,17 +23,20 @@ const FieldsDictionaryDialog = lazy(() =>
 
 function PageSkeleton() {
   return (
-    <div className="space-y-4 p-6">
-      <Skeleton className="h-8 w-48" />
-      <Skeleton className="h-4 w-72" />
-      <div className="grid grid-cols-3 gap-4 mt-6">
+    <div className="space-y-5 p-6">
+      <div className="space-y-1.5">
+        <Skeleton className="h-6 w-44" />
+        <Skeleton className="h-3.5 w-64" />
+      </div>
+      <div className="grid grid-cols-3 gap-3 mt-5">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i} className="p-5 border-0 shadow-sm bg-white">
-            <div className="flex items-center gap-4">
-              <Skeleton className="h-12 w-12 rounded-xl shrink-0" />
+          <Card key={i} className="p-5 border-slate-200 shadow-sm bg-white">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-11 w-11 rounded-xl shrink-0" />
               <div className="space-y-2 flex-1">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-7 w-14" />
+                <Skeleton className="h-2.5 w-20" />
+                <Skeleton className="h-6 w-14" />
+                <Skeleton className="h-2.5 w-24" />
               </div>
             </div>
           </Card>
@@ -44,51 +46,134 @@ function PageSkeleton() {
   );
 }
 
+const AccessDenied = () => (
+  <Card className="p-12 border-slate-100 shadow-sm bg-white flex flex-col items-center gap-4 text-center rounded-2xl">
+    <div className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center">
+      <ShieldOff className="h-6 w-6 text-slate-300" />
+    </div>
+    <div>
+      <p className="font-semibold text-slate-600 text-[14px]">Accés restringit</p>
+      <p className="text-[12.5px] text-slate-400 mt-1 leading-relaxed">
+        No tens permisos per accedir a aquesta secció.
+        <br />Contacta amb l&apos;administrador.
+      </p>
+    </div>
+  </Card>
+);
+
+// ─── Pàgina Taula Master amb botons per obrir pop-ups ────────────────────────
+function TaulaMasterPage() {
+  const { canSeeView } = useAuth();
+  const [gubimOpen, setGubimOpen] = useState(false);
+  const [campsOpen, setCampsOpen] = useState(false);
+
+  if (!canSeeView("equips")) return <AccessDenied />;
+
+  return (
+    <div className="space-y-5">
+      {/* Capçalera amb botons d'accés ràpid */}
+      <div className="flex items-start justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Taula Master</h1>
+          <p className="text-sm text-slate-500 mt-1">Llista i gestió de tots els equips tècnics</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {canSeeView("gubimclass") && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
+              onClick={() => setGubimOpen(true)}
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              GuBIMClass
+            </Button>
+          )}
+          {canSeeView("fields") && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
+              onClick={() => setCampsOpen(true)}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              Diccionari de camps
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Taula principal */}
+      <Card className="border-slate-100 shadow-sm bg-white overflow-hidden p-0 rounded-2xl">
+        <EquipmentsTable />
+      </Card>
+
+      {/* Pop-up GuBIMClass */}
+      <Dialog open={gubimOpen} onOpenChange={setGubimOpen}>
+        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sr-only">
+            <DialogTitle>GuBIMClass</DialogTitle>
+          </DialogHeader>
+          <div className="pt-6">
+            <Suspense fallback={<PageSkeleton />}>
+              <GubimClassManager />
+            </Suspense>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pop-up Diccionari de camps */}
+      <Dialog open={campsOpen} onOpenChange={setCampsOpen}>
+        <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full flex flex-col p-0 gap-0 overflow-hidden max-h-[90vh]">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Diccionari de camps</DialogTitle>
+          </DialogHeader>
+          <div className="p-6 pt-8 flex flex-col gap-4 overflow-hidden flex-1 min-h-0">
+            <Suspense fallback={<PageSkeleton />}>
+              <FieldsDictionaryDialog />
+            </Suspense>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export function TaulaMasterMain() {
-  const { canSeeView, canEditView, profile, user, isAdmin } = useAuth();
+  const { canSeeView, profile, user, isAdmin } = useAuth();
   const [activeSection, setActiveSection] = useState("dashboard");
-  const [gubim, setGubim] = useState(false);
-  const [dict, setDict] = useState(false);
 
   const profileLoaded = !!profile || !user;
   const noAccessAtAll =
     profileLoaded &&
-    !canSeeView("equips") &&
-    !canSeeView("gubimclass") &&
-    !canSeeView("fields") &&
-    !canSeeView("revit") &&
-    !canSeeView("projectes") &&
-    !canSeeView("rosmiman");
+    !canSeeView("equips") && !canSeeView("gubimclass") &&
+    !canSeeView("fields") && !canSeeView("revit") &&
+    !canSeeView("projectes") && !canSeeView("rosmiman");
 
-  const AccessDenied = () => (
-    <Card className="p-12 border-0 shadow-sm bg-white flex flex-col items-center gap-4 text-center">
-      <div className="h-14 w-14 rounded-full bg-slate-100 flex items-center justify-center">
-        <ShieldOff className="h-7 w-7 text-slate-400" />
-      </div>
-      <div>
-        <p className="font-semibold text-slate-700">Accés restringit</p>
-        <p className="text-sm text-muted-foreground mt-1">
-          No tens permisos per accedir a aquesta secció.
-          <br />
-          Contacta amb l&apos;administrador.
-        </p>
-      </div>
-    </Card>
-  );
+  const sectionTitles: Record<string, { title: string; sub: string }> = {
+    dashboard:          { title: "Resum general",        sub: "Visió global de l'estat de la Taula Master" },
+    equips:             { title: "Taula Master",          sub: "Llista i gestió de tots els equips tècnics" },
+    "revit-bim":        { title: "Documentació BIM",      sub: "Portal de recursos i famílies Revit" },
+    "projectes-equips": { title: "Llistat de projectes", sub: "Equips assignats per projecte" },
+    rosmiman:           { title: "TAGs Rosmiman",         sub: "Integració amb el sistema Rosmiman" },
+    usuaris:            { title: "Gestió d'usuaris",      sub: "Administració de comptes i permisos" },
+    canviapwd:          { title: "Canvia contrasenya",    sub: "Actualitza les teves credencials d'accés" },
+  };
+
+  const currentMeta = sectionTitles[activeSection] ?? { title: "TaulaMaster", sub: "" };
 
   const renderContent = () => {
     if (noAccessAtAll) {
       return (
-        <Card className="p-12 border-0 shadow-sm bg-white flex flex-col items-center gap-4 text-center">
-          <div className="h-14 w-14 rounded-full bg-slate-100 flex items-center justify-center">
-            <ShieldOff className="h-7 w-7 text-slate-400" />
+        <Card className="p-12 border-slate-100 shadow-sm bg-white flex flex-col items-center gap-4 text-center rounded-2xl">
+          <div className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center">
+            <ShieldOff className="h-6 w-6 text-slate-300" />
           </div>
           <div>
-            <p className="font-semibold text-slate-700">Sense accés assignat</p>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="font-semibold text-slate-600 text-[14px]">Sense accés assignat</p>
+            <p className="text-[12.5px] text-slate-400 mt-1 leading-relaxed">
               No tens permisos per veure cap secció d&apos;aquesta aplicació.
-              <br />
-              Contacta amb l&apos;administrador.
+              <br />Contacta amb l&apos;administrador.
             </p>
           </div>
         </Card>
@@ -96,12 +181,30 @@ export function TaulaMasterMain() {
     }
 
     switch (activeSection) {
-      case "dashboard":
+      case "dashboard": return <DashboardHome />;
+
+      case "equips":
+        return <TaulaMasterPage />;
+
+      case "revit-bim":
+        if (!canSeeView("revit")) return <AccessDenied />;
+        return <RevitBimPage />;
+
+      case "projectes-equips":
+        if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;
         return (
-          <DashboardHome
-            onGoEquips={() => setActiveSection("equips")}
-            onOpenGubim={() => setGubim(true)}
-            onOpenFields={() => setDict(true)}
+          <ProjectesEquipsPage
+            initialTab="projectes"
+            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
+          />
+        );
+
+      case "rosmiman":
+        if (!canSeeView("rosmiman")) return <AccessDenied />;
+        return (
+          <ProjectesEquipsPage
+            initialTab="rosmiman"
+            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
           />
         );
 
@@ -112,73 +215,76 @@ export function TaulaMasterMain() {
       case "canviapwd":
         return <ChangePasswordPage />;
 
-      case "revit":
-        if (!canSeeView("revit")) return <AccessDenied />;
-        return <RevitExportPage />;
-
-      case "portal-bim":
-        if (!canSeeView("revit")) return <AccessDenied />;
-        return <BimPortalPage />;
-
-      case "projectes-equips":
-        if (!canSeeView("projectes")) return <AccessDenied />;
-        return <ProjectesEquipsPage />;
-
-      case "rosmiman-equips":
-        if (!canSeeView("rosmiman")) return <AccessDenied />;
-        return <RosmimanEquipsPage />;
-
-      case "equips":
-      default:
-        if (!canSeeView("equips")) return <AccessDenied />;
-        return (
-          <div className="space-y-4">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Taula Master</h1>
-              <p className="text-sm text-slate-500 mt-1">
-                Llista i gestió de tots els equips tècnics
-              </p>
-            </div>
-            <Card className="p-4 border-0 shadow-sm bg-white">
-              <EquipmentsTable />
-            </Card>
-          </div>
-        );
+      default: return <DashboardHome />;
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F6F8] flex">
-      {/* Sidebar */}
-      <AppSidebar
-        activeSection={activeSection}
-        onSectionChange={setActiveSection}
-        onOpenGubim={() => setGubim(true)}
-        onOpenFields={() => setDict(true)}
-        onGoHome={() => setActiveSection("dashboard")}
-      />
+    <div className="min-h-screen flex" style={{ background: "var(--sand-100, #F3F4F2)" }}>
+      <AppSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
 
-      {/* Main content */}
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Spacer for mobile toggle button */}
-        <div className="h-14 lg:h-0 shrink-0" />
 
-        <main className="flex-1 px-4 lg:px-8 py-6 max-w-[1400px] w-full mx-auto">
+        {/* Topbar */}
+        <div
+          className="h-[54px] shrink-0 flex items-center px-5 lg:px-7 gap-4 sticky top-0 z-30"
+          style={{
+            background: "rgba(255,255,255,0.9)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            borderBottom: "1px solid rgba(0,90,99,0.08)",
+            boxShadow: "0 1px 0 rgba(0,90,99,0.04)",
+          }}
+        >
+          <div className="w-10 lg:w-0 shrink-0" />
+
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-[11.5px] text-slate-400 font-medium hidden sm:block">CBT</span>
+            <ChevronRight className="h-3 w-3 text-slate-300 hidden sm:block shrink-0" />
+            <span className="text-[14px] font-bold text-slate-800 leading-tight truncate tracking-tight">
+              {currentMeta.title}
+            </span>
+            {currentMeta.sub && (
+              <span className="hidden md:inline text-[12px] text-slate-400 ml-1 truncate">
+                — {currentMeta.sub}
+              </span>
+            )}
+          </div>
+
+          <div
+            className="hidden sm:flex items-center gap-1.5 text-[10.5px] font-medium px-3 py-1.5 rounded-full shrink-0"
+            style={{
+              background: "rgba(16,185,129,0.08)",
+              color: "#047857",
+              border: "1px solid rgba(16,185,129,0.18)",
+            }}
+          >
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            </span>
+            Sistema operatiu
+          </div>
+        </div>
+
+        {/* Contingut */}
+        <main className="flex-1 px-4 lg:px-8 py-6 max-w-[1440px] w-full mx-auto">
           <Suspense fallback={<PageSkeleton />}>{renderContent()}</Suspense>
         </main>
 
         {/* Footer */}
-        <footer className="px-8 py-3 border-t border-slate-200 bg-white flex items-center justify-between text-[10px] text-slate-400">
-          <span>Consorci Besòs · Tordera · TaulaMaster</span>
-          <span className="hidden sm:block">CBT © {new Date().getFullYear()}</span>
+        <footer
+          className="px-6 py-2 flex items-center justify-between"
+          style={{ borderTop: "1px solid rgba(0,90,99,0.08)", background: "rgba(255,255,255,0.7)" }}
+        >
+          <span className="text-[10.5px] text-slate-400">
+            Consorci Besòs · Tordera · TaulaMaster
+          </span>
+          <span className="hidden sm:block text-[10.5px]" style={{ color: "var(--cbt-400)" }}>
+            CBT © {new Date().getFullYear()}
+          </span>
         </footer>
       </div>
-
-      {/* GuBIMClass i Camps segueixen com a diàlegs flotants */}
-      <Suspense fallback={null}>
-        <GubimClassManager open={gubim} onOpenChange={setGubim} />
-        <FieldsDictionaryDialog open={dict} onOpenChange={setDict} />
-      </Suspense>
     </div>
   );
 }

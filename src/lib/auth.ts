@@ -29,12 +29,12 @@ export const ALL_VIEWS: AppView[] = [
 ];
 
 export const VIEW_LABELS: Record<AppView, string> = {
-  equips:     "Taula Master",
-  gubimclass: "GuBIMClass",
-  fields:     "Diccionari de camps",
-  revit:      "Exportació Revit",
-  projectes:  "Llistat de projectes",
-  rosmiman:   "Llistat d'equips Rosmiman",
+  equips:     "Taula Master (+ GuBIMClass i Diccionari de camps)",
+  gubimclass: "GuBIMClass (pop-up dins Taula Master)",
+  fields:     "Diccionari de camps (pop-up dins Taula Master)",
+  revit:      "Documentació BIM",
+  projectes:  "Llistat de projectes (+ TAGs Rosmiman)",
+  rosmiman:   "TAGs Rosmiman (pop-up dins Llistat de projectes)",
 };
 
 export const VIEW_ICONS: Record<AppView, string> = {
@@ -48,8 +48,12 @@ export const VIEW_ICONS: Record<AppView, string> = {
 
 export const VIEW_GROUPS: { label: string; views: AppView[] }[] = [
   {
-    label: "Equips i Taules",
-    views: ["equips", "gubimclass", "fields", "revit"],
+    label: "Taula Master",
+    views: ["equips", "gubimclass", "fields"],
+  },
+  {
+    label: "Portal BIM",
+    views: ["revit"],
   },
   {
     label: "Projectes",

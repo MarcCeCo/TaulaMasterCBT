@@ -18,6 +18,7 @@ import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
 import type { ProjectTag, Projecte, ProjectStatus, TagStatus } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
+import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -102,9 +103,23 @@ function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
 }
 
 // ─── component principal ──────────────────────────────────────────────────────
-export function ProjectesEquipsPage() {
-  const { canEditView, isAdmin, profile: myProfile, getToken } = useAuth();
+
+interface ProjectesEquipsPageProps {
+  initialTab?: "projectes" | "rosmiman";
+  onTabChange?: (tab: "projectes" | "rosmiman") => void;
+}
+
+export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: ProjectesEquipsPageProps) {
+  const { canEditView, canSeeView, isAdmin, profile: myProfile, getToken } = useAuth();
   const canEdit = canEditView("projectes");
+  const canSeeRosmiman = canSeeView("rosmiman");
+  const [tabActiva, setTabActivaInternal] = useState<"projectes" | "rosmiman">(initialTab);
+  const [rosmimanOpen, setRosmimanOpen] = useState(initialTab === "rosmiman");
+
+  const setTabActiva = (tab: "projectes" | "rosmiman") => {
+    setTabActivaInternal(tab);
+    onTabChange?.(tab);
+  };
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
@@ -546,6 +561,9 @@ export function ProjectesEquipsPage() {
   }, [equipmentsAmbCodi, equipSearch]);
 
   // ─── render ─────────────────────────────────────────────────────────────────
+  // Pestanya Rosmiman — ara s'obre com a pop-up (igual que GuBIMClass i Diccionari de camps)
+  // (eliminat el retorn anticipat; rosmimanOpen controla el Dialog)
+
   return (
     <TooltipProvider>
       <div className="space-y-6">
@@ -560,33 +578,58 @@ export function ProjectesEquipsPage() {
             )}
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-                {vista === "llistat" ? "Llistat d'equips per projectes" : projecteSeleccionat?.nom ?? "Projecte"}
+                {vista === "llistat" ? "Llistat de projectes" : projecteSeleccionat?.nom ?? "Projecte"}
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 {vista === "llistat"
-                  ? "Gestió de projectes i tags d'equips"
+                  ? "Gestió de projectes i TAGs d'equips"
                   : `Tags i equips del projecte · ${projecteSeleccionat?.descripcio || "sense descripció"}`}
               </p>
             </div>
           </div>
-          {vista === "llistat" && canEdit && (
-            <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setNouNom(""); setNouDesc(""); setDialogNouProjecte(true); }}>
-              <Plus className="h-3.5 w-3.5 mr-1.5" /> Nou projecte
-            </Button>
-          )}
-          {vista === "detail" && canEdit && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => obrirEditProjecte(projecteActiu!)}>
-                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edita projecte
+          <div className="flex gap-2 flex-wrap">
+            {vista === "llistat" && canSeeRosmiman && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
+                onClick={() => setRosmimanOpen(true)}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
+                TAGs Rosmiman
               </Button>
-              {projecteSeleccionat?.status === "actiu" && (
-                <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
-                  <Tags className="h-3.5 w-3.5 mr-1.5" /> Nou TAG
+            )}
+            {vista === "llistat" && canEdit && (
+              <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setNouNom(""); setNouDesc(""); setDialogNouProjecte(true); }}>
+                <Plus className="h-3.5 w-3.5" /> Nou projecte
+              </Button>
+            )}
+            {vista === "detail" && canEdit && (
+              <>
+                <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40" onClick={() => obrirEditProjecte(projecteActiu!)}>
+                  <Pencil className="h-3.5 w-3.5" /> Edita projecte
                 </Button>
-              )}
-            </div>
-          )}
+                {projecteSeleccionat?.status === "actiu" && (
+                  <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
+                    <Tags className="h-3.5 w-3.5" /> Nou TAG
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
         </div>
+
+        {/* Pop-up TAGs Rosmiman */}
+        <Dialog open={rosmimanOpen} onOpenChange={setRosmimanOpen}>
+          <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="sr-only">
+              <DialogTitle>TAGs Rosmiman</DialogTitle>
+            </DialogHeader>
+            <div className="pt-6">
+              <RosmimanEquipsPage />
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* ── VISTA: LLISTAT DE PROJECTES ─────────────────────────────────── */}
         {vista === "llistat" && (

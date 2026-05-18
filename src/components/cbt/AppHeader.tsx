@@ -1,8 +1,7 @@
-// src/components/cbt/AppHeader.tsx
-import { GitBranch, LogOut, Settings2, Users } from "lucide-react";
+// src/components/cbt/AppHeader.tsx — CBT redesign v2
+import { GitBranch, LogOut, Settings2, Users, Droplets } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import logo from "@/assets/Simbol_Web2.png";
 import { useAuth } from "@/lib/auth";
 
 interface Props {
@@ -13,99 +12,114 @@ interface Props {
 
 export function AppHeader({ onOpenGubim, onOpenFields, onOpenUsers }: Props) {
   const { profile, isAdmin, canEditView, canSeeView, signOut } = useAuth();
-  const ALL_VIEWS_LIST = ["equips","gubimclass","fields","revit","projectes","rosmiman"] as const;
+  const ALL_VIEWS_LIST = ["equips", "gubimclass", "fields", "revit", "projectes", "rosmiman"] as const;
   const hasAnyEditor = ALL_VIEWS_LIST.some((v) => canEditView(v));
+
+  const roleBadgeClass = isAdmin
+    ? "bg-violet-500/25 text-violet-100 border-violet-400/20"
+    : hasAnyEditor
+      ? "bg-[#1AAFC0]/20 text-[#8DD9E3] border-[#1AAFC0]/20"
+      : "bg-white/10 text-white/50 border-white/10";
+
+  const roleLabel = isAdmin ? "Admin" : hasAnyEditor ? "Editor" : "Visualitzador";
 
   return (
     <header
-      className="sticky top-0 z-40 border-b shadow-md"
-      style={{ background: "linear-gradient(135deg, #006E7A 0%, #0099A8 100%)" }}
+      className="sticky top-0 z-40"
+      style={{
+        background: "linear-gradient(135deg, #001F23 0%, #003D44 60%, #005A63 100%)",
+        borderBottom: "1px solid rgba(77,201,216,0.1)",
+        boxShadow: "0 2px 8px rgba(0,31,35,0.2)",
+      }}
     >
-      <div className="mx-auto max-w-[1600px] px-6 py-3 flex items-center gap-4">
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="h-10 w-10 rounded-full overflow-hidden bg-white/10 flex items-center justify-center shadow-inner">
-            <img
-              src={logo}
-              alt="Consorci Besòs Tordera"
-              className="h-9 w-9 object-contain rounded-full"
-            />
+      <div className="mx-auto max-w-[1600px] px-5 py-2.5 flex items-center gap-3">
+
+        {/* Marca */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <div
+            className="h-9 w-9 rounded-xl flex items-center justify-center"
+            style={{
+              background: "rgba(77,201,216,0.15)",
+              border: "1px solid rgba(77,201,216,0.25)",
+            }}
+          >
+            <Droplets className="h-[18px] w-[18px]" style={{ color: "#4DC9D8" }} />
           </div>
           <div className="hidden sm:block">
-            <div className="text-[10px] text-white/70 uppercase tracking-widest font-medium leading-none">
+            <div className="leading-none mb-[2px]" style={{ fontSize: "8.5px", fontWeight: 700, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(77,201,216,0.6)" }}>
               Consorci
             </div>
-            <div className="text-sm font-bold text-white leading-tight">Besòs · Tordera</div>
+            <div className="text-[13px] font-bold text-white leading-tight tracking-tight">
+              Besòs · Tordera
+            </div>
           </div>
         </div>
 
-        <div className="h-8 w-px bg-white/20 mx-1 shrink-0" />
+        <div className="h-5 w-px mx-1 shrink-0" style={{ background: "rgba(255,255,255,0.1)" }} />
 
+        {/* Títol */}
         <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold tracking-tight text-white">CBT · TaulaMaster</h1>
-          <p className="text-xs text-white/70">Gestió d'actius i paràmetres tècnics</p>
+          <h1 className="text-[13.5px] font-bold tracking-tight text-white leading-tight">
+            CBT · TaulaMaster
+          </h1>
+          <p className="text-[10.5px] leading-none mt-0.5" style={{ color: "rgba(255,255,255,0.35)" }}>
+            Gestió d'actius i paràmetres tècnics
+          </p>
         </div>
 
+        {/* Botons de navegació */}
         {canSeeView("gubimclass") && (
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenGubim}
-            className="text-white hover:bg-white/15 hover:text-white border border-white/20 gap-1.5"
+            variant="ghost" size="sm" onClick={onOpenGubim}
+            className="h-8 gap-1.5 text-[11.5px] font-semibold"
+            style={{ color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
           >
-            <GitBranch className="h-4 w-4" />
+            <GitBranch className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">GuBIMClass</span>
           </Button>
         )}
 
         {canSeeView("fields") && (
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenFields}
-            className="text-white hover:bg-white/15 hover:text-white border border-white/20 gap-1.5"
+            variant="ghost" size="sm" onClick={onOpenFields}
+            className="h-8 gap-1.5 text-[11.5px] font-semibold"
+            style={{ color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
           >
-            <Settings2 className="h-4 w-4" />
-            <span className="hidden sm:inline">Diccionari de camps</span>
+            <Settings2 className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Diccionari</span>
           </Button>
         )}
 
         {isAdmin && (
           <Button
-            variant="ghost"
-            size="sm"
-            onClick={onOpenUsers}
-            className="text-white hover:bg-white/15 hover:text-white border border-white/20 gap-1.5"
+            variant="ghost" size="sm" onClick={onOpenUsers}
+            className="h-8 gap-1.5 text-[11.5px] font-semibold"
+            style={{ color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
           >
-            <Users className="h-4 w-4" />
+            <Users className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Usuaris</span>
           </Button>
         )}
 
-        <div className="h-8 w-px bg-white/20 mx-1 shrink-0" />
-        <div className="hidden md:flex flex-col items-end">
-          <span className="text-xs text-white/90 font-medium leading-tight">
+        <div className="h-5 w-px mx-1 shrink-0" style={{ background: "rgba(255,255,255,0.1)" }} />
+
+        {/* Usuari */}
+        <div className="hidden md:flex flex-col items-end shrink-0">
+          <span className="text-[11.5px] text-white/70 font-semibold leading-tight">
             {profile?.full_name ?? profile?.email ?? ""}
           </span>
-          <Badge
-            className={`text-[10px] px-1.5 py-0 border-0 mt-0.5 ${
-              isAdmin
-                ? "bg-violet-400/30 text-violet-100"
-                : hasAnyEditor
-                  ? "bg-blue-400/30 text-blue-100"
-                  : "bg-white/20 text-white/70"
-            }`}
-          >
-            {isAdmin ? "Admin" : hasAnyEditor ? "Editor" : "Visualitzador"}
+          <Badge className={["text-[9px] px-1.5 py-0 border mt-0.5 font-bold", roleBadgeClass].join(" ")}>
+            {roleLabel}
           </Badge>
         </div>
+
         <Button
-          variant="ghost"
-          size="icon"
-          onClick={signOut}
-          className="text-white/80 hover:bg-white/15 hover:text-white h-8 w-8"
+          variant="ghost" size="icon" onClick={signOut}
+          className="h-8 w-8 shrink-0"
+          style={{ color: "rgba(255,255,255,0.35)", borderRadius: "8px" }}
           title="Tanca sessió"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-3.5 w-3.5" />
         </Button>
       </div>
     </header>

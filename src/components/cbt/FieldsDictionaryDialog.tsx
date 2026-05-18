@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
 import * as XLSX from "xlsx";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -15,11 +14,12 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 
-interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface Props {}
 
 const ROW_H = 38;
 const OVERSCAN = 8;
-const CONTAINER_H = 480;
+const CONTAINER_H = 560;
 
 function useDebounce<T>(value: T, ms = 180): T {
   const [dv, setDv] = useState(value);
@@ -51,7 +51,7 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
   return result;
 }
 
-export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
+export function FieldsDictionaryDialog(_props: Props = {}) {
   const { fields, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines } = useFields();
   const { removeFieldColFromAll } = useEquipments();
   const { canEditView } = useAuth();
@@ -164,21 +164,24 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[92vh] overflow-hidden flex flex-col">
-        <DialogHeader><DialogTitle>Diccionari de camps</DialogTitle></DialogHeader>
+    <div className="flex flex-col gap-4 overflow-hidden flex-1 min-h-0">
+      <div className="shrink-0">
+        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Diccionari de camps</h1>
+        <p className="text-sm text-slate-500 mt-1">Defineix i organitza els paràmetres tècnics CBT</p>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} />
+        {/* Filtres: 3 columnes iguals que omplen exactament l'ample del popup — mai es tallen */}
+        <div className="grid grid-cols-3 gap-2 shrink-0">
+          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200 min-w-0" />
           <Select value={grp} onValueChange={setGrp}>
-            <SelectTrigger><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
+            <SelectTrigger className="min-w-0 w-full"><SelectValue placeholder="Totes les agrupacions" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Totes les agrupacions</SelectItem>
               {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={cls} onValueChange={setCls}>
-            <SelectTrigger><SelectValue placeholder="Classificador" /></SelectTrigger>
+            <SelectTrigger className="min-w-0 w-full"><SelectValue placeholder="Tots els classificadors" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Tots els classificadors</SelectItem>
               {classifiers.map((c) => <SelectItem key={c.col} value={c.col}>{c.col}</SelectItem>)}
@@ -186,11 +189,11 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           </Select>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={exportXlsx}><Download className="h-4 w-4 mr-1" /> Exporta Excel</Button>
-          {canEdit && <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1" /> Importa Excel</Button>}
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Button variant="outline" size="sm" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta Excel</Button>
+          {canEdit && <Button variant="outline" size="sm" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa Excel</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
-          {canEdit && <Button size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nou camp</Button>}
+          {canEdit && <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4" /> Nou camp</Button>}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
@@ -206,11 +209,11 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
           <div className="ml-auto text-xs text-muted-foreground self-center">{filtered.length} camps</div>
         </div>
 
-        {/* Taula unificada: capçalera sticky dins el scroll container */}
-        <div className="border rounded-md flex-1 overflow-hidden flex flex-col min-h-0">
+        {/* Taula: scroll horitzontal (←→) i vertical (↑↓) propi — filtres sempre visibles */}
+        <div className="border border-slate-200 rounded-lg bg-white overflow-hidden flex-1 min-h-0">
           <div
             ref={containerRef}
-            className="flex-1 overflow-auto"
+            className="overflow-x-auto overflow-y-auto h-full"
             style={{ maxHeight: CONTAINER_H }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
           >
@@ -309,7 +312,6 @@ export function FieldsDictionaryDialog({ open, onOpenChange }: Props) {
             }
           }}
         />
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }

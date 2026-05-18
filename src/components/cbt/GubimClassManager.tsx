@@ -6,7 +6,6 @@ function useDebounce<T>(value: T, ms = 180): T {
   useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
   return dv;
 }
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -19,9 +18,10 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 
-interface Props { open: boolean; onOpenChange: (b: boolean) => void; }
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+interface Props {}
 
-export function GubimClassManager({ open, onOpenChange }: Props) {
+export function GubimClassManager(_props: Props = {}) {
   const { nodes, nodeMap, addNode, addMany, updateNode, removeNode, hasChildren, clearAll } = useGubimClass();
   const { canEditView } = useAuth();
   const canEdit = canEditView("gubimclass");
@@ -152,24 +152,24 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
   }, [sorted]);
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle>Gestió GuBIMClass</DialogTitle>
-            <div className="flex gap-2 mr-8">
-              {[1, 2, 3, 4].map((l) => (
-                <div key={l} className="flex items-center gap-1">
-                  <LevelBadge level={l as 1|2|3|4} />
-                  <span className="text-xs text-muted-foreground">{levelCounts[l]}</span>
-                </div>
-              ))}
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">GuBIMClass</h1>
+          <p className="text-sm text-slate-500 mt-1">Classificació jeràrquica d'elements BIM</p>
+        </div>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((l) => (
+            <div key={l} className="flex items-center gap-1">
+              <LevelBadge level={l as 1|2|3|4} />
+              <span className="text-xs text-muted-foreground">{levelCounts[l]}</span>
             </div>
-          </div>
-        </DialogHeader>
+          ))}
+        </div>
+      </div>
 
         {/* Formulari inline */}
-        <div className="flex flex-wrap items-start gap-2 p-3 border rounded-md bg-muted/30">
+        <div className="flex flex-wrap items-start gap-2 p-3 border border-slate-200 rounded-lg bg-slate-50/60">
           <div className="space-y-1">
             <label className="text-xs font-medium">Codi</label>
             <Input
@@ -202,12 +202,12 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
         {/* Toolbar */}
         <div className="flex flex-wrap gap-2 items-center">
           <div className="relative flex-1 min-w-[200px] max-w-sm">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca nodes…" className="pl-8 h-8" />
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Cerca nodes…" className="pl-8 h-8 border-slate-200" />
             {q && <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6" onClick={() => setQ("")}><X className="h-3 w-3" /></Button>}
           </div>
-          <Button size="sm" variant="outline" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta</Button>
-          {canEdit && <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
+          <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta</Button>
+          {canEdit && <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
           <AlertDialog>
             <AlertDialogTrigger asChild>
@@ -228,7 +228,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
 
         <div
           ref={containerRef}
-          className="border rounded-md flex-1 overflow-auto"
+          className="border border-slate-200 rounded-lg flex-1 overflow-auto bg-white"
           style={{ maxHeight: CONTAINER_H }}
           onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
         >
@@ -344,8 +344,7 @@ export function GubimClassManager({ open, onOpenChange }: Props) {
           </table>
           </TooltipProvider>
         </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }
 
