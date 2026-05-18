@@ -164,23 +164,24 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4" style={{ minHeight: 0 }}>
       <div>
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Diccionari de camps</h1>
         <p className="text-sm text-slate-500 mt-1">Defineix i organitza els paràmetres tècnics CBT</p>
       </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200 flex-1 min-w-[180px]" />
+        {/* Filtres: ocupen tot l'ample del popup en 3 columnes fixes */}
+        <div className="grid grid-cols-3 gap-2 w-full">
+          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200 w-full" />
           <Select value={grp} onValueChange={setGrp}>
-            <SelectTrigger className="min-w-[190px] w-auto"><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Totes les agrupacions" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Totes les agrupacions</SelectItem>
               {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={cls} onValueChange={setCls}>
-            <SelectTrigger className="min-w-[210px] w-auto"><SelectValue placeholder="Tots els classificadors" /></SelectTrigger>
+            <SelectTrigger className="w-full"><SelectValue placeholder="Tots els classificadors" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Tots els classificadors</SelectItem>
               {classifiers.map((c) => <SelectItem key={c.col} value={c.col}>{c.col}</SelectItem>)}
@@ -208,11 +209,11 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
           <div className="ml-auto text-xs text-muted-foreground self-center">{filtered.length} camps</div>
         </div>
 
-        {/* Taula unificada: capçalera sticky dins el scroll container */}
-        <div className="border border-slate-200 rounded-lg flex-1 overflow-hidden flex flex-col min-h-0 bg-white">
+        {/* Taula: scroll horitzontal i vertical independent dels filtres */}
+        <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
           <div
             ref={containerRef}
-            className="flex-1 overflow-auto"
+            className="overflow-auto"
             style={{ maxHeight: CONTAINER_H }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
           >

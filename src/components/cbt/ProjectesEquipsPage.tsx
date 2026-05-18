@@ -588,18 +588,18 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             </div>
           </div>
           {vista === "llistat" && canEdit && (
-            <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setNouNom(""); setNouDesc(""); setDialogNouProjecte(true); }}>
-              <Plus className="h-3.5 w-3.5 mr-1.5" /> Nou projecte
+            <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setNouNom(""); setNouDesc(""); setDialogNouProjecte(true); }}>
+              <Plus className="h-3.5 w-3.5" /> Nou projecte
             </Button>
           )}
           {vista === "detail" && canEdit && (
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => obrirEditProjecte(projecteActiu!)}>
-                <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edita projecte
+              <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40" onClick={() => obrirEditProjecte(projecteActiu!)}>
+                <Pencil className="h-3.5 w-3.5" /> Edita projecte
               </Button>
               {projecteSeleccionat?.status === "actiu" && (
-                <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
-                  <Tags className="h-3.5 w-3.5 mr-1.5" /> Nou TAG
+                <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
+                  <Tags className="h-3.5 w-3.5" /> Nou TAG
                 </Button>
               )}
             </div>
