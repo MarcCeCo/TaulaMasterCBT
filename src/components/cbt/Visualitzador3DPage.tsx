@@ -204,57 +204,11 @@ function InstallacioFormDialog({ open, onClose, onSave, initial, title, sistemaC
 
 // ─── Pop-up Visor 3D ──────────────────────────────────────────────────────────
 
-// ─── Fix: Radix Dialog + iframe focus-loss quan es canvia de finestra ─────────
-//
-// Quan l'iframe d'Autodesk captura el focus i l'usuari canvia de finestra/pestanya
-// (alt+tab, clic fora), el navegador emet un blur sobre l'iframe. Radix UI ho
-// interpreta com que el focus ha sortit del diàleg i aplica al <body>:
-//   - pointer-events: none   → la UI queda completament bloquejada
-//   - aria-hidden: "true"    → els lectors de pantalla perden l'arbre
-// i no els neteja en tornar, de manera que la plataforma deixa de respondre.
-//
-// La solució és escoltar `visibilitychange`: quan la pàgina torna a ser visible
-// (l'usuari ha tornat a la pestanya), netegem forçosament aquests atributs del body.
-// També ho netegem quan el diàleg es desmunta (cleanup), per si Radix ha deixat
-// residus en tancar-lo mentre la finestra estava en segon pla.
-
-function useRadixDialogFocusFix(enabled: boolean) {
-  useEffect(() => {
-    if (!enabled) return;
-
-    const fix = () => {
-      // Eliminem pointer-events: none si Radix l'ha posat al body
-      if (document.body.style.pointerEvents === "none") {
-        document.body.style.pointerEvents = "";
-      }
-      // Eliminem aria-hidden="true" si Radix l'ha posat al body
-      if (document.body.getAttribute("aria-hidden") === "true") {
-        document.body.removeAttribute("aria-hidden");
-      }
-    };
-
-    const handleVisibility = () => {
-      if (!document.hidden) fix();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    // Cleanup quan el diàleg es desmunta: netegem residus immediatament
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibility);
-      fix();
-    };
-  }, [enabled]);
-}
-
 function Visor3DDialog({ installacio, sistema, onClose }: {
   installacio: Installacio; sistema: Sistema; onClose: () => void;
 }) {
   const [iframeError, setIframeError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-
-  // Apliquem el fix mentre aquest diàleg estigui muntat
-  useRadixDialogFocusFix(true);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -315,14 +269,6 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
               allowFullScreen
               onError={() => setIframeError(true)}
               onLoad={(e) => {
-                // Quan l'iframe acaba de carregar, Radix pot haver deixat
-                // pointer-events:none al body → el netegem preventivament.
-                if (document.body.style.pointerEvents === "none") {
-                  document.body.style.pointerEvents = "";
-                }
-                if (document.body.getAttribute("aria-hidden") === "true") {
-                  document.body.removeAttribute("aria-hidden");
-                }
                 try {
                   const frame = e.currentTarget as HTMLIFrameElement;
                   if (frame.contentDocument !== null) {
@@ -485,6 +431,50 @@ function SistemaGroup({
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
+// ─── Fix: Radix Dialog deixa el body bloquejat en canviar de finestra ─────────
+//
+// Quan qualsevol diàleg de Radix és obert i l'usuari fa alt+tab o canvia de
+// pestanya, Radix detecta el blur i aplica al <body>:
+//   · style="pointer-events: none"  →  cap element de la UI respon a clics
+//   · aria-hidden="true"            →  l'arbre d'accessibilitat es trenca
+// però NO els neteja quan l'usuari torna. La plataforma queda morta fins a F5.
+//
+// Solució: escoltar `visibilitychange`. Quan la pàgina torna a ser visible
+// netegem forçosament els atributs residuals. A més, resetem `saving` si havia
+// quedat penjat (p.ex. el desar va acabar mentre la finestra era en segon pla).
+//
+// Motiu pel qual el fix va aquí i no als diàlegs fills: els diàlegs
+// (SistemaFormDialog, InstallacioFormDialog, Visor3DDialog) es desmunten
+// quan es tanquen, però el problema apareix MENTRE estan oberts. Posar el
+// listener al component pare garanteix que sempre estigui actiu.
+
+function useRadixBodyFix(setSaving: (v: boolean) => void) {
+  useEffect(() => {
+    const fix = () => {
+      // Radix posa pointer-events:none com a inline style al body
+      if (document.body.style.pointerEvents === "none") {
+        document.body.style.pointerEvents = "";
+      }
+      // Radix posa aria-hidden="true" com a atribut al body
+      if (document.body.getAttribute("aria-hidden") === "true") {
+        document.body.removeAttribute("aria-hidden");
+      }
+      // Si saving havia quedat penjat (la promise va acabar en segon pla
+      // però el setState no va actualitzar la UI), el resetem aquí.
+      setSaving(false);
+    };
+
+    const handleVisibility = () => {
+      if (!document.hidden) fix();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  // setSaving és estable (useState setter), no cal a les deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+}
+
 export function Visualitzador3DPage() {
   const { isAdmin, canEditView } = useAuth();
   const canEdit = isAdmin || canEditView("revit");
@@ -499,6 +489,9 @@ export function Visualitzador3DPage() {
   const [modeAdmin, setModeAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [opError, setOpError] = useState<string | null>(null);
+
+  // Apliquem el fix de Radix body (pointer-events + aria-hidden + saving penjat)
+  useRadixBodyFix(setSaving);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpanded = (id: string) =>
