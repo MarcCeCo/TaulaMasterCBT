@@ -86,13 +86,18 @@ export interface ProjectTag {
   createdAt: number;
 }
 
+export interface InstallacioItem {
+  codi: string;  // 5 car. alfanumèrics, majúscules
+  nom?: string;  // opcional, text lliure
+}
+
 export interface Projecte {
   id: string;
   nom: string;
   descripcio: string;
   codiProjecte: string;
-  /** Llista de codis d'instal·lació (mínim 1). Cada codi: 5 car. alfanum. */
-  codisInstallacio: string[];
+  /** Cada instal·lació: codi obligatori (5 car.) + nom opcional */
+  codisInstallacio: InstallacioItem[];
   /** @deprecated Usa codisInstallacio[0]. Mantingut per compatibilitat amb tags existents. */
   codiInstallacio: string;
   status: ProjectStatus;
@@ -138,11 +143,17 @@ const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
   // Suporta tant array (nou format) com string (format antic)
   const rawCodis = row.codis_installacio;
   const rawCodi  = row.codi_installacio ?? "";
-  let codisInstallacio: string[];
+  let codisInstallacio: InstallacioItem[];
   if (Array.isArray(rawCodis) && rawCodis.length > 0) {
-    codisInstallacio = rawCodis.map((c: string) => c.toUpperCase().trim()).filter(Boolean);
+    codisInstallacio = rawCodis.map((c: any) => {
+      if (typeof c === "object" && c !== null && c.codi) {
+        return { codi: String(c.codi).toUpperCase().trim(), nom: c.nom ?? "" };
+      }
+      // format antic: string simple
+      return { codi: String(c).toUpperCase().trim(), nom: "" };
+    }).filter(c => c.codi);
   } else if (rawCodi) {
-    codisInstallacio = [rawCodi.toUpperCase().trim()];
+    codisInstallacio = [{ codi: rawCodi.toUpperCase().trim(), nom: "" }];
   } else {
     codisInstallacio = [];
   }
@@ -152,7 +163,7 @@ const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
     descripcio:       row.descripcio       ?? "",
     codiProjecte:     row.codi_projecte    ?? "",
     codisInstallacio,
-    codiInstallacio:  codisInstallacio[0]  ?? "",
+    codiInstallacio:  codisInstallacio[0]?.codi  ?? "",
     status:           row.status           ?? "actiu",
     tags:             tags.filter(t => t.projecteId === row.id),
     createdAt:        row.created_at       ?? Date.now(),
@@ -165,7 +176,7 @@ const projecteToRow = (p: Projecte) => ({
   nom:              p.nom,
   descripcio:       p.descripcio,
   codi_projecte:    p.codiProjecte,
-  codi_installacio: p.codisInstallacio[0] ?? p.codiInstallacio,
+  codi_installacio: p.codisInstallacio[0]?.codi ?? p.codiInstallacio,
   codis_installacio: p.codisInstallacio,
   status:           p.status,
   created_at:       p.createdAt,
