@@ -431,50 +431,6 @@ function SistemaGroup({
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
-// ─── Fix: Radix Dialog deixa el body bloquejat en canviar de finestra ─────────
-//
-// Quan qualsevol diàleg de Radix és obert i l'usuari fa alt+tab o canvia de
-// pestanya, Radix detecta el blur i aplica al <body>:
-//   · style="pointer-events: none"  →  cap element de la UI respon a clics
-//   · aria-hidden="true"            →  l'arbre d'accessibilitat es trenca
-// però NO els neteja quan l'usuari torna. La plataforma queda morta fins a F5.
-//
-// Solució: escoltar `visibilitychange`. Quan la pàgina torna a ser visible
-// netegem forçosament els atributs residuals. A més, resetem `saving` si havia
-// quedat penjat (p.ex. el desar va acabar mentre la finestra era en segon pla).
-//
-// Motiu pel qual el fix va aquí i no als diàlegs fills: els diàlegs
-// (SistemaFormDialog, InstallacioFormDialog, Visor3DDialog) es desmunten
-// quan es tanquen, però el problema apareix MENTRE estan oberts. Posar el
-// listener al component pare garanteix que sempre estigui actiu.
-
-function useRadixBodyFix(setSaving: (v: boolean) => void) {
-  useEffect(() => {
-    const fix = () => {
-      // Radix posa pointer-events:none com a inline style al body
-      if (document.body.style.pointerEvents === "none") {
-        document.body.style.pointerEvents = "";
-      }
-      // Radix posa aria-hidden="true" com a atribut al body
-      if (document.body.getAttribute("aria-hidden") === "true") {
-        document.body.removeAttribute("aria-hidden");
-      }
-      // Si saving havia quedat penjat (la promise va acabar en segon pla
-      // però el setState no va actualitzar la UI), el resetem aquí.
-      setSaving(false);
-    };
-
-    const handleVisibility = () => {
-      if (!document.hidden) fix();
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  // setSaving és estable (useState setter), no cal a les deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-}
-
 export function Visualitzador3DPage() {
   const { isAdmin, canEditView } = useAuth();
   const canEdit = isAdmin || canEditView("revit");
@@ -489,9 +445,6 @@ export function Visualitzador3DPage() {
   const [modeAdmin, setModeAdmin] = useState(false);
   const [saving, setSaving] = useState(false);
   const [opError, setOpError] = useState<string | null>(null);
-
-  // Apliquem el fix de Radix body (pointer-events + aria-hidden + saving penjat)
-  useRadixBodyFix(setSaving);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpanded = (id: string) =>
