@@ -848,13 +848,22 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                       <tr>
                         <th className="p-3 w-8">
-                          <input
-                            type="checkbox"
-                            className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
-                            checked={selectedTagIds.size === projecteSeleccionat.tags.length && projecteSeleccionat.tags.length > 0}
-                            onChange={e => setSelectedTagIds(e.target.checked ? new Set(projecteSeleccionat.tags.map(t => t.id)) : new Set())}
-                            title="Seleccionar tots"
-                          />
+                          {(() => {
+                            const refEquipId = multiEditFirstTag?.equipId ?? null;
+                            const selectableTags = refEquipId
+                              ? projecteSeleccionat.tags.filter(t => t.equipId === refEquipId)
+                              : projecteSeleccionat.tags;
+                            const allSelected = selectableTags.length > 0 && selectableTags.every(t => selectedTagIds.has(t.id));
+                            return (
+                              <input
+                                type="checkbox"
+                                className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
+                                checked={allSelected}
+                                onChange={e => setSelectedTagIds(e.target.checked ? new Set(selectableTags.map(t => t.id)) : new Set())}
+                                title={refEquipId ? "Seleccionar tots els equips iguals" : "Seleccionar tots"}
+                              />
+                            );
+                          })()}
                         </th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">TAG complet</th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Equip</th>
@@ -893,13 +902,16 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                             {grup.tags.map(tag => {
                         const equip = equipMap.get(tag.equipId);
                         const isSelected = selectedTagIds.has(tag.id);
+                        const referenceEquipId = multiEditFirstTag?.equipId ?? null;
+                        const isDisabled = !isSelected && referenceEquipId !== null && tag.equipId !== referenceEquipId;
                         return (
-                          <tr key={tag.id} className={cn("border-t hover:bg-muted/30", isSelected && "bg-[#0099A8]/5")}>
+                          <tr key={tag.id} className={cn("border-t hover:bg-muted/30", isSelected && "bg-[#0099A8]/5", isDisabled && "opacity-40")}>
                             <td className="p-3 w-8">
                               <input
                                 type="checkbox"
-                                className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
+                                className="rounded border-slate-300 accent-[#0099A8] cursor-pointer disabled:cursor-not-allowed"
                                 checked={isSelected}
+                                disabled={isDisabled}
                                 onChange={() => toggleSelectTag(tag.id)}
                               />
                             </td>
