@@ -378,7 +378,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   // ─── accions tags ───────────────────────────────────────────────────────────
   function obrirNouTag() {
     const projecteActual = projectes.find(p => p.id === projecteActiu);
-    setTagCodiInstallacio(projecteActual?.codisInstallacio?.[0] ?? projecteActual?.codiInstallacio ?? "");
+    setTagCodiInstallacio(projecteActual?.codisInstallacio?.[0]?.codi ?? projecteActual?.codiInstallacio ?? "");
     setTagEquipId(""); setTagCcm("");
     setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagDescripcio(""); setTagError(null);
     setDialogNouTag(true);
