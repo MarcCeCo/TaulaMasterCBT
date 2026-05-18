@@ -2,9 +2,8 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Input } from "@/components/ui/input";
-import logo from "@/assets/Simbol_Web2.png";
 import { supabase } from "@/lib/supabase";
-import { Eye, EyeOff, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
+import { Eye, EyeOff, ArrowLeft, Loader2, CheckCircle2, Waves } from "lucide-react";
 
 type Mode = "login" | "reset";
 
@@ -13,19 +12,18 @@ export function LoginPage() {
   const [mode, setMode] = useState<Mode>("login");
 
   // Login
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail]           = useState("");
+  const [password, setPassword]     = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState("");
 
   // Reset
-  const [resetEmail, setResetEmail] = useState("");
+  const [resetEmail, setResetEmail]     = useState("");
   const [resetLoading, setResetLoading] = useState(false);
-  const [resetDone, setResetDone] = useState(false);
-  const [resetError, setResetError] = useState("");
+  const [resetDone, setResetDone]       = useState(false);
+  const [resetError, setResetError]     = useState("");
 
-  // Detectem si venim d'un canvi de contrasenya exitós
   const passwordJustUpdated =
     new URLSearchParams(window.location.search).get("passwordUpdated") === "1";
 
@@ -35,8 +33,8 @@ export function LoginPage() {
     setLoading(true);
     try {
       await signIn(email, password);
-    } catch (err: any) {
-      setError(err.message ?? "Credencials incorrectes");
+    } catch (err: unknown) {
+      setError((err as Error).message ?? "Credencials incorrectes");
     } finally {
       setLoading(false);
     }
@@ -47,127 +45,143 @@ export function LoginPage() {
     setResetError("");
     setResetLoading(true);
     try {
-      // redirectTo ha d'apuntar a /auth/callback perquè Supabase
-      // sàpiga on redirigir l'usuari després de clicar l'enllaç.
-      // IMPORTANT: aquesta URL ha d'estar a l'allowlist de Supabase:
-      //   Dashboard → Authentication → URL Configuration → Redirect URLs
       const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
         redirectTo: `${window.location.origin}/auth/callback`,
       });
       if (error) throw error;
       setResetDone(true);
-    } catch (err: any) {
-      setResetError(err.message ?? "Error enviant el correu");
+    } catch (err: unknown) {
+      setResetError((err as Error).message ?? "Error enviant el correu");
     } finally {
       setResetLoading(false);
     }
   };
 
+  /* ── Estils compartits ── */
+  const inputStyle: React.CSSProperties = {
+    height: "42px",
+    borderRadius: "8px",
+    border: "1px solid #D8DDD8",
+    background: "#F3F4F2",
+    fontSize: "13.5px",
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+    color: "#1A1F1E",
+    transition: "border-color .15s, background .15s",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "12px",
+    fontWeight: 500,
+    color: "#4A5450",
+    marginBottom: "5px",
+    fontFamily: "'DM Sans', system-ui, sans-serif",
+  };
+
   return (
     <div
-      className="min-h-screen flex items-center justify-center"
       style={{
-        background: "linear-gradient(135deg, #f0f9fa 0%, #e0f4f6 40%, #f5f7f8 100%)",
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "#F3F4F2",
+        fontFamily: "'DM Sans', system-ui, sans-serif",
       }}
     >
-      {/* Decorative blobs */}
-      <div
-        aria-hidden
-        style={{
-          position: "fixed", top: "-120px", right: "-120px",
-          width: "420px", height: "420px", borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(0,153,168,0.13) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        aria-hidden
-        style={{
-          position: "fixed", bottom: "-80px", left: "-80px",
-          width: "300px", height: "300px", borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(0,110,122,0.09) 0%, transparent 70%)",
-          pointerEvents: "none",
-        }}
-      />
+      {/* Blobs decoratius suaus */}
+      <div aria-hidden style={{
+        position: "fixed", top: "-80px", right: "-80px",
+        width: "360px", height: "360px", borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(0,153,168,.08) 0%, transparent 70%)",
+        pointerEvents: "none",
+      }} />
+      <div aria-hidden style={{
+        position: "fixed", bottom: "-60px", left: "-60px",
+        width: "260px", height: "260px", borderRadius: "50%",
+        background: "radial-gradient(circle, rgba(0,61,68,.06) 0%, transparent 70%)",
+        pointerEvents: "none",
+      }} />
 
-      <div
-        style={{
-          width: "100%", maxWidth: "400px", margin: "0 16px",
-          background: "rgba(255,255,255,0.88)",
-          backdropFilter: "blur(16px)",
-          borderRadius: "20px",
-          boxShadow: "0 4px 6px rgba(0,110,122,0.06), 0 20px 40px rgba(0,110,122,0.10), 0 0 0 1px rgba(0,153,168,0.08)",
-          padding: "44px 40px 40px",
-          position: "relative",
-        }}
-      >
-        {/* Logo + header */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px", marginBottom: "36px" }}>
-          <div
-            style={{
-              width: "72px", height: "72px", borderRadius: "18px",
-              background: "linear-gradient(135deg, rgba(0,153,168,0.12), rgba(0,110,122,0.08))",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              border: "1.5px solid rgba(0,153,168,0.18)",
-              boxShadow: "0 2px 12px rgba(0,153,168,0.12)",
-            }}
-          >
-            <img src={logo} alt="CBT" style={{ width: "52px", height: "52px", objectFit: "contain" }} />
+      {/* Targeta principal */}
+      <div style={{
+        width: "100%",
+        maxWidth: "380px",
+        margin: "0 16px",
+        background: "#FFFFFF",
+        borderRadius: "18px",
+        border: "1px solid #D8DDD8",
+        boxShadow: "0 1px 3px rgba(0,61,68,.06), 0 8px 24px rgba(0,61,68,.10)",
+        padding: "40px 36px 36px",
+        position: "relative",
+      }}>
+
+        {/* Logomarca */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", marginBottom: "32px" }}>
+          <div style={{
+            width: "60px", height: "60px",
+            borderRadius: "14px",
+            background: "linear-gradient(135deg, #003D44 0%, #007380 100%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            border: "1.5px solid rgba(0,61,68,.1)",
+            boxShadow: "0 2px 10px rgba(0,61,68,.15)",
+          }}>
+            <Waves style={{ width: "28px", height: "28px", color: "#4DC9D8" }} />
           </div>
           <div style={{ textAlign: "center" }}>
             <p style={{
-              fontSize: "10px", fontWeight: 600, letterSpacing: "0.14em",
-              textTransform: "uppercase" as const, color: "#0099A8", opacity: 0.7, marginBottom: "4px",
+              fontSize: "9.5px", fontWeight: 600, letterSpacing: ".14em",
+              textTransform: "uppercase", color: "#0099A8", opacity: .7, marginBottom: "3px",
             }}>
               Consorci Besòs · Tordera
             </p>
-            <h1 style={{ fontSize: "22px", fontWeight: 700, color: "#004F58", letterSpacing: "-0.01em" }}>
+            <h1 style={{
+              fontSize: "20px", fontWeight: 600, color: "#1A1F1E",
+              letterSpacing: "-.02em", margin: 0,
+            }}>
               CBT · TaulaMaster
             </h1>
           </div>
         </div>
 
-        {/* Banner de confirmació de nova contrasenya */}
+        {/* Banner contrasenya actualitzada */}
         {passwordJustUpdated && mode === "login" && (
-          <div
-            style={{
-              display: "flex", alignItems: "flex-start", gap: "10px",
-              padding: "12px 14px", borderRadius: "10px", marginBottom: "20px",
-              background: "rgba(0,153,168,0.07)",
-              border: "1.5px solid rgba(0,153,168,0.25)",
-            }}
-          >
-            <CheckCircle2 size={18} style={{ color: "#0099A8", flexShrink: 0, marginTop: "1px" }} />
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: "10px",
+            padding: "12px 14px", borderRadius: "10px", marginBottom: "20px",
+            background: "#EAF8FA", border: "1px solid #C8EFF4",
+          }}>
+            <CheckCircle2 size={16} style={{ color: "#0099A8", flexShrink: 0, marginTop: "2px" }} />
             <div>
-              <p style={{ fontSize: "13px", fontWeight: 700, color: "#006E7A", marginBottom: "2px" }}>
+              <p style={{ fontSize: "12.5px", fontWeight: 600, color: "#005A63", marginBottom: "2px" }}>
                 Contrasenya actualitzada
               </p>
-              <p style={{ fontSize: "12px", color: "#475569", lineHeight: "1.4" }}>
-                La teva contrasenya s'ha establert correctament. Inicia sessió per continuar.
+              <p style={{ fontSize: "12px", color: "#4A5450", lineHeight: "1.4" }}>
+                La teva contrasenya s'ha establert correctament.
               </p>
             </div>
           </div>
         )}
 
-        {/* ── LOGIN ── */}
+        {/* ── MODE LOGIN ── */}
         {mode === "login" && (
-          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>Correu electrònic</label>
+          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div>
+              <label style={labelStyle}>Correu electrònic</label>
               <Input
                 type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="usuari@example.com" required autoFocus
-                style={{ height: "44px", borderRadius: "10px", border: "1.5px solid rgba(0,153,168,0.2)", fontSize: "14px", background: "rgba(240,249,250,0.6)" }}
+                placeholder="usuari@besos-tordera.cat" required autoFocus
+                style={inputStyle}
               />
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>Contrasenya</label>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px" }}>
+                <label style={{ ...labelStyle, marginBottom: 0 }}>Contrasenya</label>
                 <button
                   type="button"
                   onClick={() => { setMode("reset"); setResetEmail(email); }}
-                  style={{ fontSize: "11px", color: "#0099A8", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 500, textDecoration: "underline", textUnderlineOffset: "2px" }}
+                  style={{ fontSize: "11.5px", color: "#0099A8", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 500, fontFamily: "'DM Sans', sans-serif" }}
                 >
                   Has oblidat la contrasenya?
                 </button>
@@ -175,20 +189,22 @@ export function LoginPage() {
               <div style={{ position: "relative" }}>
                 <Input
                   type={showPassword ? "text" : "password"} value={password}
-                  onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required
-                  style={{ height: "44px", borderRadius: "10px", border: "1.5px solid rgba(0,153,168,0.2)", fontSize: "14px", background: "rgba(240,249,250,0.6)", paddingRight: "44px" }}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••" required
+                  style={{ ...inputStyle, paddingRight: "44px" }}
                 />
                 <button
                   type="button" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}
                   style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: "#94a3b8", padding: "2px", display: "flex", alignItems: "center" }}
+                  aria-label={showPassword ? "Amaga la contrasenya" : "Mostra la contrasenya"}
                 >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
 
             {error && (
-              <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", fontSize: "12.5px", color: "#dc2626" }}>
+              <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(239,68,68,.05)", border: "1px solid rgba(239,68,68,.2)", fontSize: "12.5px", color: "#dc2626" }}>
                 {error}
               </div>
             )}
@@ -196,75 +212,83 @@ export function LoginPage() {
             <button
               type="submit" disabled={loading}
               style={{
-                height: "46px", borderRadius: "11px",
-                background: loading ? "rgba(0,153,168,0.5)" : "linear-gradient(135deg, #0099A8 0%, #006E7A 100%)",
-                color: "#fff", fontWeight: 700, fontSize: "14.5px", letterSpacing: "0.01em",
+                marginTop: "2px",
+                height: "42px", borderRadius: "10px",
+                background: loading
+                  ? "rgba(0,153,168,.45)"
+                  : "linear-gradient(135deg, #003D44 0%, #007380 100%)",
+                color: "#fff", fontWeight: 600, fontSize: "14px",
+                fontFamily: "'DM Sans', sans-serif",
+                letterSpacing: "-.01em",
                 border: "none", cursor: loading ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                boxShadow: loading ? "none" : "0 4px 14px rgba(0,153,168,0.28)",
-                transition: "transform 0.1s",
+                boxShadow: loading ? "none" : "0 2px 8px rgba(0,61,68,.2)",
+                transition: "opacity .15s",
               }}
             >
-              {loading && <Loader2 size={16} className="animate-spin" />}
+              {loading && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />}
               {loading ? "Accedint…" : "Accedeix"}
             </button>
           </form>
         )}
 
-        {/* ── RESET ── */}
+        {/* ── MODE RESET ── */}
         {mode === "reset" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
             <button
               type="button"
               onClick={() => { setMode("login"); setResetDone(false); setResetError(""); }}
-              style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#64748b", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 500, alignSelf: "flex-start" }}
+              style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "12px", color: "#4A5450", background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 500, alignSelf: "flex-start", fontFamily: "'DM Sans', sans-serif" }}
             >
-              <ArrowLeft size={13} /> Tornar a l'inici de sessió
+              <ArrowLeft size={12} /> Tornar a l'inici de sessió
             </button>
 
             <div style={{ textAlign: "center" }}>
-              <h2 style={{ fontSize: "17px", fontWeight: 700, color: "#004F58", marginBottom: "6px" }}>
+              <h2 style={{ fontSize: "16px", fontWeight: 600, color: "#1A1F1E", marginBottom: "5px", letterSpacing: "-.02em" }}>
                 Restablir contrasenya
               </h2>
-              <p style={{ fontSize: "13px", color: "#64748b", lineHeight: "1.5" }}>
-                T'enviarem un correu amb un enllaç per establir una nova contrasenya.
+              <p style={{ fontSize: "12.5px", color: "#4A5450", lineHeight: "1.5" }}>
+                T'enviarem un correu per establir una nova contrasenya.
               </p>
             </div>
 
             {resetDone ? (
-              <div style={{ padding: "16px 18px", borderRadius: "12px", background: "rgba(0,153,168,0.07)", border: "1.5px solid rgba(0,153,168,0.2)", textAlign: "center" }}>
-                <p style={{ fontSize: "13.5px", color: "#006E7A", fontWeight: 600, marginBottom: "4px" }}>✓ Correu enviat!</p>
-                <p style={{ fontSize: "12.5px", color: "#475569" }}>
-                  Comprova la safata d'entrada de <strong>{resetEmail}</strong> i segueix l'enllaç per restablir la contrasenya.
+              <div style={{ padding: "16px", borderRadius: "10px", background: "#EAF8FA", border: "1px solid #C8EFF4", textAlign: "center" }}>
+                <p style={{ fontSize: "13px", color: "#005A63", fontWeight: 600, marginBottom: "4px" }}>✓ Correu enviat!</p>
+                <p style={{ fontSize: "12px", color: "#4A5450" }}>
+                  Comprova la safata d'entrada de <strong>{resetEmail}</strong>.
                 </p>
               </div>
             ) : (
               <form onSubmit={handleReset} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <label style={{ fontSize: "12px", fontWeight: 600, color: "#334155" }}>Correu electrònic</label>
+                <div>
+                  <label style={labelStyle}>Correu electrònic</label>
                   <Input
                     type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)}
-                    placeholder="usuari@example.com" required autoFocus
-                    style={{ height: "44px", borderRadius: "10px", border: "1.5px solid rgba(0,153,168,0.2)", fontSize: "14px", background: "rgba(240,249,250,0.6)" }}
+                    placeholder="usuari@besos-tordera.cat" required autoFocus
+                    style={inputStyle}
                   />
                 </div>
                 {resetError && (
-                  <div style={{ padding: "10px 14px", borderRadius: "8px", background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", fontSize: "12.5px", color: "#dc2626" }}>
+                  <div style={{ padding: "10px 12px", borderRadius: "8px", background: "rgba(239,68,68,.05)", border: "1px solid rgba(239,68,68,.2)", fontSize: "12.5px", color: "#dc2626" }}>
                     {resetError}
                   </div>
                 )}
                 <button
                   type="submit" disabled={resetLoading}
                   style={{
-                    height: "46px", borderRadius: "11px",
-                    background: resetLoading ? "rgba(0,153,168,0.5)" : "linear-gradient(135deg, #0099A8 0%, #006E7A 100%)",
-                    color: "#fff", fontWeight: 700, fontSize: "14.5px", border: "none",
-                    cursor: resetLoading ? "not-allowed" : "pointer",
+                    height: "42px", borderRadius: "10px",
+                    background: resetLoading
+                      ? "rgba(0,153,168,.45)"
+                      : "linear-gradient(135deg, #003D44 0%, #007380 100%)",
+                    color: "#fff", fontWeight: 600, fontSize: "14px",
+                    fontFamily: "'DM Sans', sans-serif",
+                    border: "none", cursor: resetLoading ? "not-allowed" : "pointer",
                     display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
-                    boxShadow: resetLoading ? "none" : "0 4px 14px rgba(0,153,168,0.28)",
+                    boxShadow: resetLoading ? "none" : "0 2px 8px rgba(0,61,68,.2)",
                   }}
                 >
-                  {resetLoading && <Loader2 size={16} className="animate-spin" />}
+                  {resetLoading && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />}
                   {resetLoading ? "Enviant…" : "Envia l'enllaç"}
                 </button>
               </form>
@@ -272,7 +296,7 @@ export function LoginPage() {
           </div>
         )}
 
-        <p style={{ marginTop: "28px", textAlign: "center", fontSize: "11px", color: "#94a3b8", letterSpacing: "0.02em" }}>
+        <p style={{ marginTop: "24px", textAlign: "center", fontSize: "11px", color: "#94a3b8", letterSpacing: ".02em" }}>
           Accés restringit al personal autoritzat
         </p>
       </div>

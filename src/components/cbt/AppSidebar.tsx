@@ -6,6 +6,7 @@ import {
   FolderOpen,
   GitBranch,
   KeyRound,
+  LayoutDashboard,
   LogOut,
   Menu,
   Package,
@@ -14,12 +15,11 @@ import {
   Table2,
   Tags,
   Users,
-  LayoutDashboard,
+  Waves,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import logo from "@/assets/Simbol_Web2.png";
 import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
@@ -55,11 +55,11 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
     {
       id: "inici",
       label: "Inici",
-      icon: <LayoutDashboard className="h-4 w-4" />,
+      icon: <LayoutDashboard className="h-3.5 w-3.5" />,
       items: [
         {
           id: "dashboard",
-          label: "Resum",
+          label: "Resum general",
           icon: <LayoutDashboard className="h-4 w-4" />,
           section: "dashboard",
         },
@@ -68,7 +68,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
     {
       id: "dades",
       label: "Dades",
-      icon: <Table2 className="h-4 w-4" />,
+      icon: <Table2 className="h-3.5 w-3.5" />,
       items: [
         {
           id: "equips",
@@ -96,7 +96,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
     {
       id: "portal-bim",
       label: "Portal BIM",
-      icon: <Building2 className="h-4 w-4" />,
+      icon: <Building2 className="h-3.5 w-3.5" />,
       items: [
         {
           id: "revit-bim",
@@ -110,7 +110,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
     {
       id: "projectes",
       label: "Projectes",
-      icon: <FolderOpen className="h-4 w-4" />,
+      icon: <FolderOpen className="h-3.5 w-3.5" />,
       items: [
         {
           id: "projectes-equips",
@@ -131,7 +131,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
     {
       id: "administracio",
       label: "Administració",
-      icon: <Shield className="h-4 w-4" />,
+      icon: <Shield className="h-3.5 w-3.5" />,
       items: [
         {
           id: "usuaris",
@@ -155,30 +155,53 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
     setMobileOpen(false);
   };
 
+  /* Avatar inicial */
+  const initials = ((profile?.full_name ?? profile?.email ?? "?")[0] ?? "?").toUpperCase();
+
+  /* Badge de rol */
+  const roleBadgeClass = isAdmin
+    ? "bg-violet-500/20 text-violet-200 border-violet-400/20"
+    : hasAnyEditor
+      ? "bg-[#1AAFC0]/20 text-[#8DD9E3] border-[#1AAFC0]/20"
+      : "bg-white/10 text-white/50 border-white/10";
+
+  const roleLabel = isAdmin ? "Admin" : hasAnyEditor ? "Editor" : "Visualitzador";
+
+  /* ─ Contingut del sidebar ─────────────────────────────────────────── */
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-      {/* Logo */}
+
+      {/* Capçalera / marca */}
       <div
-        className="px-4 py-5 flex items-center gap-3 border-b border-white/10 cursor-pointer"
-        style={{ background: "linear-gradient(135deg, #006E7A 0%, #0099A8 100%)" }}
+        className="px-4 py-[18px] flex items-center gap-3 border-b border-white/8 cursor-pointer select-none shrink-0"
         onClick={() => { onSectionChange("dashboard"); setMobileOpen(false); }}
         title="Inici · Resum"
       >
-        <div className="h-10 w-10 rounded-full overflow-hidden bg-white/15 flex items-center justify-center shadow-inner shrink-0">
-          <img src={logo} alt="CBT" className="h-9 w-9 object-contain rounded-full" />
+        <div className="h-9 w-9 rounded-[10px] bg-white/12 border border-white/18 flex items-center justify-center shrink-0">
+          <Waves className="h-5 w-5 text-[#4DC9D8]" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[9px] text-white/60 uppercase tracking-widest font-medium leading-none">Consorci</div>
-          <div className="text-sm font-bold text-white leading-tight truncate">Besòs · Tordera</div>
-          <div className="text-[10px] text-white/60 leading-tight">TaulaMaster</div>
+          <div className="text-[9.5px] font-medium tracking-[0.14em] uppercase text-white/40 leading-tight">
+            Consorci
+          </div>
+          <div className="text-[13.5px] font-semibold text-white leading-tight tracking-tight truncate">
+            Besòs · Tordera
+          </div>
+          <div className="text-[10px] text-white/35 leading-tight">
+            TaulaMaster
+          </div>
         </div>
-        <button className="lg:hidden text-white/70 hover:text-white ml-1" onClick={() => setMobileOpen(false)}>
-          <X className="h-5 w-5" />
+        <button
+          className="lg:hidden text-white/40 hover:text-white/80 transition-colors ml-1 shrink-0"
+          onClick={(e) => { e.stopPropagation(); setMobileOpen(false); }}
+          aria-label="Tanca el menú"
+        >
+          <X className="h-4 w-4" />
         </button>
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-1">
+      {/* Navegació */}
+      <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5 scrollbar-none">
         {groups.map((group) => {
           if (group.adminOnly && !isAdmin) return null;
 
@@ -190,26 +213,33 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
           if (visibleItems.length === 0) return null;
 
           return (
-            <div key={group.id}>
-              <div className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-[#006E7A]">
-                <span className="text-[#0099A8]">{group.icon}</span>
-                <span className="flex-1 text-left">{group.label}</span>
+            <div key={group.id} className="mb-3">
+              {/* Etiqueta de grup */}
+              <div className="flex items-center gap-1.5 px-2.5 py-2 text-[9.5px] font-semibold uppercase tracking-[0.12em] text-white/35">
+                <span className="text-white/30">{group.icon}</span>
+                <span>{group.label}</span>
               </div>
-              <div className="ml-2 mt-0.5 space-y-0.5">
+
+              {/* Items */}
+              <div className="space-y-0.5">
                 {visibleItems.map((item) => {
                   const isActive = activeSection === item.section;
                   return (
                     <button
                       key={item.id}
                       className={cn(
-                        "w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-all",
+                        "relative w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-[6px]",
+                        "text-[13px] font-normal transition-all duration-150 text-left",
                         isActive
-                          ? "bg-[#0099A8]/12 text-[#006E7A] font-semibold"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-[#006E7A]"
+                          ? "bg-white/10 text-white font-medium cbt-sidebar-active-bar"
+                          : "text-white/50 hover:bg-white/7 hover:text-white/80"
                       )}
                       onClick={() => handleItemClick(item)}
                     >
-                      <span className={cn("shrink-0", isActive ? "text-[#0099A8]" : "text-slate-400")}>
+                      <span className={cn(
+                        "shrink-0 transition-colors",
+                        isActive ? "text-[#4DC9D8]" : "text-white/30"
+                      )}>
                         {item.icon}
                       </span>
                       <span className="truncate">{item.label}</span>
@@ -222,33 +252,29 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
         })}
       </nav>
 
-      {/* User footer */}
-      <div className="border-t border-slate-100 px-3 py-3 bg-slate-50/50">
-        <div className="flex items-center gap-2 mb-2">
-          <div className="h-8 w-8 rounded-full bg-[#0099A8]/15 flex items-center justify-center shrink-0">
-            <span className="text-xs font-bold text-[#006E7A]">
-              {((profile?.full_name ?? profile?.email ?? "")[0] ?? "?").toUpperCase()}
-            </span>
+      {/* Peu d'usuari */}
+      <div className="px-3 py-3 border-t border-white/8 shrink-0">
+        <div className="flex items-center gap-2.5">
+          {/* Avatar */}
+          <div className="h-8 w-8 rounded-full bg-white/12 border border-white/15 flex items-center justify-center shrink-0">
+            <span className="text-[11px] font-semibold text-white/80">{initials}</span>
           </div>
+          {/* Info */}
           <div className="flex-1 min-w-0">
-            <div className="text-xs font-medium text-slate-700 truncate">
+            <div className="text-[12px] text-white/70 font-medium truncate leading-tight">
               {profile?.full_name ?? profile?.email ?? ""}
             </div>
-            <Badge
-              className={cn(
-                "text-[9px] px-1.5 py-0 border-0 mt-0.5",
-                isAdmin ? "bg-violet-100 text-violet-700"
-                  : hasAnyEditor ? "bg-blue-100 text-blue-700"
-                  : "bg-slate-100 text-slate-500"
-              )}
-            >
-              {isAdmin ? "Admin" : hasAnyEditor ? "Editor" : "Visualitzador"}
+            <Badge className={cn("text-[9px] px-1.5 py-0 border mt-0.5 font-medium", roleBadgeClass)}>
+              {roleLabel}
             </Badge>
           </div>
+          {/* Logout */}
           <Button
-            variant="ghost" size="icon" onClick={signOut}
-            className="h-7 w-7 text-slate-400 hover:text-slate-700 hover:bg-slate-200 shrink-0"
+            variant="ghost"
+            size="icon"
+            onClick={signOut}
             title="Tanca sessió"
+            className="h-7 w-7 text-white/30 hover:text-white/70 hover:bg-white/8 shrink-0"
           >
             <LogOut className="h-3.5 w-3.5" />
           </Button>
@@ -259,27 +285,43 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
 
   return (
     <>
+      {/* Botó hamburguesa (mòbil) */}
       <button
-        className="lg:hidden fixed top-4 left-4 z-50 h-9 w-9 rounded-md bg-white shadow-md border border-slate-200 flex items-center justify-center text-[#006E7A]"
+        className={cn(
+          "lg:hidden fixed top-3.5 left-3.5 z-50 h-9 w-9 rounded-lg",
+          "bg-[#003D44] shadow-md border border-white/10",
+          "flex items-center justify-center text-white/70 hover:text-white transition-colors"
+        )}
         onClick={() => setMobileOpen(true)}
+        aria-label="Obre el menú"
       >
-        <Menu className="h-5 w-5" />
+        <Menu className="h-4.5 w-4.5" />
       </button>
 
+      {/* Overlay mòbil */}
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-black/40" onClick={() => setMobileOpen(false)} />
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
       )}
 
+      {/* Drawer mòbil */}
       <div
         className={cn(
-          "lg:hidden fixed top-0 left-0 z-50 h-full w-64 bg-white shadow-xl transition-transform duration-200",
+          "lg:hidden fixed top-0 left-0 z-50 h-full w-60 transition-transform duration-200",
+          "bg-[#003D44]",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
         <SidebarContent />
       </div>
 
-      <aside className="hidden lg:flex flex-col w-60 shrink-0 border-r border-slate-200 bg-white h-screen sticky top-0">
+      {/* Sidebar escriptori */}
+      <aside
+        className="hidden lg:flex flex-col w-[224px] shrink-0 h-screen sticky top-0"
+        style={{ background: "var(--cbt-900, #003D44)" }}
+      >
         <SidebarContent />
       </aside>
     </>
