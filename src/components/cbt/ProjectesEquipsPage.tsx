@@ -784,10 +784,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </Card>
             ) : (
               <Card className="border-0 shadow-sm bg-white overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 320px)" }}>
                   <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50/60">
+                    <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                      <tr>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">TAG complet</th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Equip</th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estat</th>
