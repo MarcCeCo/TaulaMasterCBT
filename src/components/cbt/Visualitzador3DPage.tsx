@@ -5,7 +5,7 @@
 // Llista totes les instal·lacions agrupades per sistema en una taula.
 // Clicar "Visualitzar" obre el visor Autodesk 360 en un pop-up.
 // Admins/Editors poden crear, editar i eliminar sistemes i instal·lacions.
-// Les dades es persisteixen en localStorage (clau: "cbt_visor3d_sistemes").
+// Les dades es persisteixen a Supabase (taules: visor3d_sistemes, visor3d_installacions).
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -47,80 +47,15 @@ import {
   Search,
   AlertTriangle,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-
-// ─── Tipus ────────────────────────────────────────────────────────────────────
-
-interface Installacio {
-  id: string;
-  nom: string;
-  descripcio?: string;
-  codiInstallacio?: string;
-  embedUrl: string;
-}
-
-interface Sistema {
-  id: string;
-  nom: string;
-  descripcio?: string;
-  color: string;
-  installacions: Installacio[];
-}
-
-// ─── Dades inicials ───────────────────────────────────────────────────────────
-
-const SISTEMES_INICIALS: Sistema[] = [
-  {
-    id: "depuradores",
-    nom: "Estacions Depuradores",
-    descripcio: "EDAR i instal·lacions de tractament d'aigües residuals",
-    color: "#0099A8",
-    installacions: [
-      {
-        id: "ed-llagosta",
-        nom: "ED005 La Llagosta",
-        descripcio: "Estació depuradora de La Llagosta",
-        codiInstallacio: "ED005",
-        embedUrl:
-          "https://besostordera.autodesk360.com/g/shares/SH512d4QTec90decfa6e44d59b851f10e507?mode=embed",
-      },
-    ],
-  },
-  {
-    id: "sanejament",
-    nom: "Sistemes de Sanejament",
-    descripcio: "Xarxes i instal·lacions de sanejament i col·lectors",
-    color: "#6366F1",
-    installacions: [],
-  },
-];
-
-const STORAGE_KEY = "cbt_visor3d_sistemes";
-
-function generateId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-// ─── Persistència ─────────────────────────────────────────────────────────────
-
-function useSistemes() {
-  const [sistemes, setSistemes] = useState<Sistema[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) return JSON.parse(raw) as Sistema[];
-    } catch { /* ignore */ }
-    return SISTEMES_INICIALS;
-  });
-
-  const save = useCallback((next: Sistema[]) => {
-    setSistemes(next);
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* ignore */ }
-  }, []);
-
-  return { sistemes, save };
-}
+import {
+  useVisor3DSistemes,
+  type Sistema,
+  type Installacio,
+} from "@/hooks/useVisor3DSistemes";
 
 // ─── Colors predefinits ───────────────────────────────────────────────────────
 
@@ -135,10 +70,11 @@ const COLORS_PRESET = [
 interface SistemaFormData { nom: string; descripcio: string; color: string; }
 const SISTEMA_BUIT: SistemaFormData = { nom: "", descripcio: "", color: "#0099A8" };
 
-function SistemaFormDialog({ open, onClose, onSave, initial, title }: {
+function SistemaFormDialog({ open, onClose, onSave, initial, title, saving }: {
   open: boolean; onClose: () => void;
   onSave: (d: SistemaFormData) => void;
   initial?: SistemaFormData; title: string;
+  saving?: boolean;
 }) {
   const [form, setForm] = useState<SistemaFormData>(initial ?? SISTEMA_BUIT);
   useEffect(() => { if (open) setForm(initial ?? SISTEMA_BUIT); }, [open, initial]);
@@ -185,10 +121,11 @@ function SistemaFormDialog({ open, onClose, onSave, initial, title }: {
           </div>
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel·lar</Button>
-          <Button size="sm" disabled={!valid} onClick={() => valid && onSave(form)}
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel·lar</Button>
+          <Button size="sm" disabled={!valid || saving} onClick={() => valid && onSave(form)}
             className="bg-[#0099A8] hover:bg-[#007a87] text-white">
-            <Check className="h-3.5 w-3.5 mr-1.5" /> Desar
+            {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1.5" />}
+            Desar
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -201,11 +138,12 @@ function SistemaFormDialog({ open, onClose, onSave, initial, title }: {
 interface InstallacioFormData { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string; }
 const INSTALLACIO_BUIDA: InstallacioFormData = { nom: "", descripcio: "", codiInstallacio: "", embedUrl: "" };
 
-function InstallacioFormDialog({ open, onClose, onSave, initial, title, sistemaColor, sistemaNom }: {
+function InstallacioFormDialog({ open, onClose, onSave, initial, title, sistemaColor, sistemaNom, saving }: {
   open: boolean; onClose: () => void;
   onSave: (d: InstallacioFormData) => void;
   initial?: InstallacioFormData; title: string;
   sistemaColor: string; sistemaNom: string;
+  saving?: boolean;
 }) {
   const [form, setForm] = useState<InstallacioFormData>(initial ?? INSTALLACIO_BUIDA);
   useEffect(() => { if (open) setForm(initial ?? INSTALLACIO_BUIDA); }, [open, initial]);
@@ -252,10 +190,11 @@ function InstallacioFormDialog({ open, onClose, onSave, initial, title, sistemaC
           </div>
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" size="sm" onClick={onClose}>Cancel·lar</Button>
-          <Button size="sm" disabled={!valid} onClick={() => valid && onSave(form)}
+          <Button variant="outline" size="sm" onClick={onClose} disabled={saving}>Cancel·lar</Button>
+          <Button size="sm" disabled={!valid || saving} onClick={() => valid && onSave(form)}
             style={{ background: sistemaColor }} className="text-white hover:opacity-90">
-            <Check className="h-3.5 w-3.5 mr-1.5" /> Desar
+            {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Check className="h-3.5 w-3.5 mr-1.5" />}
+            Desar
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -275,16 +214,11 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden"
         style={{ maxHeight: "90vh" }}>
-        {/* Capçalera */}
         <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 bg-white shrink-0">
-          <div
-            className="h-7 w-1 rounded-full shrink-0"
-            style={{ background: sistema.color }}
-          />
+          <div className="h-7 w-1 rounded-full shrink-0" style={{ background: sistema.color }} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] font-bold uppercase tracking-widest"
-                style={{ color: sistema.color }}>
+              <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: sistema.color }}>
                 {sistema.nom}
               </span>
               <ChevronRight className="h-3 w-3 text-slate-300" />
@@ -306,8 +240,6 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
             <X className="h-4 w-4" />
           </button>
         </div>
-
-        {/* Visor */}
         <div className="relative w-full bg-slate-50" style={{ height: "75vh" }}>
           {iframeError ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
@@ -343,7 +275,7 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
                     const t = frame.contentDocument?.title ?? "";
                     if (t.toLowerCase().includes("error") || t === "") setIframeError(true);
                   }
-                } catch { /* cross-origin, normal */ }
+                } catch { /* cross-origin */ }
               }}
             />
           )}
@@ -378,13 +310,11 @@ function SistemaGroup({
     );
   }, [sistema.installacions, filterQ]);
 
-  // Si hi ha cerca activa i cap coincidència, amaga el grup
   const hasFilter = filterQ.trim().length > 0;
   if (hasFilter && filtered.length === 0) return null;
 
   return (
     <>
-      {/* Fila de capçalera del sistema */}
       <tr
         className="cursor-pointer select-none hover:bg-slate-50 transition-colors"
         style={{ background: `${sistema.color}08` }}
@@ -408,7 +338,6 @@ function SistemaGroup({
             )}
           </div>
         </td>
-        {/* Accions del sistema en mode edició */}
         {modeAdmin && (
           <td className="p-2 text-right" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center gap-1 justify-end">
@@ -430,16 +359,13 @@ function SistemaGroup({
         )}
       </tr>
 
-      {/* Files d'instal·lacions */}
       {expanded && filtered.map((inst, idx) => (
         <tr key={inst.id}
           className={cn("border-t border-slate-50 hover:bg-slate-50/60 transition-colors",
             idx % 2 === 0 ? "bg-white" : "bg-slate-50/30")}>
-          {/* Barra de color + indent */}
           <td className="p-0 w-0">
             <div className="h-full w-0.5 ml-6" style={{ background: `${sistema.color}30` }} />
           </td>
-          {/* Codi */}
           <td className="py-2.5 pl-8 pr-2">
             {inst.codiInstallacio ? (
               <span className="font-mono text-[11px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
@@ -447,7 +373,6 @@ function SistemaGroup({
               </span>
             ) : <span className="text-slate-300 text-xs">—</span>}
           </td>
-          {/* Nom */}
           <td className="py-2.5 px-2">
             <p className="text-[12px] font-semibold text-slate-700 uppercase tracking-wide leading-tight">
               {inst.nom}
@@ -456,14 +381,12 @@ function SistemaGroup({
               <p className="text-[10.5px] text-slate-400 mt-0.5 leading-snug">{inst.descripcio}</p>
             )}
           </td>
-          {/* URL embed (truncada) */}
           <td className="py-2.5 px-2 hidden lg:table-cell">
             <span className="text-[10px] font-mono text-slate-400 truncate block max-w-[240px]"
               title={inst.embedUrl}>
               {inst.embedUrl}
             </span>
           </td>
-          {/* Accions */}
           <td className="py-2.5 px-3 text-right whitespace-nowrap">
             <div className="flex items-center gap-1.5 justify-end">
               <Button size="sm"
@@ -489,7 +412,6 @@ function SistemaGroup({
         </tr>
       ))}
 
-      {/* Fila buida si expandit i sense instal·lacions */}
       {expanded && sistema.installacions.length === 0 && (
         <tr className="border-t border-slate-50">
           <td colSpan={modeAdmin ? 6 : 5} className="py-4 pl-12 text-xs text-slate-400 italic">
@@ -513,24 +435,29 @@ export function Visualitzador3DPage() {
   const { isAdmin, canEditView } = useAuth();
   const canEdit = isAdmin || canEditView("revit");
 
-  const { sistemes, save } = useSistemes();
+  const {
+    sistemes, loading, error, refetch,
+    createSistema, updateSistema, deleteSistema,
+    createInstallacio, updateInstallacio, deleteInstallacio,
+  } = useVisor3DSistemes();
+
   const [filterQ, setFilterQ] = useState("");
   const [modeAdmin, setModeAdmin] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [opError, setOpError] = useState<string | null>(null);
 
-  // Grups expandits (tots per defecte)
-  const [expanded, setExpanded] = useState<Set<string>>(
-    () => new Set(SISTEMES_INICIALS.map(s => s.id))
-  );
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggleExpanded = (id: string) =>
     setExpanded(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
-  // Pop-up visor
-  const [visor, setVisor] = useState<{ inst: Installacio; sistema: Sistema } | null>(null);
-
-  // Diàlegs CRUD
-  const [sistemaDialeg, setSistemaDialeg] = useState<{ open: boolean; mode: "create" | "edit"; target?: Sistema }>({ open: false, mode: "create" });
-  const [installacioDialeg, setInstallacioDialeg] = useState<{ open: boolean; mode: "create" | "edit"; sistema?: Sistema; target?: Installacio }>({ open: false, mode: "create" });
-  const [deleteDialeg, setDeleteDialeg] = useState<{ open: boolean; type: "sistema" | "installacio"; id: string; sistemaId?: string; nom: string } | null>(null);
+  // Expandeix tots quan es carreguen per primera vegada
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (!initializedRef.current && sistemes.length > 0) {
+      setExpanded(new Set(sistemes.map(s => s.id)));
+      initializedRef.current = true;
+    }
+  }, [sistemes]);
 
   // Expandeix nous sistemes afegits
   useEffect(() => {
@@ -541,57 +468,67 @@ export function Visualitzador3DPage() {
     });
   }, [sistemes]);
 
-  // Compte total
+  const [visor, setVisor] = useState<{ inst: Installacio; sistema: Sistema } | null>(null);
+  const [sistemaDialeg, setSistemaDialeg] = useState<{ open: boolean; mode: "create" | "edit"; target?: Sistema }>({ open: false, mode: "create" });
+  const [installacioDialeg, setInstallacioDialeg] = useState<{ open: boolean; mode: "create" | "edit"; sistema?: Sistema; target?: Installacio }>({ open: false, mode: "create" });
+  const [deleteDialeg, setDeleteDialeg] = useState<{ open: boolean; type: "sistema" | "installacio"; id: string; sistemaId?: string; nom: string } | null>(null);
+
   const totalInstallacions = sistemes.reduce((acc, s) => acc + s.installacions.length, 0);
 
-  // ── Handlers Sistemes ──────────────────────────────────────────────────────
+  const withSave = useCallback(async (fn: () => Promise<void>) => {
+    setSaving(true);
+    setOpError(null);
+    try {
+      await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setOpError(`Error desant: ${msg}`);
+    } finally {
+      setSaving(false);
+    }
+  }, []);
 
   const handleSaveSistema = (data: { nom: string; descripcio: string; color: string }) => {
-    if (sistemaDialeg.mode === "create") {
-      const nou: Sistema = { id: generateId(), ...data, installacions: [] };
-      save([...sistemes, nou]);
-    } else if (sistemaDialeg.target) {
-      save(sistemes.map(s => s.id === sistemaDialeg.target!.id ? { ...s, ...data } : s));
-    }
-    setSistemaDialeg({ open: false, mode: "create" });
+    withSave(async () => {
+      if (sistemaDialeg.mode === "create") {
+        await createSistema(data);
+      } else if (sistemaDialeg.target) {
+        await updateSistema(sistemaDialeg.target.id, data);
+      }
+      setSistemaDialeg({ open: false, mode: "create" });
+    });
   };
 
   const handleDeleteSistema = (id: string) => {
-    save(sistemes.filter(s => s.id !== id));
-    setDeleteDialeg(null);
+    withSave(async () => {
+      await deleteSistema(id);
+      setDeleteDialeg(null);
+    });
   };
 
-  // ── Handlers Instal·lacions ────────────────────────────────────────────────
-
-  const handleSaveInstallacio = (data: InstallacioFormData) => {
+  const handleSaveInstallacio = (data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string }) => {
     const sistema = installacioDialeg.sistema;
     if (!sistema) return;
-    if (installacioDialeg.mode === "create") {
-      const nova: Installacio = { id: generateId(), ...data };
-      save(sistemes.map(s => s.id === sistema.id ? { ...s, installacions: [...s.installacions, nova] } : s));
-    } else if (installacioDialeg.target) {
-      save(sistemes.map(s => s.id === sistema.id
-        ? { ...s, installacions: s.installacions.map(i => i.id === installacioDialeg.target!.id ? { ...i, ...data } : i) }
-        : s
-      ));
-    }
-    setInstallacioDialeg({ open: false, mode: "create" });
+    withSave(async () => {
+      if (installacioDialeg.mode === "create") {
+        await createInstallacio(sistema.id, data);
+      } else if (installacioDialeg.target) {
+        await updateInstallacio(sistema.id, installacioDialeg.target.id, data);
+      }
+      setInstallacioDialeg({ open: false, mode: "create" });
+    });
   };
 
   const handleDeleteInstallacio = (sistemaId: string, id: string) => {
-    save(sistemes.map(s => s.id === sistemaId
-      ? { ...s, installacions: s.installacions.filter(i => i.id !== id) }
-      : s
-    ));
-    setDeleteDialeg(null);
+    withSave(async () => {
+      await deleteInstallacio(sistemaId, id);
+      setDeleteDialeg(null);
+    });
   };
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Capçalera */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
@@ -613,7 +550,6 @@ export function Visualitzador3DPage() {
         )}
       </div>
 
-      {/* Banner mode edició */}
       {modeAdmin && (
         <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm text-[#005A63] font-medium"
           style={{ background: "#0099A815", border: "1px solid #0099A830" }}>
@@ -622,7 +558,16 @@ export function Visualitzador3DPage() {
         </div>
       )}
 
-      {/* Barra d'eines */}
+      {opError && (
+        <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm text-red-700 font-medium bg-red-50 border border-red-200">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {opError}
+          <button onClick={() => setOpError(null)} className="ml-auto text-red-400 hover:text-red-600">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
@@ -632,77 +577,98 @@ export function Visualitzador3DPage() {
         </div>
         {modeAdmin && (
           <Button size="sm" onClick={() => setSistemaDialeg({ open: true, mode: "create" })}
+            disabled={saving}
             className="gap-1.5 bg-[#0099A8] hover:bg-[#007a87] text-white h-8">
             <Plus className="h-3.5 w-3.5" /> Nou sistema
           </Button>
         )}
-        <div className="ml-auto text-xs text-slate-400 self-center">
+        <div className="ml-auto text-xs text-slate-400 self-center flex items-center gap-1.5">
+          {loading && <Loader2 className="h-3 w-3 animate-spin" />}
           {sistemes.length} sistema{sistemes.length !== 1 ? "s" : ""} · {totalInstallacions} instal·lació{totalInstallacions !== 1 ? "ns" : ""}
         </div>
       </div>
 
-      {/* Taula */}
-      <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: 700 }}>
-            <colgroup>
-              <col style={{ width: 4 }} />
-              <col style={{ width: 90 }} />
-              <col style={{ width: "auto" }} />
-              <col style={{ width: 260 }} />
-              <col style={{ width: modeAdmin ? 180 : 130 }} />
-            </colgroup>
-            <thead className="sticky top-0 z-10 bg-white border-b border-slate-200">
-              <tr className="text-left">
-                <th className="p-0" />
-                <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">Codi</th>
-                <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Instal·lació</th>
-                <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 hidden lg:table-cell">URL Model</th>
-                <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Accions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sistemes.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-16 text-center text-slate-400">
-                    <Building2 className="h-8 w-8 mx-auto mb-2 text-slate-200" />
-                    <p className="text-sm">No hi ha sistemes configurats.</p>
-                    {modeAdmin && (
-                      <Button size="sm" variant="outline" className="mt-3 gap-1"
-                        onClick={() => setSistemaDialeg({ open: true, mode: "create" })}>
-                        <Plus className="h-3.5 w-3.5" /> Crear primer sistema
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ) : (
-                sistemes.map((sistema) => (
-                  <SistemaGroup
-                    key={sistema.id}
-                    sistema={sistema}
-                    expanded={expanded.has(sistema.id)}
-                    onToggle={() => toggleExpanded(sistema.id)}
-                    canEdit={canEdit}
-                    modeAdmin={modeAdmin}
-                    filterQ={filterQ}
-                    onVisualitzar={(inst) => setVisor({ inst, sistema })}
-                    onEditSistema={() => setSistemaDialeg({ open: true, mode: "edit", target: sistema })}
-                    onDeleteSistema={() => setDeleteDialeg({ open: true, type: "sistema", id: sistema.id, nom: sistema.nom })}
-                    onAddInstallacio={() => {
-                      setExpanded(prev => new Set([...prev, sistema.id]));
-                      setInstallacioDialeg({ open: true, mode: "create", sistema });
-                    }}
-                    onEditInstallacio={(inst) => setInstallacioDialeg({ open: true, mode: "edit", sistema, target: inst })}
-                    onDeleteInstallacio={(inst) => setDeleteDialeg({ open: true, type: "installacio", id: inst.id, sistemaId: sistema.id, nom: inst.nom })}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
+      {loading && sistemes.length === 0 && (
+        <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
+          <div className="py-16 flex flex-col items-center gap-3 text-slate-400">
+            <Loader2 className="h-7 w-7 animate-spin text-[#0099A8]" />
+            <p className="text-sm">Carregant sistemes…</p>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Pop-up Visor 3D ──────────────────────────────────────────────────── */}
+      {error && !loading && (
+        <div className="border border-red-200 rounded-xl bg-red-50 p-6 flex flex-col items-center gap-3 text-red-600">
+          <AlertTriangle className="h-7 w-7" />
+          <p className="text-sm font-medium">{error}</p>
+          <Button size="sm" variant="outline" onClick={refetch} className="gap-1.5 text-red-600 border-red-200 hover:bg-red-100">
+            Reintentar
+          </Button>
+        </div>
+      )}
+
+      {!loading && !error && (
+        <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: 700 }}>
+              <colgroup>
+                <col style={{ width: 4 }} />
+                <col style={{ width: 90 }} />
+                <col style={{ width: "auto" }} />
+                <col style={{ width: 260 }} />
+                <col style={{ width: modeAdmin ? 180 : 130 }} />
+              </colgroup>
+              <thead className="sticky top-0 z-10 bg-white border-b border-slate-200">
+                <tr className="text-left">
+                  <th className="p-0" />
+                  <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">Codi</th>
+                  <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Instal·lació</th>
+                  <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 hidden lg:table-cell">URL Model</th>
+                  <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Accions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sistemes.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-16 text-center text-slate-400">
+                      <Building2 className="h-8 w-8 mx-auto mb-2 text-slate-200" />
+                      <p className="text-sm">No hi ha sistemes configurats.</p>
+                      {modeAdmin && (
+                        <Button size="sm" variant="outline" className="mt-3 gap-1"
+                          onClick={() => setSistemaDialeg({ open: true, mode: "create" })}>
+                          <Plus className="h-3.5 w-3.5" /> Crear primer sistema
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ) : (
+                  sistemes.map((sistema) => (
+                    <SistemaGroup
+                      key={sistema.id}
+                      sistema={sistema}
+                      expanded={expanded.has(sistema.id)}
+                      onToggle={() => toggleExpanded(sistema.id)}
+                      canEdit={canEdit}
+                      modeAdmin={modeAdmin}
+                      filterQ={filterQ}
+                      onVisualitzar={(inst) => setVisor({ inst, sistema })}
+                      onEditSistema={() => setSistemaDialeg({ open: true, mode: "edit", target: sistema })}
+                      onDeleteSistema={() => setDeleteDialeg({ open: true, type: "sistema", id: sistema.id, nom: sistema.nom })}
+                      onAddInstallacio={() => {
+                        setExpanded(prev => new Set([...prev, sistema.id]));
+                        setInstallacioDialeg({ open: true, mode: "create", sistema });
+                      }}
+                      onEditInstallacio={(inst) => setInstallacioDialeg({ open: true, mode: "edit", sistema, target: inst })}
+                      onDeleteInstallacio={(inst) => setDeleteDialeg({ open: true, type: "installacio", id: inst.id, sistemaId: sistema.id, nom: inst.nom })}
+                    />
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {visor && (
         <Visor3DDialog
           installacio={visor.inst}
@@ -711,18 +677,17 @@ export function Visualitzador3DPage() {
         />
       )}
 
-      {/* ── Diàleg Sistema ───────────────────────────────────────────────────── */}
       <SistemaFormDialog
         open={sistemaDialeg.open}
         onClose={() => setSistemaDialeg({ open: false, mode: "create" })}
         onSave={handleSaveSistema}
         title={sistemaDialeg.mode === "create" ? "Nou sistema" : "Editar sistema"}
+        saving={saving}
         initial={sistemaDialeg.target
           ? { nom: sistemaDialeg.target.nom, descripcio: sistemaDialeg.target.descripcio ?? "", color: sistemaDialeg.target.color }
           : undefined}
       />
 
-      {/* ── Diàleg Instal·lació ──────────────────────────────────────────────── */}
       <InstallacioFormDialog
         open={installacioDialeg.open}
         onClose={() => setInstallacioDialeg({ open: false, mode: "create" })}
@@ -730,12 +695,12 @@ export function Visualitzador3DPage() {
         title={installacioDialeg.mode === "create" ? "Nova instal·lació" : "Editar instal·lació"}
         sistemaColor={installacioDialeg.sistema?.color ?? "#0099A8"}
         sistemaNom={installacioDialeg.sistema?.nom ?? ""}
+        saving={saving}
         initial={installacioDialeg.target
           ? { nom: installacioDialeg.target.nom, descripcio: installacioDialeg.target.descripcio ?? "", codiInstallacio: installacioDialeg.target.codiInstallacio ?? "", embedUrl: installacioDialeg.target.embedUrl }
           : undefined}
       />
 
-      {/* ── Confirmar eliminació ─────────────────────────────────────────────── */}
       <AlertDialog open={!!deleteDialeg?.open} onOpenChange={(o) => !o && setDeleteDialeg(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -749,13 +714,16 @@ export function Visualitzador3DPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel·lar</AlertDialogCancel>
-            <AlertDialogAction className="bg-red-500 hover:bg-red-600 text-white"
+            <AlertDialogCancel disabled={saving}>Cancel·lar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              disabled={saving}
               onClick={() => {
                 if (!deleteDialeg) return;
                 if (deleteDialeg.type === "sistema") handleDeleteSistema(deleteDialeg.id);
                 else handleDeleteInstallacio(deleteDialeg.sistemaId!, deleteDialeg.id);
               }}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
               Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
