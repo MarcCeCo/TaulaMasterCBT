@@ -47,8 +47,6 @@ import {
   X,
   Check,
   Link,
-  Hash,
-  Tag,
   AlignLeft,
   Palette,
 } from "lucide-react";
@@ -69,7 +67,6 @@ interface Sistema {
   id: string;
   nom: string;
   descripcio?: string;
-  icona?: string;
   color: string;
   installacions: Installacio[];
 }
@@ -81,7 +78,6 @@ const SISTEMES_INICIALS: Sistema[] = [
     id: "depuradores",
     nom: "Estacions Depuradores",
     descripcio: "EDAR i instal·lacions de tractament d'aigües residuals",
-    icona: "💧",
     color: "#0099A8",
     installacions: [
       {
@@ -98,7 +94,6 @@ const SISTEMES_INICIALS: Sistema[] = [
     id: "sanejament",
     nom: "Sistemes de Sanejament",
     descripcio: "Xarxes i instal·lacions de sanejament i col·lectors",
-    icona: "🔩",
     color: "#6366F1",
     installacions: [],
   },
@@ -148,14 +143,12 @@ const COLORS_PRESET = [
 interface SistemaFormData {
   nom: string;
   descripcio: string;
-  icona: string;
   color: string;
 }
 
 const SISTEMA_BUIT: SistemaFormData = {
   nom: "",
   descripcio: "",
-  icona: "🏭",
   color: "#0099A8",
 };
 
@@ -193,7 +186,7 @@ function SistemaFormDialog({
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <Tag className="h-3 w-3" /> Nom del sistema *
+              <AlignLeft className="h-3 w-3" /> Nom del sistema *
             </Label>
             <Input
               value={form.nom}
@@ -212,19 +205,6 @@ function SistemaFormDialog({
               onChange={(e) => setForm((f) => ({ ...f, descripcio: e.target.value }))}
               placeholder="Descripció breu (opcional)"
               className="text-sm"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <Hash className="h-3 w-3" /> Icona (emoji)
-            </Label>
-            <Input
-              value={form.icona}
-              onChange={(e) => setForm((f) => ({ ...f, icona: e.target.value }))}
-              placeholder="💧"
-              className="text-sm w-24"
-              maxLength={4}
             />
           </div>
 
@@ -326,7 +306,7 @@ function InstallacioFormDialog({
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <Tag className="h-3 w-3" /> Nom de la instal·lació *
+              <AlignLeft className="h-3 w-3" /> Nom de la instal·lació *
             </Label>
             <Input
               value={form.nom}
@@ -338,7 +318,7 @@ function InstallacioFormDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
-              <Hash className="h-3 w-3" /> Codi instal·lació
+              <Palette className="h-3 w-3" /> Codi instal·lació
             </Label>
             <Input
               value={form.codiInstallacio}
@@ -405,12 +385,8 @@ export function Visualitzador3DPage() {
 
   const { sistemes, save } = useSistemes();
 
-  const [sistemaActiu, setSistemaActiu] = useState<Sistema | null>(
-    sistemes.length > 0 ? sistemes[0] : null
-  );
-  const [installacioActiva, setInstallacioActiva] = useState<Installacio | null>(
-    sistemes[0]?.installacions[0] ?? null
-  );
+  const [sistemaActiu, setSistemaActiu] = useState<Sistema | null>(null);
+  const [installacioActiva, setInstallacioActiva] = useState<Installacio | null>(null);
   const [iframeError, setIframeError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [modeAdmin, setModeAdmin] = useState(false);
@@ -621,20 +597,18 @@ export function Visualitzador3DPage() {
                           : { border: "1px solid transparent" }
                       }
                     >
-                      <span
-                        className="h-8 w-8 rounded-lg flex items-center justify-center text-sm shrink-0"
-                        style={{ background: isActive ? `${sistema.color}20` : "#f1f5f9" }}
-                      >
-                        {sistema.icona ?? "🏭"}
-                      </span>
+                      <div
+                        className="h-8 w-1 rounded-full shrink-0"
+                        style={{ background: isActive ? sistema.color : "#e2e8f0" }}
+                      />
                       <div className="flex-1 min-w-0">
                         <p
-                          className="text-[13px] font-semibold truncate leading-tight"
+                          className="text-[11px] font-bold truncate leading-tight tracking-wide uppercase"
                           style={{ color: isActive ? sistema.color : "#475569" }}
                         >
                           {sistema.nom}
                         </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5 truncate leading-tight">
+                        <p className="text-[10px] text-slate-400 mt-0.5 truncate leading-tight">
                           {sistema.installacions.length} instal·lació
                           {sistema.installacions.length !== 1 ? "ns" : ""}
                         </p>
@@ -730,7 +704,7 @@ export function Visualitzador3DPage() {
                             />
                             <div className="flex-1 min-w-0">
                               <p
-                                className="text-[12.5px] font-medium truncate leading-tight"
+                                className="text-[11px] font-bold truncate leading-tight tracking-wide uppercase"
                                 style={{ color: isActive ? sistemaActiu.color : "#475569" }}
                               >
                                 {inst.nom}
@@ -913,7 +887,6 @@ export function Visualitzador3DPage() {
             ? {
                 nom: sistemaDialeg.target.nom,
                 descripcio: sistemaDialeg.target.descripcio ?? "",
-                icona: sistemaDialeg.target.icona ?? "🏭",
                 color: sistemaDialeg.target.color,
               }
             : undefined
