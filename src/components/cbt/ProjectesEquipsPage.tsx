@@ -11,14 +11,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Archive, ChevronRight, FolderOpen, FolderArchive,
   Plus, Trash2, Tags, CheckCircle2, XCircle, Pencil,
-  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen, Layers,
+  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
 import type { ProjectTag, Projecte, ProjectStatus, TagStatus, InstallacioItem } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
-import { BulkFieldValuesDialog } from "./BulkFieldValuesDialog";
 import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
@@ -143,7 +142,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [dialogEliminarTagValidat, setDialogEliminarTagValidat] = useState<string | null>(null); // tagId
   const [detallEquip, setDetallEquip] = useState<string | null>(null); // tagId
   const [editEquip, setEditEquip] = useState<string | null>(null);
-  const [bulkEquipId, setBulkEquipId] = useState<string | null>(null); // equipId per edició massiva
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set()); // selecció múltiple
+  const [dialogMultiEdit, setDialogMultiEdit] = useState(false); // diàleg edició múltiple
 
   // Diàleg assignació usuaris (només admins)
   const [dialogUsuaris, setDialogUsuaris] = useState<string | null>(null); // id projecte
@@ -217,6 +217,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const detallTag = detallEquip ? projecteSeleccionat?.tags.find(t => t.id === detallEquip) ?? null : null;
   const detallEquipObj = detallTag ? equipMap.get(detallTag.equipId) ?? null : null;
   const editEquipObj = editEquip ? equipMap.get(editEquip) ?? null : null; // usat només des de la taula master
+
+  // Per edició múltiple: equip de referència (el primer seleccionat; tots han de tenir el mateix equipId)
+  const multiEditFirstTag = selectedTagIds.size > 0
+    ? projecteSeleccionat?.tags.find(t => selectedTagIds.has(t.id)) ?? null
+    : null;
+  const multiEditEquip = multiEditFirstTag ? equipMap.get(multiEditFirstTag.equipId) ?? null : null;
 
   // ─── accions projectes ──────────────────────────────────────────────────────
   async function crearProjecte() {
@@ -537,10 +543,32 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     }
   }
 
-  async function saveBulkFieldValues(updates: { tagId: string; values: Record<string, string> }[]) {
-    await Promise.all(
-      updates.map(({ tagId, values }) => updateTag(projecteActiu!, tagId, { fieldValues: values }))
-    );
+  async function saveMultiFieldValues(values: Record<string, string>) {
+    try {
+      await Promise.all(
+        [...selectedTagIds].map(tagId => {
+          const existing = projectes.find(p => p.id === projecteActiu)?.tags.find(t => t.id === tagId)?.fieldValues ?? {};
+          const merged = { ...existing };
+          for (const [col, val] of Object.entries(values)) {
+            if (val !== "") merged[col] = val;
+          }
+          return updateTag(projecteActiu!, tagId, { fieldValues: merged });
+        })
+      );
+      toast.success(`Valors aplicats a ${selectedTagIds.size} tag${selectedTagIds.size !== 1 ? "s" : ""} ✓`);
+      setSelectedTagIds(new Set());
+      setDialogMultiEdit(false);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Error en guardar els valors.");
+    }
+  }
+
+  function toggleSelectTag(tagId: string) {
+    setSelectedTagIds(prev => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId); else next.add(tagId);
+      return next;
+    });
   }
 
   function obrirEditTag(tag: ProjectTag) {
@@ -792,10 +820,42 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </Card>
             ) : (
               <Card className="border-0 shadow-sm bg-white overflow-hidden">
-                <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 320px)" }}>
+                {/* Barra d'acció de selecció múltiple */}
+                {selectedTagIds.size > 0 && (
+                  <div className="flex items-center gap-3 px-4 py-2.5 bg-[#0099A8]/10 border-b border-[#0099A8]/20">
+                    <span className="text-xs font-semibold text-[#006E7A]">
+                      {selectedTagIds.size} tag{selectedTagIds.size !== 1 ? "s" : ""} seleccionat{selectedTagIds.size !== 1 ? "s" : ""}
+                    </span>
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] text-white gap-1.5"
+                      onClick={() => setDialogMultiEdit(true)}
+                    >
+                      <Pencil className="h-3 w-3" /> Editar camps dels seleccionats
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-slate-500 ml-auto"
+                      onClick={() => setSelectedTagIds(new Set())}
+                    >
+                      Deseleccionar tot
+                    </Button>
+                  </div>
+                )}
+                <div className="overflow-auto" style={{ maxHeight: `calc(100vh - ${selectedTagIds.size > 0 ? "360px" : "320px"})` }}>
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                       <tr>
+                        <th className="p-3 w-8">
+                          <input
+                            type="checkbox"
+                            className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
+                            checked={selectedTagIds.size === projecteSeleccionat.tags.length && projecteSeleccionat.tags.length > 0}
+                            onChange={e => setSelectedTagIds(e.target.checked ? new Set(projecteSeleccionat.tags.map(t => t.id)) : new Set())}
+                            title="Seleccionar tots"
+                          />
+                        </th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">TAG complet</th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Equip</th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estat</th>
@@ -821,7 +881,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           <>
                             {mostrarGrups && (
                               <tr key={`grup-${grup.codi}`} className="bg-slate-50/80 border-t border-slate-200">
-                                <td colSpan={5} className="px-3 py-2">
+                                <td colSpan={6} className="px-3 py-2">
                                   <div className="flex items-center gap-2">
                                     <span className="font-mono text-xs font-bold text-[#006E7A] bg-[#0099A8]/10 px-2 py-0.5 rounded">{grup.codi}</span>
                                     {grup.nom && <span className="text-xs text-slate-500">{grup.nom}</span>}
@@ -832,9 +892,17 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                             )}
                             {grup.tags.map(tag => {
                         const equip = equipMap.get(tag.equipId);
+                        const isSelected = selectedTagIds.has(tag.id);
                         return (
-                          <tr key={tag.id} className="border-t hover:bg-muted/30">
-                            <td className="p-3">
+                          <tr key={tag.id} className={cn("border-t hover:bg-muted/30", isSelected && "bg-[#0099A8]/5")}>
+                            <td className="p-3 w-8">
+                              <input
+                                type="checkbox"
+                                className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
+                                checked={isSelected}
+                                onChange={() => toggleSelectTag(tag.id)}
+                              />
+                            </td>
                               <div className="font-mono text-xs bg-slate-100 px-2 py-1 rounded inline-block text-slate-700">
                                 {tag.tagComplet}
                               </div>
@@ -918,18 +986,6 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>Eliminar tag</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {/* Edició massiva: apareix si hi ha 2+ tags del mateix equip */}
-                                {equip && projecteSeleccionat.tags.filter(t => t.equipId === tag.equipId).length > 1 && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-[#0099A8]"
-                                        onClick={() => setBulkEquipId(tag.equipId)}>
-                                        <Layers className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Editar camps de tots els equips iguals alhora</TooltipContent>
                                   </Tooltip>
                                 )}
                               </div>
@@ -1491,18 +1547,22 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
           onSaveValues={(vals) => detallTag && saveFieldValues(detallTag.id, vals)}
         />
 
-        {/* ── DIÀLEG: EDICIÓ MASSIVA DE CAMPS ─────────────────────────────── */}
-        {(() => {
-          const bulkEquip = bulkEquipId ? equipMap.get(bulkEquipId) ?? null : null;
-          const bulkTags  = bulkEquipId ? (projecteSeleccionat?.tags.filter(t => t.equipId === bulkEquipId) ?? []) : [];
+        {/* ── DIÀLEG: EDICIÓ MÚLTIPLE DE CAMPS ────────────────────────────── */}
+        {dialogMultiEdit && multiEditEquip && (() => {
+          // Valors inicials: buits (l'usuari omple el que vol aplicar)
           return (
-            <BulkFieldValuesDialog
-              open={!!bulkEquipId}
-              onOpenChange={(b) => { if (!b) setBulkEquipId(null); }}
-              equipment={bulkEquip}
+            <ProjecteEquipDetailDialog
+              open={dialogMultiEdit}
+              onOpenChange={(b) => { if (!b) setDialogMultiEdit(false); }}
+              equipment={multiEditEquip}
+              nodeMap={gubimNodeMap}
+              fieldMap={fieldMap}
               fields={fields}
-              tags={bulkTags}
-              onSave={saveBulkFieldValues}
+              onEdit={() => {}}
+              canEditValues={true}
+              fieldValues={{}}
+              onSaveValues={saveMultiFieldValues}
+              multiSelectCount={selectedTagIds.size}
             />
           );
         })()}

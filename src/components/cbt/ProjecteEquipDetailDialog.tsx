@@ -26,11 +26,13 @@ interface Props {
   canEditValues?: boolean;
   fieldValues?: Record<string, string>;
   onSaveValues?: (values: Record<string, string>) => void;
+  multiSelectCount?: number; // si > 0, estem en mode edició múltiple
 }
 
 export function ProjecteEquipDetailDialog({
   open, onOpenChange, equipment, nodeMap, fields, onEdit,
   canEditValues = false, fieldValues = {}, onSaveValues,
+  multiSelectCount,
 }: Props) {
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
@@ -98,7 +100,7 @@ export function ProjecteEquipDetailDialog({
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">
-                Fitxa d'equip · Projecte
+                {multiSelectCount ? `Edició múltiple · ${multiSelectCount} tags seleccionats` : "Fitxa d'equip · Projecte"}
               </p>
               <DialogTitle className="text-base font-semibold">{equipment.equipName}</DialogTitle>
             </div>
@@ -109,13 +111,15 @@ export function ProjecteEquipDetailDialog({
                     <X className="h-3.5 w-3.5" /> Descartar
                   </Button>
                   <Button size="sm" className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white" onClick={handleSave}>
-                    <Save className="h-3.5 w-3.5" /> Guardar valors
+                    <Save className="h-3.5 w-3.5" /> {multiSelectCount ? `Aplica als ${multiSelectCount} tags` : "Guardar valors"}
                   </Button>
                 </>
               )}
-              <Button size="sm" variant="outline" onClick={onEdit} className="gap-1.5">
-                <Pencil className="h-3.5 w-3.5" /> Edita equip
-              </Button>
+              {!multiSelectCount && (
+                <Button size="sm" variant="outline" onClick={onEdit} className="gap-1.5">
+                  <Pencil className="h-3.5 w-3.5" /> Edita equip
+                </Button>
+              )}
             </div>
           </div>
         </DialogHeader>
@@ -167,7 +171,10 @@ export function ProjecteEquipDetailDialog({
         {canEditValues && (
           <div className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-md text-xs text-emerald-700 shrink-0">
             <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-            TAG validat — introdueix els valors dels camps a la columna <strong>Valor</strong>.
+            {multiSelectCount
+              ? <>Edició múltiple — omple els camps que vols aplicar als <strong>{multiSelectCount} tags</strong>. Els camps buits <strong>no sobreescriuran</strong> valors existents.</>
+              : <>TAG validat — introdueix els valors dels camps a la columna <strong>Valor</strong>.</>
+            }
             {dirty && <span className="ml-auto font-medium text-emerald-600">· Canvis sense guardar</span>}
           </div>
         )}
@@ -263,7 +270,7 @@ export function ProjecteEquipDetailDialog({
           <div className="flex gap-2">
             {canEditValues && dirty && (
               <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5" onClick={handleSave}>
-                <Save className="h-3.5 w-3.5" /> Guardar valors
+                <Save className="h-3.5 w-3.5" /> {multiSelectCount ? `Aplica als ${multiSelectCount} tags` : "Guardar valors"}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={() => handleOpenChange(false)}>Tanca</Button>
