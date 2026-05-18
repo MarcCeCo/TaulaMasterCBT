@@ -1,14 +1,59 @@
 // src/hooks/useVisor3DSistemes.ts
 //
 // Hook per gestionar els sistemes i instal·lacions del Visualitzador 3D
-// amb persistència a Supabase en lloc de localStorage.
+// amb persistència a Supabase.
 //
-// Taules necessàries a Supabase:
-//   - visor3d_sistemes   (id, nom, descripcio, color, ordre, created_at, updated_at)
-//   - visor3d_installacions (id, sistema_id, nom, descripcio, codi_installacio, embed_url, ordre, created_at, updated_at)
+// Segueix EXACTAMENT el mateix patró que dataStore.tsx i useProjectes.tsx:
+//  - fetch directe a la REST API de Supabase amb Bearer token (no client supabase)
+//  - onAuthStateChange escolta TOKEN_REFRESHED: si la pàgina és en segon pla,
+//    marca needsReloadRef = true; quan l'usuari torna, visibilitychange dispara load()
+//  - loadingRef evita càrregues paral·leles
+//
+// Aquest patró soluciona el problema de la finestra Visualitzador 3D que deixa
+// de funcionar en tornar a l'aplicació després de minimitzar o canviar de finestra:
+// el token de Supabase es refresca en segon pla, el client queda en estat inconsistent,
+// i la pàgina no respon. Amb aquest patró, en tornar es recarreguen les dades
+// amb un token fresc garantit.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
+
+const SUPA_URL = (import.meta.env.VITE_SUPABASE_URL as string).trim();
+const SUPA_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim();
+
+// ─── Helper fetch directe (mateix patró que dataStore i useProjectes) ─────────
+async function supa(
+  token: string,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  path: string,
+  body?: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<any[]> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
+  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
+    method,
+    signal: controller.signal,
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "apikey": SUPA_KEY,
+      "Content-Type": "application/json",
+      "Prefer": "return=representation",
+      ...extraHeaders,
+    },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  }).finally(() => clearTimeout(timeout));
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`[${method} ${path}] ${res.status}: ${text}`);
+  }
+
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
+}
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -85,35 +130,53 @@ function buildSistemes(
 // ─── Hook principal ───────────────────────────────────────────────────────────
 
 export function useVisor3DSistemes() {
+  const { getToken, loading: authLoading, user } = useAuth();
   const [sistemes, setSistemes] = useState<Sistema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadingRef     = useRef(false);
+  const needsReloadRef = useRef(false);
 
-  // ── Càrrega inicial ────────────────────────────────────────────────────────
+  // ── Càrrega (mateix patró que dataStore i useProjectes) ───────────────────
 
   const fetchAll = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
-    try {
-      const [{ data: sistemeRows, error: errS }, { data: installacioRows, error: errI }] =
-        await Promise.all([
-          supabase
-            .from("visor3d_sistemes")
-            .select("*")
-            .order("ordre", { ascending: true }),
-          supabase
-            .from("visor3d_installacions")
-            .select("*")
-            .order("ordre", { ascending: true }),
-        ]);
 
-      if (errS) throw errS;
-      if (errI) throw errI;
+    // Obtenim token fresc — igual que dataStore i useProjectes
+    let token = getToken();
+    if (!token) {
+      const { data: { session } } = await supabase.auth.getSession();
+      token = session?.access_token ?? "";
+    }
+    if (!token) {
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token ?? "";
+        if (token) break;
+      }
+    }
+
+    if (!token) {
+      setError("Sessió no disponible. Torneu a iniciar sessió.");
+      setLoading(false);
+      loadingRef.current = false;
+      return;
+    }
+
+    try {
+      const [sistemeRows, installacioRows] = await Promise.all([
+        supa(token, "GET", "visor3d_sistemes?select=*&order=ordre.asc"),
+        supa(token, "GET", "visor3d_installacions?select=*&order=ordre.asc"),
+      ]);
 
       setSistemes(
         buildSistemes(
-          (sistemeRows ?? []) as SistemaRow[],
-          (installacioRows ?? []) as InstallacioRow[]
+          sistemeRows as SistemaRow[],
+          installacioRows as InstallacioRow[]
         )
       );
     } catch (err) {
@@ -121,58 +184,86 @@ export function useVisor3DSistemes() {
       setError(`Error carregant dades: ${msg}`);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  }, []);
+  }, [getToken]);
 
+  // Càrrega inicial quan auth ha acabat i hi ha usuari
   useEffect(() => {
-    fetchAll();
+    if (!authLoading && user) fetchAll();
+  }, [authLoading, user, fetchAll]);
+
+  // TOKEN_REFRESHED + visibilitychange — EXACTAMENT el mateix patró que
+  // dataStore.tsx i useProjectes.tsx
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        setTimeout(() => fetchAll(), 50);
+      }
+      if (event === "SIGNED_OUT") {
+        setSistemes([]);
+        setLoading(false);
+        setError(null);
+        loadingRef.current = false;
+      }
+      if (event === "TOKEN_REFRESHED") {
+        if (document.hidden) {
+          needsReloadRef.current = true;
+        } else {
+          fetchAll();
+        }
+      }
+    });
+
+    const handleVisibility = () => {
+      if (!document.hidden && needsReloadRef.current) {
+        needsReloadRef.current = false;
+        fetchAll();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [fetchAll]);
 
   // ── CRUD Sistemes ──────────────────────────────────────────────────────────
 
   const createSistema = useCallback(
     async (data: { nom: string; descripcio: string; color: string }) => {
+      const token = getToken();
       const ordre = sistemes.length;
-      const { data: row, error: err } = await supabase
-        .from("visor3d_sistemes")
-        .insert({
-          nom: data.nom.trim(),
-          descripcio: data.descripcio.trim() || null,
-          color: data.color,
-          ordre,
-        })
-        .select()
-        .single();
-
-      if (err) throw err;
-
+      const rows = await supa(token, "POST", "visor3d_sistemes", {
+        nom: data.nom.trim(),
+        descripcio: data.descripcio.trim() || null,
+        color: data.color,
+        ordre,
+      });
+      const row = rows[0] as SistemaRow;
       const nou: Sistema = {
-        id: (row as SistemaRow).id,
-        nom: (row as SistemaRow).nom,
-        descripcio: (row as SistemaRow).descripcio ?? undefined,
-        color: (row as SistemaRow).color,
+        id: row.id,
+        nom: row.nom,
+        descripcio: row.descripcio ?? undefined,
+        color: row.color,
         installacions: [],
       };
       setSistemes((prev) => [...prev, nou]);
       return nou;
     },
-    [sistemes.length]
+    [getToken, sistemes.length]
   );
 
   const updateSistema = useCallback(
     async (id: string, data: { nom: string; descripcio: string; color: string }) => {
-      const { error: err } = await supabase
-        .from("visor3d_sistemes")
-        .update({
-          nom: data.nom.trim(),
-          descripcio: data.descripcio.trim() || null,
-          color: data.color,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
-
-      if (err) throw err;
-
+      const token = getToken();
+      await supa(token, "PATCH", `visor3d_sistemes?id=eq.${id}`, {
+        nom: data.nom.trim(),
+        descripcio: data.descripcio.trim() || null,
+        color: data.color,
+        updated_at: new Date().toISOString(),
+      });
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === id
@@ -181,20 +272,14 @@ export function useVisor3DSistemes() {
         )
       );
     },
-    []
+    [getToken]
   );
 
   const deleteSistema = useCallback(async (id: string) => {
-    // Les instal·lacions s'eliminen en cascada a la BD (ON DELETE CASCADE)
-    const { error: err } = await supabase
-      .from("visor3d_sistemes")
-      .delete()
-      .eq("id", id);
-
-    if (err) throw err;
-
+    const token = getToken();
+    await supa(token, "DELETE", `visor3d_sistemes?id=eq.${id}`);
     setSistemes((prev) => prev.filter((s) => s.id !== id));
-  }, []);
+  }, [getToken]);
 
   // ── CRUD Instal·lacions ────────────────────────────────────────────────────
 
@@ -203,25 +288,18 @@ export function useVisor3DSistemes() {
       sistemaId: string,
       data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string }
     ) => {
+      const token = getToken();
       const sistema = sistemes.find((s) => s.id === sistemaId);
       const ordre = sistema ? sistema.installacions.length : 0;
-
-      const { data: row, error: err } = await supabase
-        .from("visor3d_installacions")
-        .insert({
-          sistema_id: sistemaId,
-          nom: data.nom.trim(),
-          descripcio: data.descripcio.trim() || null,
-          codi_installacio: data.codiInstallacio.trim() || null,
-          embed_url: data.embedUrl.trim(),
-          ordre,
-        })
-        .select()
-        .single();
-
-      if (err) throw err;
-
-      const nova = rowToInstallacio(row as InstallacioRow);
+      const rows = await supa(token, "POST", "visor3d_installacions", {
+        sistema_id: sistemaId,
+        nom: data.nom.trim(),
+        descripcio: data.descripcio.trim() || null,
+        codi_installacio: data.codiInstallacio.trim() || null,
+        embed_url: data.embedUrl.trim(),
+        ordre,
+      });
+      const nova = rowToInstallacio(rows[0] as InstallacioRow);
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === sistemaId
@@ -231,7 +309,7 @@ export function useVisor3DSistemes() {
       );
       return nova;
     },
-    [sistemes]
+    [getToken, sistemes]
   );
 
   const updateInstallacio = useCallback(
@@ -240,19 +318,14 @@ export function useVisor3DSistemes() {
       installacioId: string,
       data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string }
     ) => {
-      const { error: err } = await supabase
-        .from("visor3d_installacions")
-        .update({
-          nom: data.nom.trim(),
-          descripcio: data.descripcio.trim() || null,
-          codi_installacio: data.codiInstallacio.trim() || null,
-          embed_url: data.embedUrl.trim(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", installacioId);
-
-      if (err) throw err;
-
+      const token = getToken();
+      await supa(token, "PATCH", `visor3d_installacions?id=eq.${installacioId}`, {
+        nom: data.nom.trim(),
+        descripcio: data.descripcio.trim() || null,
+        codi_installacio: data.codiInstallacio.trim() || null,
+        embed_url: data.embedUrl.trim(),
+        updated_at: new Date().toISOString(),
+      });
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === sistemaId
@@ -274,18 +347,13 @@ export function useVisor3DSistemes() {
         )
       );
     },
-    []
+    [getToken]
   );
 
   const deleteInstallacio = useCallback(
     async (sistemaId: string, installacioId: string) => {
-      const { error: err } = await supabase
-        .from("visor3d_installacions")
-        .delete()
-        .eq("id", installacioId);
-
-      if (err) throw err;
-
+      const token = getToken();
+      await supa(token, "DELETE", `visor3d_installacions?id=eq.${installacioId}`);
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === sistemaId
@@ -294,7 +362,7 @@ export function useVisor3DSistemes() {
         )
       );
     },
-    []
+    [getToken]
   );
 
   return {
