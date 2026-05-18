@@ -3,7 +3,6 @@ import { useState } from "react";
 import {
   BookOpen,
   Building2,
-  FolderOpen,
   GitBranch,
   KeyRound,
   LayoutDashboard,
@@ -76,14 +75,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
         { id: "revit-bim", label: "Documentació BIM", icon: <BookOpen className="h-[15px] w-[15px]" />, section: "revit-bim", view: "revit" },
       ],
     },
-    {
-      id: "projectes",
-      label: "Projectes",
-      icon: <FolderOpen className="h-3.5 w-3.5" />,
-      items: [
-        { id: "projectes-equips", label: "Llistat de projectes", icon: <FolderOpen className="h-[15px] w-[15px]" />, section: "projectes-equips", view: "projectes" },
-      ],
-    },
+
     {
       id: "administracio",
       label: "Administració",

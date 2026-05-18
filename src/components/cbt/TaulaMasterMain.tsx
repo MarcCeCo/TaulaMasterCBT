@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ShieldOff, ChevronRight, GitBranch, Settings2 } from "lucide-react";
+import { ShieldOff, ChevronRight, GitBranch, Settings2, FolderOpen } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
@@ -64,8 +64,9 @@ const AccessDenied = () => (
 // ─── Pàgina Taula Master amb botons per obrir pop-ups ────────────────────────
 function TaulaMasterPage() {
   const { canSeeView } = useAuth();
-  const [gubimOpen, setGubimOpen] = useState(false);
-  const [campsOpen, setCampsOpen] = useState(false);
+  const [gubimOpen,     setGubimOpen]     = useState(false);
+  const [campsOpen,     setCampsOpen]     = useState(false);
+  const [projectesOpen, setProjectesOpen] = useState(false);
 
   if (!canSeeView("equips")) return <AccessDenied />;
 
@@ -100,6 +101,17 @@ function TaulaMasterPage() {
               Diccionari de camps
             </Button>
           )}
+          {(canSeeView("projectes") || canSeeView("rosmiman")) && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
+              onClick={() => setProjectesOpen(true)}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              Llistat de projectes
+            </Button>
+          )}
         </div>
       </div>
 
@@ -110,7 +122,7 @@ function TaulaMasterPage() {
 
       {/* Pop-up GuBIMClass */}
       <Dialog open={gubimOpen} onOpenChange={setGubimOpen}>
-        <DialogContent className="max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto pt-10">
           <Suspense fallback={<PageSkeleton />}>
             <GubimClassManager />
           </Suspense>
@@ -119,9 +131,18 @@ function TaulaMasterPage() {
 
       {/* Pop-up Diccionari de camps */}
       <Dialog open={campsOpen} onOpenChange={setCampsOpen}>
-        <DialogContent className="max-w-5xl w-full max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto pt-10">
           <Suspense fallback={<PageSkeleton />}>
             <FieldsDictionaryDialog />
+          </Suspense>
+        </DialogContent>
+      </Dialog>
+
+      {/* Pop-up Llistat de projectes */}
+      <Dialog open={projectesOpen} onOpenChange={setProjectesOpen}>
+        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto pt-10">
+          <Suspense fallback={<PageSkeleton />}>
+            <ProjectesEquipsPage initialTab="projectes" />
           </Suspense>
         </DialogContent>
       </Dialog>
@@ -141,13 +162,11 @@ export function TaulaMasterMain() {
     !canSeeView("projectes") && !canSeeView("rosmiman");
 
   const sectionTitles: Record<string, { title: string; sub: string }> = {
-    dashboard:          { title: "Resum general",        sub: "Visió global de l'estat de la Taula Master" },
-    equips:             { title: "Taula Master",          sub: "Llista i gestió de tots els equips tècnics" },
-    "revit-bim":        { title: "Documentació BIM",      sub: "Portal de recursos i famílies Revit" },
-    "projectes-equips": { title: "Llistat de projectes", sub: "Equips assignats per projecte" },
-    rosmiman:           { title: "TAGs Rosmiman",         sub: "Integració amb el sistema Rosmiman" },
-    usuaris:            { title: "Gestió d'usuaris",      sub: "Administració de comptes i permisos" },
-    canviapwd:          { title: "Canvia contrasenya",    sub: "Actualitza les teves credencials d'accés" },
+    dashboard:  { title: "Resum general",   sub: "Visió global de l'estat de la Taula Master" },
+    equips:     { title: "Taula Master",     sub: "Llista i gestió de tots els equips tècnics" },
+    "revit-bim": { title: "Documentació BIM", sub: "Portal de recursos i famílies Revit" },
+    usuaris:    { title: "Gestió d'usuaris", sub: "Administració de comptes i permisos" },
+    canviapwd:  { title: "Canvia contrasenya", sub: "Actualitza les teves credencials d'accés" },
   };
 
   const currentMeta = sectionTitles[activeSection] ?? { title: "TaulaMaster", sub: "" };
@@ -179,24 +198,6 @@ export function TaulaMasterMain() {
       case "revit-bim":
         if (!canSeeView("revit")) return <AccessDenied />;
         return <RevitBimPage />;
-
-      case "projectes-equips":
-        if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;
-        return (
-          <ProjectesEquipsPage
-            initialTab="projectes"
-            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
-          />
-        );
-
-      case "rosmiman":
-        if (!canSeeView("rosmiman")) return <AccessDenied />;
-        return (
-          <ProjectesEquipsPage
-            initialTab="rosmiman"
-            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
-          />
-        );
 
       case "usuaris":
         if (!isAdmin) return <AccessDenied />;
