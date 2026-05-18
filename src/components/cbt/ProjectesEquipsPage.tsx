@@ -169,7 +169,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   // Advertència canvi codi instal·lació quan el projecte té tags
   const [dialogCanviInstallacio, setDialogCanviInstallacio] = useState<{
     nouCodi: string; codiAntic: string;
-    pendingData: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: string[] };
+    pendingData: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: InstallacioItem[] };
   } | null>(null);
   const [tagCodiInstallacio, setTagCodiInstallacio] = useState("");
   const [tagEquipId, setTagEquipId] = useState("");
@@ -298,7 +298,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   }
 
   async function guardarEditProjecteReal(
-    data: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: string[] },
+    data: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: InstallacioItem[] },
     actualitzarTags: boolean
   ) {
     try {
@@ -307,9 +307,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
         if (projecteActual) {
           for (const tag of projecteActual.tags) {
-            const nouTagComplet = buildTag(data.codisInstallacio[0] ?? "", tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
+            const nouTagComplet = buildTag(data.codisInstallacio[0]?.codi ?? "", tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
             await updateTag(dialogEditProjecte!, tag.id, {
-              codiInstallacio: data.codisInstallacio[0] ?? "",
+              codiInstallacio: data.codisInstallacio[0]?.codi ?? "",
               tagComplet: nouTagComplet,
               status: "pendent",
             });
