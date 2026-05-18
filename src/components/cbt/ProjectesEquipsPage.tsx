@@ -177,6 +177,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [tagFuncio, setTagFuncio] = useState("");
   const [tagDuplicitat, setTagDuplicitat] = useState("A");
   const [tagComentari, setTagComentari] = useState("");
+  const [tagDescripcio, setTagDescripcio] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
   const [equipSearch, setEquipSearch] = useState("");
 
@@ -379,7 +380,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     const projecteActual = projectes.find(p => p.id === projecteActiu);
     setTagCodiInstallacio(projecteActual?.codisInstallacio?.[0] ?? projecteActual?.codiInstallacio ?? "");
     setTagEquipId(""); setTagCcm("");
-    setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagError(null);
+    setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagDescripcio(""); setTagError(null);
     setDialogNouTag(true);
   }
 
@@ -418,6 +419,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         tagComplet: tagCandidat,
         status: "pendent",
         comentari: tagComentari,
+        descripcioEquip: tagDescripcio.toUpperCase(),
         fieldValues: {},
       });
       setDialogNouTag(false);
@@ -460,6 +462,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         duplicitat: tagDuplicitat.toUpperCase(),
         tagComplet: tagCandidatEdit,
         comentari: tagComentari,
+        descripcioEquip: tagDescripcio.toUpperCase(),
       });
       setDialogEditTag(null);
       toast.success("Tag actualitzat");
@@ -539,6 +542,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     setTagFuncio(tag.funcio);
     setTagDuplicitat(tag.duplicitat);
     setTagComentari(tag.comentari);
+    setTagDescripcio(tag.descripcioEquip ?? "");
     setTagError(null);
     setDialogEditTag(tag);
   }
@@ -847,7 +851,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                   className="text-left group/eq hover:underline underline-offset-2"
                                   onClick={() => setDetallEquip(tag.id)}
                                 >
-                                  <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">{equip.equipName}</p>
+                                  <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">
+                                    {tag.descripcioEquip || equip.equipName}
+                                  </p>
                                   <p className="text-[10px] text-slate-400 font-mono">{equip.equipCode}</p>
                                 </button>
                               ) : (
@@ -962,11 +968,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           }}
                         />
                         <Input
-                          className="flex-1 text-xs"
+                          className="flex-1 text-xs uppercase placeholder:normal-case"
                           placeholder="Nom de la instal·lació (opcional)"
                           value={item.nom ?? ""}
                           onChange={e => {
-                            const next = nouCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value } : x);
+                            const next = nouCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value.toUpperCase() } : x);
                             setNouCodisInstallacio(next);
                           }}
                         />
@@ -1044,11 +1050,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           }}
                         />
                         <Input
-                          className="flex-1 text-xs"
+                          className="flex-1 text-xs uppercase placeholder:normal-case"
                           placeholder="Nom de la instal·lació (opcional)"
                           value={item.nom ?? ""}
                           onChange={e => {
-                            const next = editCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value } : x);
+                            const next = editCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value.toUpperCase() } : x);
                             setEditCodisInstallacio(next);
                           }}
                         />
@@ -1255,6 +1261,17 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     )}
                   </div>
                 )}
+
+                {/* Descripció de l'equip */}
+                <div>
+                  <Label className="text-xs font-medium">Descripció de l'equip</Label>
+                  <Input
+                    className="mt-1 uppercase placeholder:normal-case"
+                    placeholder="Descripció personalitzada de l'equip (opcional)"
+                    value={tagDescripcio}
+                    onChange={e => setTagDescripcio(e.target.value.toUpperCase())}
+                  />
+                </div>
 
                 {/* Comentari */}
                 <div>
