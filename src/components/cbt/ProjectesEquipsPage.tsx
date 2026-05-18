@@ -566,9 +566,19 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const equipsFiltrats = useMemo(() => {
     const q = equipSearch.toLowerCase().trim();
     if (!q) return equipmentsAmbCodi;
-    return equipmentsAmbCodi.filter(e =>
+    const filtrats = equipmentsAmbCodi.filter(e =>
       e.equipCode.toLowerCase().includes(q) || e.equipName.toLowerCase().includes(q) || (e.tableName && e.tableName.toLowerCase().includes(q))
     );
+    // Prioritzem coincidències per nom/descripció per sobre del codi
+    filtrats.sort((a, b) => {
+      const nomA = (a.tableName || a.equipName).toLowerCase();
+      const nomB = (b.tableName || b.equipName).toLowerCase();
+      const aStartsName = nomA.startsWith(q) ? 0 : nomA.includes(q) ? 1 : 2;
+      const bStartsName = nomB.startsWith(q) ? 0 : nomB.includes(q) ? 1 : 2;
+      if (aStartsName !== bStartsName) return aStartsName - bStartsName;
+      return a.equipCode.localeCompare(b.equipCode);
+    });
+    return filtrats;
   }, [equipmentsAmbCodi, equipSearch]);
 
   // ─── render ─────────────────────────────────────────────────────────────────
@@ -1094,39 +1104,59 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 {!dialogEditTag && (
                   <div>
                     <Label className="text-xs font-medium">Equip de la Taula Master *</Label>
-                    <div className="mt-1 border rounded-md overflow-hidden">
-                      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b bg-slate-50">
-                        <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <input
-                          className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
-                          placeholder="Cerca per codi o nom..."
-                          value={equipSearch}
-                          onChange={e => setEquipSearch(e.target.value)}
-                        />
-                        {equipSearch && (
-                          <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
-                            <XCircle className="h-3.5 w-3.5" />
-                          </button>
-                        )}
+                    {/* Si ja hi ha un equip seleccionat, mostrem-lo com a pastilla amb opció de canvi */}
+                    {tagEquipId && equipMap.get(tagEquipId) ? (
+                      <div className="mt-1 flex items-center gap-2 p-2 bg-[#0099A8]/8 border border-[#0099A8]/30 rounded-md">
+                        <CheckCircle2 className="h-4 w-4 text-[#0099A8] shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium text-[#006E7A] truncate block">{equipMap.get(tagEquipId)!.tableName || equipMap.get(tagEquipId)!.equipName}</span>
+                          <span className="text-xs font-mono text-slate-500">{equipMap.get(tagEquipId)!.equipCode}</span>
+                        </div>
+                        <button onClick={() => { setTagEquipId(""); setEquipSearch(""); }}
+                          className="text-xs text-[#0099A8] hover:text-[#006E7A] shrink-0 underline">
+                          Canviar
+                        </button>
                       </div>
-                      <div className="max-h-44 overflow-y-auto">
-                        {equipsFiltrats.length === 0 ? (
-                          <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
-                        ) : (
-                          equipsFiltrats.map(e => (
-                            <button key={e.id} onClick={() => setTagEquipId(e.id)}
-                              className={cn(
-                                "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
-                                tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
-                              )}>
-                              <span className="font-mono shrink-0">{e.equipCode}</span>
-                              <span className="text-slate-500 truncate">{e.tableName || e.equipName}</span>
-                              {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                    ) : (
+                      <div className="mt-1 border rounded-md overflow-hidden">
+                        <div className="flex items-center gap-2 px-2.5 py-1.5 border-b bg-slate-50">
+                          <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <input
+                            className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
+                            placeholder="Escriu la descripció de l'equip..."
+                            value={equipSearch}
+                            onChange={e => setEquipSearch(e.target.value)}
+                            autoFocus
+                          />
+                          {equipSearch && (
+                            <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
+                              <XCircle className="h-3.5 w-3.5" />
                             </button>
-                          ))
-                        )}
+                          )}
+                        </div>
+                        <div className="max-h-44 overflow-y-auto">
+                          {!equipSearch.trim() ? (
+                            <p className="text-xs text-slate-400 px-3 py-2 italic">Comença a escriure per buscar equips per descripció o codi…</p>
+                          ) : equipsFiltrats.length === 0 ? (
+                            <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
+                          ) : (
+                            equipsFiltrats.map(e => (
+                              <button key={e.id} onClick={() => { setTagEquipId(e.id); setEquipSearch(""); }}
+                                className={cn(
+                                  "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
+                                  tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
+                                )}>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block truncate font-medium">{e.tableName || e.equipName}</span>
+                                  <span className="font-mono text-slate-400">{e.equipCode}</span>
+                                </div>
+                                {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                              </button>
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
                 {dialogEditTag && (
