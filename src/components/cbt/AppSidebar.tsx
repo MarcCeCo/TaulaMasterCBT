@@ -98,17 +98,10 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       icon: <Building2 className="h-4 w-4" />,
       items: [
         {
-          id: "revit-bim-docs",
+          id: "revit-bim",
           label: "Documentació BIM",
           icon: <BookOpen className="h-4 w-4" />,
-          section: "revit-bim-docs",
-          view: "revit",
-        },
-        {
-          id: "revit-bim-recursos",
-          label: "Recursos BIM",
-          icon: <Package className="h-4 w-4" />,
-          section: "revit-bim-recursos",
+          section: "revit-bim",
           view: "revit",
         },
       ],

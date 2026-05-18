@@ -21,11 +21,10 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  AlertCircle, BookOpen, Box, Building2, Check, CheckCircle2,
-  Copy, Download, FileCode2, FileSpreadsheet, FileText, FolderOpen,
-  Info, Package, RefreshCw, Terminal,
-  Zap, Pipette, Flame, Wind, Waves, Radio, Shield, Lightbulb,
-  Cable, Columns3, WrapText, Droplets, Thermometer, Settings2,
+  AlertCircle, BookOpen, Box, Building2, Cable, CheckCircle2, Columns3,
+  Download, Droplets, FileSpreadsheet, FileText, Flame, FolderOpen,
+  Info, Lightbulb, Package, Pipette, Radio, RefreshCw, Settings2,
+  Shield, Thermometer, Waves, Wind, WrapText, Zap,
 } from "lucide-react";
 import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
 
@@ -63,10 +62,6 @@ export const CATEGORY_CONFIG: Record<
 };
 
 const VALID_CATEGORIES = new Set(REVIT_CATEGORIES_FLAT);
-
-const CATEGORY_TEMPLATES: Record<string, string> = Object.fromEntries(
-  Object.entries(CATEGORY_CONFIG).map(([k, v]) => [k, v.template])
-);
 
 function toFileName(nom: string): string {
   return nom.toUpperCase().replace(/\s+/g, "-");
@@ -133,30 +128,15 @@ async function buildZip(entries: { name: string; data: Uint8Array }[]): Promise<
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-type Section = "documentacio" | "recursos";
 
-interface RevitBimPageProps {
-  initialSection?: Section;
-}
-
-export function RevitBimPage({ initialSection = "documentacio" }: RevitBimPageProps) {
-  const { equipments, fields, loading, error, retry } = useDataStore();
-  const { canSeeView, canEditView } = useAuth();
+export function RevitBimPage() {
+  const { equipments, loading, error, retry } = useDataStore();
+  const { canSeeView } = useAuth();
 
   const canSee = canSeeView("revit");
-  const isEditor = canEditView("revit");
 
-  const [section, setSection] = useState<Section>(initialSection);
-
-  // ── Documentació state ──
   const [search, setSearch] = useState("");
-
-  // ── Recursos BIM state ──
   const [kitDownloaded, setKitDownloaded] = useState(false);
-  const [downloaded, setDownloaded] = useState(false);
-  const [scriptDownloaded, setScriptDownloaded] = useState<"FULL" | "TEST" | null>(null);
-  const [showScriptInstructions, setShowScriptInstructions] = useState(false);
-  const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
   // ── Mapa equipCode → nom ──
   const equipByCode = useMemo(() => {
@@ -166,44 +146,6 @@ export function RevitBimPage({ initialSection = "documentacio" }: RevitBimPagePr
     }
     return m;
   }, [equipments]);
-
-  // ── Equips exportables (compartit entre les dues pestanyes) ──
-  const { exportable, skipped } = useMemo(() => {
-    const exportable: {
-      nom: string; fileName: string; cat: string; params: { name: string; codi: string | null; instance: boolean }[];
-      equipCode: string; tableCode: string;
-    }[] = [];
-    const skipped: { nom: string; reason: string }[] = [];
-    for (const eq of equipments) {
-      if (!eq.needsTable) continue;
-      const cat = eq.revitCategory?.trim() ?? "";
-      if (!cat || !VALID_CATEGORIES.has(cat)) {
-        skipped.push({ nom: eq.equipName, reason: cat ? `Categoria no vàlida: "${cat}"` : "Sense categoria Revit" });
-        continue;
-      }
-      const equipFields = eq.fieldCols.map((col) => fields.find((f) => f.col === col)).filter(Boolean) as typeof fields;
-      const params = equipFields
-        .map((f) => f.cbt ? { name: f.cbt, codi: f.codi ?? null, instance: f.instancia_revit === "Y" } : null)
-        .filter(Boolean) as { name: string; codi: string | null; instance: boolean }[];
-      const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) ?? null : null;
-      const nomComplet = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
-      exportable.push({ nom: nomComplet, fileName: toFileName(nomComplet), cat, params, equipCode: eq.equipCode ?? "", tableCode: eq.tableCode ?? "" });
-    }
-    return { exportable, skipped };
-  }, [equipments, fields, equipByCode]);
-
-  // ── Stats per grup (Exportació) ──
-  const statsByGroup = useMemo(() => {
-    const stats: Record<string, { count: number; cats: string[] }> = {};
-    for (const eq of exportable) {
-      const cfg = CATEGORY_CONFIG[eq.cat];
-      if (!cfg) continue;
-      if (!stats[cfg.group]) stats[cfg.group] = { count: 0, cats: [] };
-      stats[cfg.group].count++;
-      if (!stats[cfg.group].cats.includes(eq.cat)) stats[cfg.group].cats.push(eq.cat);
-    }
-    return stats;
-  }, [exportable]);
 
   // ── Files Portal BIM (totes les famílies, amb cerca) ──
   const equipRows = useMemo(() => {
@@ -256,19 +198,37 @@ Compatible amb Revit 2020-2030.`;
 
   const handleKitDownload = async () => {
     const enc = new TextEncoder();
+
+    // Calcula l'exportable inline per generar el JSON de configuració
+    const equipByCodeLocal = new Map<string, string>();
+    for (const eq of equipments) {
+      if (eq.equipCode) equipByCodeLocal.set(eq.equipCode, eq.equipName);
+    }
+    const exportableItems = equipments
+      .filter((eq) => {
+        if (!eq.needsTable) return false;
+        const cat = eq.revitCategory?.trim() ?? "";
+        return !!cat && VALID_CATEGORIES.has(cat);
+      })
+      .map((eq) => {
+        const cat = eq.revitCategory!.trim();
+        const parentName = eq.parentEquipCode ? equipByCodeLocal.get(eq.parentEquipCode) ?? null : null;
+        const nomComplet = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
+        return {
+          nom: toFileName(nomComplet),
+          cat,
+          template: CATEGORY_CONFIG[cat]?.template ?? "Metric Generic Model.rft",
+          equip_code: eq.equipCode ?? "",
+          table_code: eq.tableCode ?? "",
+        };
+      });
+
     const config = {
       generated_at: new Date().toISOString(),
       output_folder: "%USERPROFILE%\\Documents\\Families_Output",
       shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
-      total: exportable.length,
-      equipments: exportable.map((eq) => ({
-        nom: eq.fileName,
-        cat: eq.cat,
-        template: CATEGORY_CONFIG[eq.cat]?.template ?? "Metric Generic Model.rft",
-        equip_code: eq.equipCode,
-        table_code: eq.tableCode,
-        params: eq.params,
-      })),
+      total: exportableItems.length,
+      equipments: exportableItems,
     };
 
     const staticFiles = [
@@ -300,63 +260,6 @@ Compatible amb Revit 2020-2030.`;
     URL.revokeObjectURL(url);
     setKitDownloaded(true);
     setTimeout(() => setKitDownloaded(false), 3000);
-  };
-
-  // ─── Handlers Exportació ─────────────────────────────────────────────────────
-
-  const handleDownload = () => {
-    const config = {
-      generated_at: new Date().toISOString(),
-      output_folder: "%USERPROFILE%\\Documents\\Families_Output",
-      shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
-      total: exportable.length,
-      equipments: exportable.map((eq) => ({
-        nom: eq.fileName,
-        cat: eq.cat,
-        template: CATEGORY_TEMPLATES[eq.cat] ?? "Metric Generic Model.rft",
-        equip_code: eq.equipCode,
-        table_code: eq.tableCode,
-        params: eq.params,
-      })),
-    };
-    const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `CBT_Revit_Config_${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setDownloaded(true);
-    setTimeout(() => setDownloaded(false), 3000);
-  };
-
-  const PYREVIT_SCRIPTS = {
-    FULL: { pyRevitPath: "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families FULL.pushbutton\\script.py" },
-    TEST: { pyRevitPath: "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families TEST.pushbutton\\script.py" },
-  };
-
-  const handleScriptDownload = (type: "FULL" | "TEST") => {
-    fetch(type === "FULL" ? "/scripts/FULL_script.py" : "/scripts/TEST_script.py")
-      .then((r) => { if (!r.ok) throw new Error(); return r.blob(); })
-      .then((blob) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `CBT_${type}_script.py`;
-        a.click();
-        URL.revokeObjectURL(url);
-      })
-      .catch(() => alert(`No s'ha pogut descarregar el Script ${type}. Comprova que el servidor serveix /public/scripts/.`));
-    setScriptDownloaded(type);
-    setShowScriptInstructions(true);
-    setTimeout(() => setScriptDownloaded(null), 3000);
-  };
-
-  const handleCopyPath = (path: string) => {
-    navigator.clipboard.writeText(path).then(() => {
-      setCopiedPath(path);
-      setTimeout(() => setCopiedPath(null), 2000);
-    });
   };
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -395,45 +298,17 @@ Compatible amb Revit 2020-2030.`;
 
         {/* ── Capçalera Portal BIM ─────────────────────────────────────────── */}
         <div>
-          <div className="flex items-start justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-                <Building2 className="h-6 w-6 text-[#0099A8]" />
-                Portal BIM
-              </h1>
-              <p className="text-sm text-slate-500 mt-1">
-                Documentació, eines i recursos BIM del Consorci Besòs Tordera
-              </p>
-            </div>
-          </div>
-
-          {/* Seccions */}
-          <div className="flex border-b border-slate-200 gap-1">
-            {([
-              { id: "documentacio" as Section, label: "Documentació BIM", icon: <BookOpen className="h-4 w-4" /> },
-              { id: "recursos" as Section, label: "Recursos BIM", icon: <Package className="h-4 w-4" /> },
-            ]).map(({ id, label, icon }) => (
-              <button
-                key={id}
-                onClick={() => setSection(id)}
-                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
-                  section === id
-                    ? "border-[#0099A8] text-[#006E7A]"
-                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                }`}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
-          </div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+            <Building2 className="h-6 w-6 text-[#0099A8]" />
+            Documentació BIM
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Documentació, eines i recursos BIM del Consorci Besòs Tordera
+          </p>
         </div>
 
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* SECCIÓ: DOCUMENTACIÓ BIM                                          */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {section === "documentacio" && (
-          <div className="space-y-6">
+        {/* ── Documentació i Recursos ──────────────────────────────────────── */}
+        <div className="space-y-6">
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
@@ -658,191 +533,6 @@ Compatible amb Revit 2020-2030.`;
               </CardContent>
             </Card>
           </div>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {/* SECCIÓ: RECURSOS BIM                                              */}
-        {/* ══════════════════════════════════════════════════════════════════ */}
-        {section === "recursos" && (
-          <div className="space-y-6">
-
-            {/* Accions ràpides — scripts i JSON de configuració */}
-            <div className="flex items-center gap-2 flex-wrap justify-end">
-              <div className="flex items-center gap-1.5">
-                {(["TEST", "FULL"] as const).map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => handleScriptDownload(type)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors border border-slate-200"
-                    title={type === "TEST" ? "Script TEST (1 família per categoria)" : "Script FULL (totes les famílies)"}
-                  >
-                    {scriptDownloaded === type ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : type === "TEST" ? <Terminal className="h-3.5 w-3.5" /> : <FileCode2 className="h-3.5 w-3.5" />}
-                    Script {type}
-                  </button>
-                ))}
-              </div>
-              <div className="h-7 w-px bg-slate-200" />
-              <button
-                onClick={handleDownload}
-                disabled={exportable.length === 0}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium bg-[#006E7A] hover:bg-[#005a64] text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {downloaded ? <><CheckCircle2 className="h-4 w-4" /> Descarregat!</> : <><Download className="h-4 w-4" /> Config Revit (JSON)</>}
-              </button>
-            </div>
-
-            {/* Instruccions scripts */}
-            {showScriptInstructions && (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                  <span className="text-sm font-semibold text-emerald-800">Script descarregat — on col·locar-lo</span>
-                  <button onClick={() => setShowScriptInstructions(false)} className="ml-auto text-emerald-500 hover:text-emerald-700 text-xs">Tanca</button>
-                </div>
-                <div className="space-y-2">
-                  {(["FULL", "TEST"] as const).map((type) => (
-                    <div key={type} className="bg-white rounded-lg border border-emerald-200 p-3">
-                      <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">
-                          {type === "FULL" ? "Script FULL (totes les famílies)" : "Script TEST (1 per categoria)"}
-                        </span>
-                        <button
-                          onClick={() => handleCopyPath(PYREVIT_SCRIPTS[type].pyRevitPath)}
-                          className="inline-flex items-center gap-1 text-[10px] text-emerald-600 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded transition-colors"
-                        >
-                          {copiedPath === PYREVIT_SCRIPTS[type].pyRevitPath ? <><Check className="h-3 w-3" /> Copiat!</> : <><Copy className="h-3 w-3" /> Copia ruta</>}
-                        </button>
-                      </div>
-                      <code className="text-[11px] text-slate-600 font-mono break-all block bg-slate-50 rounded px-2 py-1.5 border border-slate-100">
-                        {PYREVIT_SCRIPTS[type].pyRevitPath}
-                      </code>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-start gap-2 text-xs text-emerald-700 bg-emerald-100/60 rounded-lg px-3 py-2">
-                  <FolderOpen className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span>Si la carpeta <code className="font-mono text-[11px] bg-white/70 px-1 rounded">CBT.extension</code> no existeix, crea-la manualment o importa l'extensió des de pyRevit Settings → Extensions.</span>
-                </div>
-              </div>
-            )}
-
-            {/* Stats per grup */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-              {Object.entries(statsByGroup).map(([group, { count, cats }]) => {
-                const icon = cats[0] ? CATEGORY_CONFIG[cats[0]]?.icon : <Box className="h-3.5 w-3.5" />;
-                return (
-                  <Card key={group} className="border-0 shadow-sm bg-white">
-                    <CardContent className="p-4">
-                      <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-lg bg-[#0099A8]/10 flex items-center justify-center text-[#006E7A] shrink-0">{icon}</div>
-                        <div className="min-w-0">
-                          <p className="text-[11px] text-slate-400 leading-tight truncate">{group}</p>
-                          <p className="text-xl font-bold text-slate-800">{count}</p>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-slate-400 mt-2 truncate">{cats.length} categoria{cats.length !== 1 ? "s" : ""}</p>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-              {Object.keys(statsByGroup).length === 0 && (
-                <Card className="border-0 shadow-sm bg-white col-span-full">
-                  <CardContent className="p-4 text-center text-sm text-slate-400">Cap equip exportable encara</CardContent>
-                </Card>
-              )}
-            </div>
-
-            {/* Taula equips exportables */}
-            <Card className="border-0 shadow-sm bg-white">
-              <CardHeader className="pb-3 border-b border-slate-100">
-                <CardTitle className="text-base font-semibold text-slate-700 flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                  Equips a exportar
-                  <Badge className="ml-1 bg-emerald-100 text-emerald-700 border-0 text-xs">{exportable.length}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {exportable.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                    <Box className="h-10 w-10 mb-3 opacity-30" />
-                    <p className="text-sm">Cap equip amb categoria Revit vàlida</p>
-                  </div>
-                ) : (
-                  <div className="overflow-auto max-h-[420px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-slate-50 hover:bg-slate-50">
-                          <TableHead className="text-xs font-semibold text-slate-500 w-[40%]">Equip</TableHead>
-                          <TableHead className="text-xs font-semibold text-slate-500 w-[35%]">Categoria Revit</TableHead>
-                          <TableHead className="text-xs font-semibold text-slate-500 text-right">Paràmetres</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {exportable.map((eq) => {
-                          const cfg = CATEGORY_CONFIG[eq.cat];
-                          return (
-                            <TableRow key={eq.nom} className="hover:bg-slate-50/50">
-                              <TableCell className="py-2.5">
-                                <div className="flex flex-col gap-0.5">
-                                  <span className="font-mono text-xs font-semibold text-slate-800 tracking-tight">
-                                    {"CBT_" + eq.fileName + (eq.equipCode ? "_" + eq.equipCode.toUpperCase() : "") + ".rfa"}
-                                  </span>
-                                  <span className="text-[11px] text-slate-400">{eq.nom}</span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="py-2.5">
-                                <Badge variant="outline" className={`text-xs gap-1 ${cfg?.color ?? ""}`}>
-                                  {cfg?.icon}
-                                  {cfg?.label ?? eq.cat}
-                                </Badge>
-                              </TableCell>
-                              <TableCell className="py-2.5 text-right">
-                                <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{eq.params.length}</span>
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Taula equips descartats */}
-            {skipped.length > 0 && (
-              <Card className="border-0 shadow-sm bg-white">
-                <CardHeader className="pb-3 border-b border-slate-100">
-                  <CardTitle className="text-base font-semibold text-slate-700 flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4 text-amber-400" />
-                    Equips descartats
-                    <Badge className="ml-1 bg-amber-100 text-amber-700 border-0 text-xs">{skipped.length}</Badge>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="overflow-auto max-h-[240px]">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-slate-50 hover:bg-slate-50">
-                          <TableHead className="text-xs font-semibold text-slate-500 w-[50%]">Equip</TableHead>
-                          <TableHead className="text-xs font-semibold text-slate-500">Motiu</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {skipped.map((eq) => (
-                          <TableRow key={eq.nom} className="hover:bg-slate-50/50">
-                            <TableCell className="py-2 text-sm text-slate-600">{eq.nom}</TableCell>
-                            <TableCell className="py-2 text-xs text-amber-600">{eq.reason}</TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        )}
 
       </div>
     </TooltipProvider>

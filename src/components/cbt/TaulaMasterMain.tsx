@@ -123,13 +123,9 @@ export function TaulaMasterMain() {
           </Suspense>
         );
 
-      case "revit-bim-docs":
+      case "revit-bim":
         if (!canSeeView("revit")) return <AccessDenied />;
-        return <RevitBimPage initialSection="documentacio" />;
-
-      case "revit-bim-recursos":
-        if (!canSeeView("revit")) return <AccessDenied />;
-        return <RevitBimPage initialSection="recursos" />;
+        return <RevitBimPage />;
 
       case "projectes-equips":
         if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;

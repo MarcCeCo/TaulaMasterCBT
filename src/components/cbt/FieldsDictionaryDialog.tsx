@@ -171,7 +171,7 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
       </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200" />
           <Select value={grp} onValueChange={setGrp}>
             <SelectTrigger><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
             <SelectContent>
@@ -189,10 +189,10 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={exportXlsx}><Download className="h-4 w-4 mr-1" /> Exporta Excel</Button>
-          {canEdit && <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4 mr-1" /> Importa Excel</Button>}
+          <Button variant="outline" size="sm" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta Excel</Button>
+          {canEdit && <Button variant="outline" size="sm" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa Excel</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
-          {canEdit && <Button size="sm" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4 mr-1" /> Nou camp</Button>}
+          {canEdit && <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4" /> Nou camp</Button>}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
@@ -209,7 +209,7 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
         </div>
 
         {/* Taula unificada: capçalera sticky dins el scroll container */}
-        <div className="border rounded-md flex-1 overflow-hidden flex flex-col min-h-0">
+        <div className="border border-slate-200 rounded-lg flex-1 overflow-hidden flex flex-col min-h-0 bg-white">
           <div
             ref={containerRef}
             className="flex-1 overflow-auto"
