@@ -82,6 +82,7 @@ export interface ProjectTag {
   tagComplet: string;
   status: TagStatus;
   comentari: string;
+  descripcioEquip: string;  // descripció lliure de l'equip al projecte
   fieldValues: Record<string, string>;
   createdAt: number;
 }
@@ -120,6 +121,7 @@ const toTag = (row: any): ProjectTag => ({
   tagComplet:      row.tag_complet      ?? "",
   status:          row.status           ?? "pendent",
   comentari:       row.comentari        ?? "",
+  descripcioEquip: row.descripcio_equip  ?? "",
   fieldValues:     row.field_values     ?? {},
   createdAt:       row.created_at       ?? Date.now(),
 });
@@ -135,6 +137,7 @@ const tagToRow = (t: ProjectTag) => ({
   tag_complet:      t.tagComplet,
   status:           t.status,
   comentari:        t.comentari,
+  descripcio_equip: t.descripcioEquip,
   field_values:     t.fieldValues,
   created_at:       t.createdAt,
 });
@@ -401,7 +404,8 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     if (patch.funcio      !== undefined) rowPatch.funcio        = patch.funcio;
     if (patch.duplicitat  !== undefined) rowPatch.duplicitat   = patch.duplicitat;
     if (patch.tagComplet  !== undefined) rowPatch.tag_complet  = patch.tagComplet;
-    if (patch.codiInstallacio !== undefined) rowPatch.codi_installacio = patch.codiInstallacio;
+    if (patch.codiInstallacio  !== undefined) rowPatch.codi_installacio  = patch.codiInstallacio;
+    if (patch.descripcioEquip  !== undefined) rowPatch.descripcio_equip = patch.descripcioEquip;
 
     await supa(token, "PATCH", `projecte_tags?id=eq.${tagId}`, rowPatch, { "Prefer": "return=minimal" });
     setProjectes(prev => prev.map(p =>
