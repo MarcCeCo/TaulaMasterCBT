@@ -259,9 +259,20 @@ export function UserManagerPage() {
           }));
           setUsers(raw);
           usedApi = true;
+        } else {
+          // L'API ha respost però amb error — mostra el missatge del servidor
+          const json = await res.json().catch(() => ({}));
+          console.error("API /list-users error:", res.status, json.error);
+          toast.error(`Error de l'API: ${json.error ?? res.statusText}`);
         }
-      } catch {}
+      } catch (apiErr: any) {
+        // L'API no és accessible (dev local sense Vercel, o error de xarxa)
+        // → intentem llegir directament des del client Supabase
+        console.warn("API /list-users no disponible, fallback a Supabase directe:", apiErr.message);
+      }
       if (!usedApi) {
+        // Fallback: lectura directa. Funciona si l'usuari té permisos RLS adequats
+        // o si la taula user_profiles és accessible amb la clau anon.
         const { data, error } = await supabase
           .from("user_profiles")
           .select("id, email, full_name, role, allowed_views")
@@ -269,11 +280,19 @@ export function UserManagerPage() {
         if (!error && data) {
           setUsers(data.map((u: any) => ({
             ...u,
-            role: parseUserPermissionLevel(u.role),
+            // Fallback: si no hi ha email al perfil, deixem buit (no podem
+            // consultar auth.users des del client sense service role)
+            email:               u.email ?? "",
+            role:                parseUserPermissionLevel(u.role),
             section_permissions: parseSectionPermissions(u.allowed_views),
           })));
         } else {
-          toast.error("Error carregant usuaris");
+          console.error("Error Supabase directe:", error);
+          toast.error(
+            error?.code === "42703"
+              ? "La taula user_profiles no té totes les columnes esperades. Revisa l'esquema de Supabase."
+              : `Error carregant usuaris: ${error?.message ?? "error desconegut"}`
+          );
         }
       }
     } catch {

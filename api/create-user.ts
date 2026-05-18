@@ -65,17 +65,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: "No s'ha pogut obtenir l'ID del nou usuari" });
   }
 
-  // Actualitzar el perfil amb rol, nom i permisos per secció
-  const { error: profileError } = await supabaseAdmin
-    .from("user_profiles")
-    .update({
-      role,
-      full_name: full_name ?? null,
-      created_by: user.id,
-      // null = accés complet (admin); objecte = permisos per secció (user)
-      allowed_views: allowed_views ?? null,
-    })
-    .eq("id", newUserId);
+  // Supabase crea el perfil via trigger de forma asíncrona.
+  // Fem fins a 5 intents amb espera progressiva per evitar la race condition.
+  let profileError: any = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, 300 * attempt));
+    }
+
+    // Primer comprovem si el perfil ja existeix (el trigger pot haver-lo creat)
+    const { data: existingProfile } = await supabaseAdmin
+      .from("user_profiles")
+      .select("id")
+      .eq("id", newUserId)
+      .maybeSingle();
+
+    if (existingProfile) {
+      // El perfil existeix: actualitzem
+      const { error } = await supabaseAdmin
+        .from("user_profiles")
+        .update({
+          role,
+          full_name:     full_name ?? null,
+          created_by:    user.id,
+          allowed_views: allowed_views ?? null,
+        })
+        .eq("id", newUserId);
+      profileError = error ?? null;
+    } else {
+      // El trigger no l'ha creat encara (o no hi ha trigger): inserim directament
+      const { error } = await supabaseAdmin
+        .from("user_profiles")
+        .upsert({
+          id:            newUserId,
+          email:         email.trim(),
+          role,
+          full_name:     full_name ?? null,
+          created_by:    user.id,
+          allowed_views: allowed_views ?? null,
+        });
+      profileError = error ?? null;
+    }
+
+    if (!profileError) break;
+    console.warn(`Intent ${attempt + 1} fallat:`, profileError.message);
+  }
 
   if (profileError) {
     console.error("Error actualitzant perfil:", profileError);

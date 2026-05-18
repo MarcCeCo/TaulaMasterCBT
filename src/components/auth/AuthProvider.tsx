@@ -14,6 +14,9 @@ import {
 } from "@/lib/auth";
 
 async function fetchProfile(u: User): Promise<UserProfile | null> {
+  // L'email de referència sempre és el de auth.users (mai pot ser null)
+  const authEmail = u.email ?? "";
+
   try {
     const { data, error } = await supabase
       .from("user_profiles")
@@ -22,6 +25,8 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
       .single();
 
     if (error) {
+      // Pot ser que la columna allowed_views no existeixi en algunes versions
+      // del projecte. Reintenta sense ella.
       const { data: data2 } = await supabase
         .from("user_profiles")
         .select("id, email, full_name, role")
@@ -30,7 +35,9 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
       return data2
         ? {
             ...data2,
-            role: parseUserPermissionLevel(data2.role),
+            // Usa l'email de auth.users si el perfil no en té
+            email:               data2.email || authEmail,
+            role:                parseUserPermissionLevel(data2.role),
             section_permissions: null,
           } as UserProfile
         : null;
@@ -39,7 +46,8 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
     return data
       ? {
           id:                  data.id,
-          email:               data.email,
+          // Usa l'email de auth.users com a fallback si el perfil no en té
+          email:               data.email || authEmail,
           full_name:           data.full_name ?? null,
           role:                parseUserPermissionLevel(data.role),
           section_permissions: parseSectionPermissions(data.allowed_views),
