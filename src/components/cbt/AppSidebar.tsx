@@ -2,6 +2,7 @@
 import { useState } from "react";
 import {
   BookOpen,
+  Box,
   Building2,
   FolderOpen,
   GitBranch,
@@ -74,6 +75,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       icon: <Building2 className="h-3.5 w-3.5" />,
       items: [
         { id: "revit-bim", label: "Documentació BIM", icon: <BookOpen className="h-[15px] w-[15px]" />, section: "revit-bim", view: "revit" },
+        { id: "visualitzador-3d", label: "Visualitzador 3D", icon: <Box className="h-[15px] w-[15px]" />, section: "visualitzador-3d", view: "revit" },
       ],
     },
     {

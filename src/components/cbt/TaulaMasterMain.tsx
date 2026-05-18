@@ -9,6 +9,7 @@ import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
 import { RevitBimPage } from "./RevitBimPage";
+import { Visualitzador3DPage } from "./Visualitzador3DPage";
 import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
@@ -154,6 +155,7 @@ export function TaulaMasterMain() {
     dashboard:          { title: "Resum general",        sub: "Visió global de l'estat de la Taula Master" },
     equips:             { title: "Taula Master",          sub: "Llista i gestió de tots els equips tècnics" },
     "revit-bim":        { title: "Documentació BIM",      sub: "Portal de recursos i famílies Revit" },
+    "visualitzador-3d": { title: "Visualitzador 3D",       sub: "Models BIM de les instal·lacions" },
     "projectes-equips": { title: "Llistat de projectes", sub: "Equips assignats per projecte" },
     rosmiman:           { title: "TAGs Rosmiman",         sub: "Integració amb el sistema Rosmiman" },
     usuaris:            { title: "Gestió d'usuaris",      sub: "Administració de comptes i permisos" },
@@ -189,6 +191,10 @@ export function TaulaMasterMain() {
       case "revit-bim":
         if (!canSeeView("revit")) return <AccessDenied />;
         return <RevitBimPage />;
+
+      case "visualitzador-3d":
+        if (!canSeeView("revit")) return <AccessDenied />;
+        return <Visualitzador3DPage />;
 
       case "projectes-equips":
         if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;
