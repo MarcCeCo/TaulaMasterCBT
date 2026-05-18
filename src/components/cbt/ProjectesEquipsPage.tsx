@@ -587,47 +587,37 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </p>
             </div>
           </div>
-          {vista === "llistat" && canEdit && (
-            <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setNouNom(""); setNouDesc(""); setDialogNouProjecte(true); }}>
-              <Plus className="h-3.5 w-3.5" /> Nou projecte
-            </Button>
-          )}
-          {vista === "detail" && canEdit && (
-            <div className="flex gap-2">
-              <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40" onClick={() => obrirEditProjecte(projecteActiu!)}>
-                <Pencil className="h-3.5 w-3.5" /> Edita projecte
-              </Button>
-              {projecteSeleccionat?.status === "actiu" && (
-                <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
-                  <Tags className="h-3.5 w-3.5" /> Nou TAG
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
-
-
-        {/* Pestanyes — només a la vista de llistat */}
-        {vista === "llistat" && (
-          <div className="flex border-b border-slate-200 gap-1">
-            <button
-              onClick={() => setTabActiva("projectes")}
-              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-[#0099A8] text-[#006E7A]"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              Llistat de projectes
-            </button>
-            {canSeeRosmiman && (
-              <button
+          <div className="flex gap-2 flex-wrap">
+            {vista === "llistat" && canSeeRosmiman && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
                 onClick={() => setRosmimanOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
                 TAGs Rosmiman
-              </button>
+              </Button>
+            )}
+            {vista === "llistat" && canEdit && (
+              <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setNouNom(""); setNouDesc(""); setDialogNouProjecte(true); }}>
+                <Plus className="h-3.5 w-3.5" /> Nou projecte
+              </Button>
+            )}
+            {vista === "detail" && canEdit && (
+              <>
+                <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40" onClick={() => obrirEditProjecte(projecteActiu!)}>
+                  <Pencil className="h-3.5 w-3.5" /> Edita projecte
+                </Button>
+                {projecteSeleccionat?.status === "actiu" && (
+                  <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
+                    <Tags className="h-3.5 w-3.5" /> Nou TAG
+                  </Button>
+                )}
+              </>
             )}
           </div>
-        )}
+        </div>
 
         {/* Pop-up TAGs Rosmiman */}
         <Dialog open={rosmimanOpen} onOpenChange={setRosmimanOpen}>
