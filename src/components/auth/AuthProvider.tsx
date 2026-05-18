@@ -125,7 +125,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               if (!cancelled) setProfile(p);
             }
           } else {
-            setUser(null);
             setProfile(null);
           }
           if (!cancelled) setLoading(false);

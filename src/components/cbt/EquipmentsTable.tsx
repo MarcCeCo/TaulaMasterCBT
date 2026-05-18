@@ -37,7 +37,7 @@ const EquipmentRow = memo(function EquipmentRow({
   isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth, canEdit,
 }: {
   e: Equipment; gubimName: string; parentName: string; level: 1|2|3|4;
-  onEdit: () => void; onDelete: () => void; onView: () => void;
+  onEdit: (e: Equipment) => void; onDelete: (e: Equipment) => void; onView: (e: Equipment) => void;
   fieldCount: number; orphanCols: string[]; isChild: boolean;
   isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
   childDepth: number; canEdit: boolean;
@@ -48,7 +48,7 @@ const EquipmentRow = memo(function EquipmentRow({
   const hasOrphans = orphanCols.length > 0;
   const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
   return (
-    <tr className={cn("border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors", isChild && !isSharedCode && "bg-slate-50/40", groupClass)} onClick={onView}>
+    <tr className={cn("border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors", isChild && !isSharedCode && "bg-slate-50/40", groupClass)} onClick={() => onView(e)}>
       <td className={cn("px-3 py-2", gubimIndent)}>
         <div className="flex items-center gap-2">
           <LevelBadge level={level} />
@@ -116,8 +116,8 @@ const EquipmentRow = memo(function EquipmentRow({
       </td>
       <td className="px-3 py-2" onClick={(ev) => ev.stopPropagation()}>
         <div className="flex gap-0.5">
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={onView}><Eye className="h-3.5 w-3.5" /></Button>
-          {canEdit && <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-slate-100" onClick={onEdit}><Pencil className="h-3.5 w-3.5" /></Button>}
+          <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => onView(e)}><Eye className="h-3.5 w-3.5" /></Button>
+          {canEdit && <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-slate-100" onClick={() => onEdit(e)}><Pencil className="h-3.5 w-3.5" /></Button>}
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50" disabled={!canEdit}><Trash2 className="h-3.5 w-3.5" /></Button>
@@ -129,7 +129,7 @@ const EquipmentRow = memo(function EquipmentRow({
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={onDelete}>Esborra</AlertDialogAction>
+                <AlertDialogAction onClick={() => onDelete(e)}>Esborra</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -178,11 +178,15 @@ export function EquipmentsTable() {
   const [viewing, setViewing] = useState<Equipment | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // PERF FIX: factories de callbacks estables — memo(EquipmentRow) no es re-renderitza
-  // quan canvien altres equips no relacionats
-  const handleView   = useCallback((e: Equipment) => () => { setViewing(e); setDetailOpen(true); }, []);
-  const handleEdit   = useCallback((e: Equipment) => () => { setEditing(e); setFormOpen(true); }, []);
-  const handleDelete = useCallback((e: Equipment) => async () => {
+  // PERF FIX: passem setters directament en lloc de factories de callbacks.
+  // L'anterior patró handleView(e) cridava la factory DINS el render loop →
+  // cada render creava una nova referència de funció → memo(EquipmentRow) sempre
+  // veia props canviades → re-renderitzava totes les files (derrota el propòsit de memo).
+  // Ara: EquipmentRow rep els setters estables + l'objecte `e`, i crea les closures
+  // localment — React.memo compara props per referència i detecta que els setters no canvien.
+  const handleView   = useCallback((e: Equipment) => { setViewing(e); setDetailOpen(true); }, []);
+  const handleEdit   = useCallback((e: Equipment) => { setEditing(e); setFormOpen(true); }, []);
+  const handleDelete = useCallback(async (e: Equipment) => {
     try {
       await remove(e.id);
       toast.success("Equip esborrat");
@@ -316,7 +320,7 @@ export function EquipmentsTable() {
     toast.success("Equips exportats");
   }, [items, fieldMap]);
 
-  const exportRosimanXlsx = useCallback(() => {
+  const exportRosmimanXlsx = useCallback(() => {
     exportRosmiman(items, fieldMap);
     toast.success("Exportació Rosmiman generada");
   }, [items, fieldMap]);
@@ -465,7 +469,7 @@ export function EquipmentsTable() {
               className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800">
               <Download className="h-3.5 w-3.5" /> Exporta
             </Button>
-            <Button size="sm" variant="outline" onClick={exportRosimanXlsx} disabled={loading}
+            <Button size="sm" variant="outline" onClick={exportRosmimanXlsx} disabled={loading}
               className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800">
               <Download className="h-3.5 w-3.5" /> Rosmiman
             </Button>
@@ -590,9 +594,9 @@ export function EquipmentsTable() {
                         isFirstInGroup={isFirstInGroup}
                         groupSize={groupSize}
                         childDepth={depth}
-                        onView={handleView(e)}
-                        onEdit={handleEdit(e)}
-                        onDelete={handleDelete(e)}
+                        onView={handleView}
+                        onEdit={handleEdit}
+                        onDelete={handleDelete}
                         canEdit={canEdit}
                       />
                     );

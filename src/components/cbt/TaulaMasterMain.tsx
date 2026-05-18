@@ -149,7 +149,8 @@ export function TaulaMasterMain() {
     profileLoaded &&
     !canSeeView("equips") && !canSeeView("gubimclass") &&
     !canSeeView("fields") && !canSeeView("revit") &&
-    !canSeeView("projectes") && !canSeeView("rosmiman");
+    !canSeeView("projectes") && !canSeeView("rosmiman") &&
+    !canSeeView("visor3d");
 
   const sectionTitles: Record<string, { title: string; sub: string }> = {
     dashboard:          { title: "Resum general",        sub: "Visió global de l'estat de la Taula Master" },
@@ -193,7 +194,7 @@ export function TaulaMasterMain() {
         return <RevitBimPage />;
 
       case "visualitzador-3d":
-        if (!canSeeView("revit")) return <AccessDenied />;
+        if (!canSeeView("visor3d")) return <AccessDenied />;
         return <Visualitzador3DPage />;
 
       case "projectes-equips":
