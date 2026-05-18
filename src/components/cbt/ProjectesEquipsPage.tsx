@@ -782,7 +782,33 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       </tr>
                     </thead>
                     <tbody>
-                      {projecteSeleccionat.tags.map(tag => {
+                      {(() => {
+                        // Agrupa els tags per codi d'instal·lació mantenint l'ordre original
+                        const grups: { codi: string; nom?: string; tags: typeof projecteSeleccionat.tags }[] = [];
+                        const codisVistos: string[] = [];
+                        for (const tag of projecteSeleccionat.tags) {
+                          if (!codisVistos.includes(tag.codiInstallacio)) {
+                            codisVistos.push(tag.codiInstallacio);
+                            const installacioInfo = projecteSeleccionat.codisInstallacio?.find(i => i.codi === tag.codiInstallacio);
+                            grups.push({ codi: tag.codiInstallacio, nom: installacioInfo?.nom, tags: [] });
+                          }
+                          grups[codisVistos.indexOf(tag.codiInstallacio)].tags.push(tag);
+                        }
+                        const mostrarGrups = grups.length > 1;
+                        return grups.map(grup => (
+                          <>
+                            {mostrarGrups && (
+                              <tr key={`grup-${grup.codi}`} className="bg-slate-50/80 border-t border-slate-200">
+                                <td colSpan={5} className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-xs font-bold text-[#006E7A] bg-[#0099A8]/10 px-2 py-0.5 rounded">{grup.codi}</span>
+                                    {grup.nom && <span className="text-xs text-slate-500">{grup.nom}</span>}
+                                    <span className="text-[10px] text-slate-400 ml-1">{grup.tags.length} tag{grup.tags.length !== 1 ? "s" : ""}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            {grup.tags.map(tag => {
                         const equip = equipMap.get(tag.equipId);
                         return (
                           <tr key={tag.id} className="border-t hover:bg-muted/30">
@@ -875,6 +901,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           </tr>
                         );
                       })}
+                          </>
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
