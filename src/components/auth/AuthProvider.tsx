@@ -35,7 +35,6 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
       return data2
         ? {
             ...data2,
-            // Usa l'email de auth.users si el perfil no en té
             email:               data2.email || authEmail,
             role:                parseUserPermissionLevel(data2.role),
             section_permissions: null,
@@ -46,7 +45,6 @@ async function fetchProfile(u: User): Promise<UserProfile | null> {
     return data
       ? {
           id:                  data.id,
-          // Usa l'email de auth.users com a fallback si el perfil no en té
           email:               data.email || authEmail,
           full_name:           data.full_name ?? null,
           role:                parseUserPermissionLevel(data.role),
@@ -70,8 +68,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchingProfileRef    = useRef(false);
   const tokenRef              = useRef<string>("");
 
+  // FIX visibilitychange: quan el token es refresca mentre la pàgina és en
+  // segon pla (minimitzada, altra pestanya, etc.), el client de Supabase pot
+  // quedar en estat inconsistent. Marquem needsProfileRefresh = true i, quan
+  // l'usuari torna a la pàgina, refresquem el perfil amb el token nou.
+  // Mateix patró que dataStore.tsx, useProjectes.tsx i useVisor3DSistemes.ts.
+  const needsProfileRefreshRef = useRef(false);
+
   const getToken = useCallback(() => tokenRef.current, []);
 
+  // ── Càrrega inicial de sessió ────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
 
@@ -97,6 +103,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         async (event, session) => {
           if (cancelled) return;
 
+          // Sempre actualitzem el tokenRef immediatament, sigui quin sigui
+          // l'event, perquè qualsevol crida posterior necessita el token fresc.
           tokenRef.current = session?.access_token ?? "";
 
           if (event === "INITIAL_SESSION") {
@@ -114,9 +122,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
+          // FIX TOKEN_REFRESHED: Supabase refresca el token automàticament
+          // cada ~50 min, fins i tot quan la pàgina és en segon pla.
+          // Quan això passa i la pàgina és visible, refresquem el perfil
+          // (el token ja ha canviat al tokenRef de dalt).
+          // Si la pàgina és oculta, ho marquem per fer-ho quan torni.
+          if (event === "TOKEN_REFRESHED") {
+            if (document.hidden) {
+              needsProfileRefreshRef.current = true;
+            } else {
+              // Refresquem el perfil amb el token nou per mantenir la sessió activa
+              const u2 = session?.user ?? null;
+              if (u2 && !fetchingProfileRef.current) {
+                fetchingProfileRef.current = true;
+                const p = await fetchProfile(u2);
+                fetchingProfileRef.current = false;
+                if (!cancelled) setProfile(p);
+              }
+            }
+            return;
+          }
+
+          if (event === "SIGNED_IN") {
+            const u2 = session?.user ?? null;
+            setUser(u2);
+            if (u2 && !fetchingProfileRef.current) {
+              fetchingProfileRef.current = true;
+              const p = await fetchProfile(u2);
+              fetchingProfileRef.current = false;
+              if (!cancelled) setProfile(p);
+            }
+            if (!cancelled) setLoading(false);
+            return;
+          }
+
+          if (event === "SIGNED_OUT") {
+            setUser(null);
+            setProfile(null);
+            tokenRef.current = "";
+            needsProfileRefreshRef.current = false;
+            if (!cancelled) setLoading(false);
+            return;
+          }
+
+          // Qualsevol altre event (USER_UPDATED, PASSWORD_RECOVERY, etc.)
           const u2 = session?.user ?? null;
           setUser(u2);
-
           if (u2) {
             if (!fetchingProfileRef.current) {
               fetchingProfileRef.current = true;
@@ -147,13 +198,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // FIX visibilitychange: quan l'usuari torna a la pàgina després que el token
+  // s'hagués refrescat en segon pla, refresquem el perfil amb el token nou.
+  // Sense això, la pàgina queda congelada o en estat "pensant" fins a timeout.
+  useEffect(() => {
+    const handleVisibility = async () => {
+      if (!document.hidden && needsProfileRefreshRef.current) {
+        needsProfileRefreshRef.current = false;
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          tokenRef.current = session.access_token;
+          if (session.user && !fetchingProfileRef.current) {
+            fetchingProfileRef.current = true;
+            const p = await fetchProfile(session.user);
+            fetchingProfileRef.current = false;
+            setProfile(p);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
+
   async function signIn(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   }
 
+  // FIX signOut: neteja l'estat immediatament abans de cridar Supabase,
+  // evita que components fills facin crides a l'API amb token buit
+  // mentre esperen l'event onAuthStateChange.
   async function signOut() {
+    setUser(null);
+    setProfile(null);
     tokenRef.current = "";
+    needsProfileRefreshRef.current = false;
     await supabase.auth.signOut();
   }
 
