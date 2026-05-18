@@ -106,13 +106,19 @@ function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
 
 interface ProjectesEquipsPageProps {
   initialTab?: "projectes" | "rosmiman";
+  onTabChange?: (tab: "projectes" | "rosmiman") => void;
 }
 
-export function ProjectesEquipsPage({ initialTab = "projectes" }: ProjectesEquipsPageProps) {
+export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: ProjectesEquipsPageProps) {
   const { canEditView, canSeeView, isAdmin, profile: myProfile, getToken } = useAuth();
   const canEdit = canEditView("projectes");
   const canSeeRosmiman = canSeeView("rosmiman");
-  const [tabActiva, setTabActiva] = useState<"projectes" | "rosmiman">(initialTab);
+  const [tabActiva, setTabActivaInternal] = useState<"projectes" | "rosmiman">(initialTab);
+
+  const setTabActiva = (tab: "projectes" | "rosmiman") => {
+    setTabActivaInternal(tab);
+    onTabChange?.(tab);
+  };
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,

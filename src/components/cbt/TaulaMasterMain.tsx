@@ -129,11 +129,11 @@ export function TaulaMasterMain() {
 
       case "projectes-equips":
         if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;
-        return <ProjectesEquipsPage initialTab="projectes" />;
+        return <ProjectesEquipsPage initialTab="projectes" onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")} />;
 
       case "rosmiman":
         if (!canSeeView("rosmiman")) return <AccessDenied />;
-        return <ProjectesEquipsPage initialTab="rosmiman" />;
+        return <ProjectesEquipsPage initialTab="rosmiman" onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")} />;
 
       case "usuaris":
         if (!isAdmin) return <AccessDenied />;
