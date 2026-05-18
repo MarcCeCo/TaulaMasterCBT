@@ -327,14 +327,27 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     const token = getToken();
     // Convertim el patch a noms de columna SQL
     const rowPatch: Record<string, any> = {};
-    if (patch.nom             !== undefined) rowPatch.nom              = patch.nom;
-    if (patch.descripcio      !== undefined) rowPatch.descripcio       = patch.descripcio;
-    if (patch.codiProjecte    !== undefined) rowPatch.codi_projecte    = patch.codiProjecte;
-    if (patch.codiInstallacio !== undefined) rowPatch.codi_installacio = patch.codiInstallacio;
-    if (patch.status          !== undefined) rowPatch.status           = patch.status;
+    if (patch.nom                !== undefined) rowPatch.nom               = patch.nom;
+    if (patch.descripcio         !== undefined) rowPatch.descripcio        = patch.descripcio;
+    if (patch.codiProjecte       !== undefined) rowPatch.codi_projecte     = patch.codiProjecte;
+    if (patch.codiInstallacio    !== undefined) rowPatch.codi_installacio  = patch.codiInstallacio;
+    if (patch.codisInstallacio   !== undefined) {
+      rowPatch.codis_installacio = patch.codisInstallacio;
+      // Mantenim codi_installacio sincronitzat amb el primer element (compatibilitat)
+      rowPatch.codi_installacio  = patch.codisInstallacio[0]?.codi ?? "";
+    }
+    if (patch.status             !== undefined) rowPatch.status            = patch.status;
 
     await supa(token, "PATCH", `projectes?id=eq.${id}`, rowPatch, { "Prefer": "return=minimal" });
-    setProjectes(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
+    setProjectes(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      const updated = { ...p, ...patch };
+      // Mantenim codiInstallacio sincronitzat
+      if (patch.codisInstallacio !== undefined) {
+        updated.codiInstallacio = patch.codisInstallacio[0]?.codi ?? p.codiInstallacio;
+      }
+      return updated;
+    }));
   }, [getToken]);
 
   const deleteProjecte = useCallback(async (id: string) => {
