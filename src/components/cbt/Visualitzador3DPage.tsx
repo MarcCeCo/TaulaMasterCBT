@@ -10,15 +10,12 @@
 // Per afegir models, edita la constant SISTEMES_DATA al final del fitxer.
 
 import { useState, useRef } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   Box,
   Building2,
   ChevronRight,
-  Maximize2,
-  X,
   Layers,
   MapPin,
   AlertTriangle,
@@ -75,15 +72,24 @@ const SISTEMES_DATA: Sistema[] = [
       // },
     ],
   },
+  {
+    id: "sanejament",
+    nom: "Sistemes de Sanejament",
+    descripcio: "Xarxes i instal·lacions de sanejament i col·lectors",
+    icona: "🔩",
+    color: "#6366F1",
+    installacions: [
+      // Afegeix instal·lacions de sanejament aquí:
+      // {
+      //   id: "sn-exemple",
+      //   nom: "SN001 Exemple",
+      //   descripcio: "Descripció de la instal·lació de sanejament",
+      //   codiInstallacio: "SN001",
+      //   embedUrl: "https://besostordera.autodesk360.com/shares/public/XXX?mode=embed",
+      // },
+    ],
+  },
   // Afegeix més sistemes aquí:
-  // {
-  //   id: "bombaments",
-  //   nom: "Estacions de Bombament",
-  //   descripcio: "Estacions de bombament d'aigües",
-  //   icona: "⚙️",
-  //   color: "#6366F1",
-  //   installacions: [],
-  // },
 ];
 
 // ─── Component principal ──────────────────────────────────────────────────────
@@ -95,7 +101,6 @@ export function Visualitzador3DPage() {
   const [installacioActiva, setInstallacioActiva] = useState<Installacio | null>(
     SISTEMES_DATA[0]?.installacions[0] ?? null
   );
-  const [fullscreen, setFullscreen] = useState(false);
   const [iframeError, setIframeError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -290,7 +295,7 @@ export function Visualitzador3DPage() {
           {installacioActiva ? (
             <>
               {/* Capçalera del visor */}
-              <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
                 <div>
                   <div className="flex items-center gap-2">
                     <span
@@ -318,15 +323,6 @@ export function Visualitzador3DPage() {
                     </p>
                   )}
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-1.5 text-xs border-slate-200 text-slate-500 hover:text-[#006E7A]"
-                  onClick={() => setFullscreen(true)}
-                >
-                  <Maximize2 className="h-3.5 w-3.5" />
-                  Pantalla completa
-                </Button>
               </div>
 
               {/* Iframe del model 3D */}
@@ -427,53 +423,5 @@ export function Visualitzador3DPage() {
           )}
         </div>
       </div>
-
-      {/* ── Modal pantalla completa ────────────────────────────────────────── */}
-      {fullscreen && installacioActiva && (
-        <div
-          className="fixed inset-0 z-50 flex flex-col"
-          style={{ background: "#000" }}
-        >
-          {/* Barra superior */}
-          <div
-            className="flex items-center justify-between px-4 py-3 shrink-0"
-            style={{
-              background: "rgba(0,0,0,0.85)",
-              borderBottom: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            <div className="flex items-center gap-2">
-              <Box className="h-4 w-4 text-[#4DC9D8]" />
-              <span className="text-sm font-semibold text-white/80">
-                {installacioActiva.nom}
-              </span>
-              {installacioActiva.codiInstallacio && (
-                <span className="font-mono text-[10px] text-white/40">
-                  {installacioActiva.codiInstallacio}
-                </span>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-white/50 hover:text-white hover:bg-white/10 gap-1.5"
-              onClick={() => setFullscreen(false)}
-            >
-              <X className="h-4 w-4" />
-              Tanca
-            </Button>
-          </div>
-
-          {/* Iframe a tota pantalla */}
-          <iframe
-            key={`fs-${installacioActiva.id}`}
-            src={installacioActiva.embedUrl}
-            title={installacioActiva.nom}
-            style={{ flex: 1, border: "none", width: "100%" }}
-            allowFullScreen
-          />
-        </div>
-      )}
-    </div>
   );
 }
