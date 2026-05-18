@@ -11,13 +11,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Archive, ChevronRight, FolderOpen, FolderArchive,
   Plus, Trash2, Tags, CheckCircle2, XCircle, Pencil,
-  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen,
+  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
 import type { ProjectTag, Projecte, ProjectStatus, TagStatus, InstallacioItem } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
+import { BulkFieldValuesDialog } from "./BulkFieldValuesDialog";
 import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
@@ -142,6 +143,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [dialogEliminarTagValidat, setDialogEliminarTagValidat] = useState<string | null>(null); // tagId
   const [detallEquip, setDetallEquip] = useState<string | null>(null); // tagId
   const [editEquip, setEditEquip] = useState<string | null>(null);
+  const [bulkEquipId, setBulkEquipId] = useState<string | null>(null); // equipId per edició massiva
 
   // Diàleg assignació usuaris (només admins)
   const [dialogUsuaris, setDialogUsuaris] = useState<string | null>(null); // id projecte
@@ -535,6 +537,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     }
   }
 
+  async function saveBulkFieldValues(updates: { tagId: string; values: Record<string, string> }[]) {
+    await Promise.all(
+      updates.map(({ tagId, values }) => updateTag(projecteActiu!, tagId, { fieldValues: values }))
+    );
+  }
+
   function obrirEditTag(tag: ProjectTag) {
     setTagCodiInstallacio(tag.codiInstallacio);
     setTagEquipId(tag.equipId);
@@ -910,6 +918,18 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                       </Button>
                                     </TooltipTrigger>
                                     <TooltipContent>Eliminar tag</TooltipContent>
+                                  </Tooltip>
+                                )}
+                                {/* Edició massiva: apareix si hi ha 2+ tags del mateix equip */}
+                                {equip && projecteSeleccionat.tags.filter(t => t.equipId === tag.equipId).length > 1 && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-[#0099A8]"
+                                        onClick={() => setBulkEquipId(tag.equipId)}>
+                                        <Layers className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Editar camps de tots els equips iguals alhora</TooltipContent>
                                   </Tooltip>
                                 )}
                               </div>
@@ -1470,6 +1490,22 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
           fieldValues={detallTag?.fieldValues ?? {}}
           onSaveValues={(vals) => detallTag && saveFieldValues(detallTag.id, vals)}
         />
+
+        {/* ── DIÀLEG: EDICIÓ MASSIVA DE CAMPS ─────────────────────────────── */}
+        {(() => {
+          const bulkEquip = bulkEquipId ? equipMap.get(bulkEquipId) ?? null : null;
+          const bulkTags  = bulkEquipId ? (projecteSeleccionat?.tags.filter(t => t.equipId === bulkEquipId) ?? []) : [];
+          return (
+            <BulkFieldValuesDialog
+              open={!!bulkEquipId}
+              onOpenChange={(b) => { if (!b) setBulkEquipId(null); }}
+              equipment={bulkEquip}
+              fields={fields}
+              tags={bulkTags}
+              onSave={saveBulkFieldValues}
+            />
+          );
+        })()}
 
         {/* ── DIÀLEG: EDITAR EQUIP (camps específics) ─────────────────────── */}
         <EquipmentFormDialog
