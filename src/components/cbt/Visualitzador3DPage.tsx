@@ -9,7 +9,7 @@
 //
 // Per afegir models, edita la constant SISTEMES_DATA al final del fitxer.
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ import {
   X,
   Layers,
   MapPin,
+  AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +63,7 @@ const SISTEMES_DATA: Sistema[] = [
         descripcio: "Estació depuradora de La Llagosta",
         codiInstallacio: "ED005",
         embedUrl:
-          "https://besostordera.autodesk360.com/shares/public/SH512d4QTec90decfa6e44d5bb851f10e507?mode=embed",
+          "/bim-proxy/shares/public/SH512d4QTec90decfa6e44d5bb851f10e507?mode=embed",
       },
       // Afegeix més instal·lacions aquí:
       // {
@@ -94,11 +96,19 @@ export function Visualitzador3DPage() {
     SISTEMES_DATA[0]?.installacions[0] ?? null
   );
   const [fullscreen, setFullscreen] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const handleSelectSistema = (sistema: Sistema) => {
     setSistemaActiu(sistema);
+    setIframeError(false);
     // Selecciona la primera instal·lació del sistema automàticament
     setInstallacioActiva(sistema.installacions[0] ?? null);
+  };
+
+  const handleSelectInstallacio = (inst: Installacio) => {
+    setIframeError(false);
+    setInstallacioActiva(inst);
   };
 
   return (
@@ -217,7 +227,7 @@ export function Visualitzador3DPage() {
                     return (
                       <button
                         key={inst.id}
-                        onClick={() => setInstallacioActiva(inst)}
+                        onClick={() => handleSelectInstallacio(inst)}
                         className={cn(
                           "w-full flex items-center gap-3 px-4 py-3 text-left transition-all duration-150",
                           isActive
@@ -325,20 +335,67 @@ export function Visualitzador3DPage() {
                   className="relative w-full"
                   style={{ paddingBottom: "56.25%", minHeight: "400px" }}
                 >
-                  <iframe
-                    key={installacioActiva.id}
-                    src={installacioActiva.embedUrl}
-                    title={installacioActiva.nom}
-                    style={{
-                      position: "absolute",
-                      top: 0,
-                      left: 0,
-                      width: "100%",
-                      height: "100%",
-                      border: "none",
-                    }}
-                    allowFullScreen
-                  />
+                  {iframeError ? (
+                    <div
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-50 px-8 text-center"
+                    >
+                      <div className="h-12 w-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center">
+                        <AlertTriangle className="h-6 w-6 text-amber-400" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-600 text-sm">
+                          No s'ha pogut carregar el model 3D
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-sm">
+                          Autodesk 360 ha rebutjat la connexió. Comprova que el model
+                          estigui compartit com a <strong>Public</strong> amb embedding
+                          activat, i que el domini estigui permès a la configuració del hub.
+                        </p>
+                      </div>
+                      <a
+                        href={installacioActiva.embedUrl.replace("?mode=embed", "")}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-[#0099A8] hover:underline font-medium"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        Obrir directament a Autodesk 360
+                      </a>
+                    </div>
+                  ) : (
+                    <iframe
+                      ref={iframeRef}
+                      key={installacioActiva.id}
+                      src={installacioActiva.embedUrl}
+                      title={installacioActiva.nom}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                      }}
+                      allowFullScreen
+                      onError={() => setIframeError(true)}
+                      onLoad={(e) => {
+                        // Detecta si l'iframe s'ha carregat buit (connexió refusada)
+                        try {
+                          const frame = e.currentTarget as HTMLIFrameElement;
+                          // Si el document és accessible i el title és buit o error, marca error
+                          if (frame.contentDocument !== null) {
+                            const title = frame.contentDocument?.title ?? "";
+                            if (title.toLowerCase().includes("error") || title === "") {
+                              setIframeError(true);
+                            }
+                          }
+                        } catch {
+                          // Cross-origin: no podem llegir el contingut, és normal
+                          // Si el navegador ha mostrat "refused to connect" ho detectarà onError
+                        }
+                      }}
+                    />
+                  )}
                 </div>
               </Card>
 
