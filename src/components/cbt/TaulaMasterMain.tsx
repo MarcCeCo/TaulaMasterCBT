@@ -129,7 +129,11 @@ export function TaulaMasterMain() {
 
       case "projectes-equips":
         if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;
-        return <ProjectesEquipsPage />;
+        return <ProjectesEquipsPage initialTab="projectes" />;
+
+      case "rosmiman":
+        if (!canSeeView("rosmiman")) return <AccessDenied />;
+        return <ProjectesEquipsPage initialTab="rosmiman" />;
 
       case "usuaris":
         if (!isAdmin) return <AccessDenied />;

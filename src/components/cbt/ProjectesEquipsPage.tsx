@@ -103,11 +103,16 @@ function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
 }
 
 // ─── component principal ──────────────────────────────────────────────────────
-export function ProjectesEquipsPage() {
+
+interface ProjectesEquipsPageProps {
+  initialTab?: "projectes" | "rosmiman";
+}
+
+export function ProjectesEquipsPage({ initialTab = "projectes" }: ProjectesEquipsPageProps) {
   const { canEditView, canSeeView, isAdmin, profile: myProfile, getToken } = useAuth();
   const canEdit = canEditView("projectes");
   const canSeeRosmiman = canSeeView("rosmiman");
-  const [tabActiva, setTabActiva] = useState<"projectes" | "rosmiman">("projectes");
+  const [tabActiva, setTabActiva] = useState<"projectes" | "rosmiman">(initialTab);
   const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
 
   const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
