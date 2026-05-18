@@ -1,42 +1,33 @@
 @import "tailwindcss" source(none);
 @source "../src";
 @import "tw-animate-css";
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @custom-variant dark (&:is(.dark *));
 
-/*
- * ─── Colors de marca CBT ─────────────────────────────────────────────────────
- * Consorci Besòs Tordera — gamma corporativa completa.
- * Basada en la identitat web besos-tordera.cat
- */
 :root {
-  /* Gamma teal CBT (7 stops) */
+  --cbt-950: #001F23;
   --cbt-900: #003D44;
   --cbt-800: #005A63;
   --cbt-700: #007380;
   --cbt-600: #008A98;
-  --cbt-500: #0099A8;   /* primary brand */
+  --cbt-500: #0099A8;
   --cbt-400: #1AAFC0;
   --cbt-300: #4DC9D8;
   --cbt-200: #8DD9E3;
   --cbt-100: #C8EFF4;
   --cbt-50:  #EAF8FA;
 
-  /* Neutrals arena (no blanc pur — més càlid) */
+  --sand-50:  #F8F9F7;
   --sand-100: #F3F4F2;
   --sand-200: #E8EAE7;
   --sand-300: #D8DDD8;
   --sand-400: #C5CCC5;
 
-  /* Tipografia */
-  --font-brand: 'DM Sans', system-ui, -apple-system, sans-serif;
-  --font-mono:  'DM Mono', 'Fira Mono', monospace;
+  --font-brand: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  --font-mono:  'JetBrains Mono', 'Fira Mono', monospace;
 }
 
-/*
- * ─── Design system ───────────────────────────────────────────────────────────
- */
 @theme inline {
   --radius-sm:  calc(var(--radius) - 4px);
   --radius-md:  calc(var(--radius) - 2px);
@@ -80,24 +71,21 @@
   --color-sidebar-border:     var(--sidebar-border);
   --color-sidebar-ring:       var(--sidebar-ring);
 
-  /* Tipografia custom disponible com a utilitat Tailwind */
   --font-sans: var(--font-brand);
   --font-mono: var(--font-mono);
 }
 
 :root {
-  --radius: 0.625rem;
+  --radius: 0.75rem;
 
-  /* Light mode */
-  --background:             oklch(0.975 0.004 160);   /* sand suau */
-  --foreground:             oklch(0.16  0.03  200);
+  --background:             oklch(0.972 0.004 160);
+  --foreground:             oklch(0.15  0.03  200);
   --card:                   oklch(1     0     0);
-  --card-foreground:        oklch(0.16  0.03  200);
+  --card-foreground:        oklch(0.15  0.03  200);
   --popover:                oklch(1     0     0);
-  --popover-foreground:     oklch(0.16  0.03  200);
+  --popover-foreground:     oklch(0.15  0.03  200);
 
-  /* Primary → teal CBT */
-  --primary:                oklch(0.46  0.1   198);   /* ~#0099A8 */
+  --primary:                oklch(0.46  0.1   198);
   --primary-foreground:     oklch(1     0     0);
 
   --secondary:              oklch(0.94  0.005 180);
@@ -109,41 +97,40 @@
   --destructive:            oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.984 0.003 247.858);
 
-  --border:                 oklch(0.88  0.01  185);
-  --input:                  oklch(0.88  0.01  185);
+  --border:                 oklch(0.89  0.01  185);
+  --input:                  oklch(0.89  0.01  185);
   --ring:                   oklch(0.55  0.08  198);
 
-  --chart-1: oklch(0.46  0.1   198);   /* CBT teal */
-  --chart-2: oklch(0.55  0.12  255);   /* blue */
-  --chart-3: oklch(0.50  0.13  290);   /* violet */
-  --chart-4: oklch(0.65  0.15  145);   /* green */
-  --chart-5: oklch(0.70  0.15  55);    /* amber */
+  --chart-1: oklch(0.46  0.1   198);
+  --chart-2: oklch(0.55  0.12  255);
+  --chart-3: oklch(0.50  0.13  290);
+  --chart-4: oklch(0.65  0.15  145);
+  --chart-5: oklch(0.70  0.15  55);
 
-  /* Sidebar — fosc corporatiu */
-  --sidebar:                        oklch(0.20  0.04  198);   /* ~#003D44 */
+  --sidebar:                        oklch(0.18  0.045 198);
   --sidebar-foreground:             oklch(0.95  0.005 200);
-  --sidebar-primary:                oklch(0.55  0.12  198);
+  --sidebar-primary:                oklch(0.58  0.12  198);
   --sidebar-primary-foreground:     oklch(1     0     0);
-  --sidebar-accent:                 oklch(0.27  0.05  198);
+  --sidebar-accent:                 oklch(0.25  0.05  198);
   --sidebar-accent-foreground:      oklch(0.95  0.005 200);
-  --sidebar-border:                 oklch(0.26  0.04  198);
+  --sidebar-border:                 oklch(0.24  0.04  198);
   --sidebar-ring:                   oklch(0.55  0.08  198);
 }
 
 .dark {
-  --background:             oklch(0.14  0.03  200);
+  --background:             oklch(0.13  0.03  200);
   --foreground:             oklch(0.96  0.005 200);
-  --card:                   oklch(0.18  0.035 200);
+  --card:                   oklch(0.17  0.035 200);
   --card-foreground:        oklch(0.96  0.005 200);
-  --popover:                oklch(0.18  0.035 200);
+  --popover:                oklch(0.17  0.035 200);
   --popover-foreground:     oklch(0.96  0.005 200);
   --primary:                oklch(0.65  0.10  198);
   --primary-foreground:     oklch(0.12  0.03  200);
-  --secondary:              oklch(0.24  0.04  200);
+  --secondary:              oklch(0.23  0.04  200);
   --secondary-foreground:   oklch(0.96  0.005 200);
-  --muted:                  oklch(0.24  0.04  200);
+  --muted:                  oklch(0.23  0.04  200);
   --muted-foreground:       oklch(0.62  0.03  200);
-  --accent:                 oklch(0.28  0.05  200);
+  --accent:                 oklch(0.27  0.05  200);
   --accent-foreground:      oklch(0.96  0.005 200);
   --destructive:            oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
@@ -157,24 +144,20 @@
   --chart-4: oklch(0.65  0.14  145);
   --chart-5: oklch(0.72  0.14  55);
 
-  --sidebar:                        oklch(0.16  0.04  198);
+  --sidebar:                        oklch(0.14  0.04  198);
   --sidebar-foreground:             oklch(0.95  0.005 200);
   --sidebar-primary:                oklch(0.55  0.12  198);
   --sidebar-primary-foreground:     oklch(1     0     0);
-  --sidebar-accent:                 oklch(0.24  0.04  198);
+  --sidebar-accent:                 oklch(0.22  0.04  198);
   --sidebar-accent-foreground:      oklch(0.95  0.005 200);
   --sidebar-border:                 oklch(1 0 0 / 8%);
   --sidebar-ring:                   oklch(0.55  0.08  198);
 }
 
 @layer base {
-  * {
-    border-color: var(--color-border);
-  }
+  * { border-color: var(--color-border); }
 
-  html {
-    font-family: var(--font-brand);
-  }
+  html { font-family: var(--font-brand); }
 
   body {
     background-color: var(--color-background);
@@ -184,28 +167,22 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
-  /* Tipografia: valors numèrics i codis en mono */
   code, kbd, pre, .font-mono {
     font-family: var(--font-mono) !important;
   }
 
-  /* Scroll subtil */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
   ::-webkit-scrollbar-thumb:hover { background: var(--color-muted-foreground); }
 }
 
-/*
- * ─── Utilitats CBT personalitzades ───────────────────────────────────────────
- */
-
-/* Gradient de marca per headers, login, etc. */
+/* ─── Gradient de marca ─────────────────────────────────────── */
 .cbt-gradient {
-  background: linear-gradient(135deg, var(--cbt-900) 0%, var(--cbt-700) 100%);
+  background: linear-gradient(135deg, #001F23 0%, #003D44 50%, #005A63 100%);
 }
 
-/* Accent line per sidebar items actius */
+/* ─── Sidebar accent bar per items actius ─────────────────── */
 .cbt-sidebar-active-bar::before {
   content: '';
   position: absolute;
@@ -213,7 +190,79 @@
   top: 50%;
   transform: translateY(-50%);
   width: 3px;
-  height: 18px;
+  height: 22px;
   border-radius: 0 3px 3px 0;
-  background: var(--cbt-400);
+  background: linear-gradient(180deg, #4DC9D8, #1AAFC0);
+}
+
+/* ─── Fade in animations ────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.stagger-1 { animation-delay: 0.05s; opacity: 0; }
+.stagger-2 { animation-delay: 0.10s; opacity: 0; }
+.stagger-3 { animation-delay: 0.15s; opacity: 0; }
+.stagger-4 { animation-delay: 0.20s; opacity: 0; }
+.stagger-5 { animation-delay: 0.25s; opacity: 0; }
+.stagger-6 { animation-delay: 0.30s; opacity: 0; }
+
+/* ─── Topbar glassmorphism ──────────────────────────────────── */
+.cbt-topbar {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ─── Stat card hover ────────────────────────────────────────── */
+.cbt-stat-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.cbt-stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(0, 90, 99, 0.12), 0 1px 4px rgba(0, 90, 99, 0.06);
+}
+
+/* ─── Sidebar gradient ─────────────────────────────────────── */
+.cbt-sidebar-bg {
+  background: linear-gradient(180deg, #001F23 0%, #003240 55%, #003D44 100%);
+}
+
+/* ─── Pulse dot ────────────────────────────────────────────── */
+@keyframes pulse-cbt {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.15); }
+}
+.cbt-pulse {
+  animation: pulse-cbt 2s ease-in-out infinite;
+}
+
+/* ─── Login bg ─────────────────────────────────────────────── */
+.cbt-login-bg {
+  background-color: #EEF0EE;
+  background-image:
+    radial-gradient(ellipse 70% 50% at 85% 5%, rgba(0,153,168,0.09) 0%, transparent 55%),
+    radial-gradient(ellipse 50% 70% at 5% 95%, rgba(0,61,68,0.07) 0%, transparent 55%),
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(77,201,216,0.04) 0%, transparent 60%);
+}
+
+/* ─── Divider with label ─────────────────────────────────────── */
+.cbt-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+.cbt-divider::before,
+.cbt-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #E2E8E8;
 }
