@@ -2,9 +2,7 @@
 import { lazy, Suspense, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { ShieldOff, ChevronRight, GitBranch, Settings2, FolderOpen } from "lucide-react";
+import { ShieldOff, ChevronRight, Package, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { EquipmentsTable } from "./EquipmentsTable";
@@ -13,6 +11,7 @@ import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
 import { useAuth } from "@/lib/auth";
+import { cn } from "@/lib/utils";
 
 const GubimClassManager = lazy(() =>
   import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager }))
@@ -61,91 +60,95 @@ const AccessDenied = () => (
   </Card>
 );
 
-// ─── Pàgina Taula Master amb botons per obrir pop-ups ────────────────────────
-function TaulaMasterPage() {
-  const { canSeeView } = useAuth();
-  const [gubimOpen,     setGubimOpen]     = useState(false);
-  const [campsOpen,     setCampsOpen]     = useState(false);
-  const [projectesOpen, setProjectesOpen] = useState(false);
+// ─── Tipus de tab del grup Dades ─────────────────────────────────────────────
+type DadesTab = "equips" | "gubimclass" | "camps";
 
-  if (!canSeeView("equips")) return <AccessDenied />;
+interface DadesTabDef {
+  id: DadesTab;
+  label: string;
+  icon: React.ReactNode;
+  view: "equips" | "gubimclass" | "fields";
+}
+
+// ─── Wrapper de navegació per pestanyes del grup Dades ───────────────────────
+function DadesPage({
+  initialTab,
+  onTabChange,
+}: {
+  initialTab: DadesTab;
+  onTabChange?: (tab: DadesTab) => void;
+}) {
+  const { canSeeView } = useAuth();
+  const [tab, setTabInternal] = useState<DadesTab>(initialTab);
+
+  // Sync si el pare canvia la pestanya (clic a sidebar)
+  if (tab !== initialTab) {
+    setTabInternal(initialTab);
+  }
+
+  const setTab = (t: DadesTab) => {
+    setTabInternal(t);
+    onTabChange?.(t);
+  };
+
+  const tabs: DadesTabDef[] = [
+    { id: "equips",     label: "Taula Master",        icon: <Package className="h-4 w-4" />,   view: "equips" },
+    { id: "gubimclass", label: "GuBIMClass",           icon: <GitBranch className="h-4 w-4" />, view: "gubimclass" },
+    { id: "camps",      label: "Diccionari de camps",  icon: <Settings2 className="h-4 w-4" />, view: "fields" },
+  ];
+
+  const visibleTabs = tabs.filter((t) => canSeeView(t.view));
 
   return (
-    <div className="space-y-5">
-      {/* Capçalera amb botons d'accés ràpid */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Taula Master</h1>
-          <p className="text-sm text-slate-500 mt-1">Llista i gestió de tots els equips tècnics</p>
+    <div className="space-y-6">
+      {visibleTabs.length > 1 && (
+        <div className="flex border-b border-slate-200 gap-1">
+          {visibleTabs.map((t) => {
+            const isActive = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px",
+                  isActive
+                    ? "border-[#0099A8] text-[#006E7A]"
+                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                )}
+              >
+                {t.icon}
+                {t.label}
+              </button>
+            );
+          })}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {canSeeView("gubimclass") && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
-              onClick={() => setGubimOpen(true)}
-            >
-              <GitBranch className="h-3.5 w-3.5" />
-              GuBIMClass
-            </Button>
-          )}
-          {canSeeView("fields") && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
-              onClick={() => setCampsOpen(true)}
-            >
-              <Settings2 className="h-3.5 w-3.5" />
-              Diccionari de camps
-            </Button>
-          )}
-          {(canSeeView("projectes") || canSeeView("rosmiman")) && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
-              onClick={() => setProjectesOpen(true)}
-            >
-              <FolderOpen className="h-3.5 w-3.5" />
-              Llistat de projectes
-            </Button>
-          )}
-        </div>
-      </div>
+      )}
 
-      {/* Taula principal */}
-      <Card className="border-slate-100 shadow-sm bg-white overflow-hidden p-0 rounded-2xl">
-        <EquipmentsTable />
-      </Card>
+      {tab === "equips" && (
+        canSeeView("equips") ? (
+          <div className="space-y-5">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Taula Master</h1>
+              <p className="text-sm text-slate-500 mt-1">Llista i gestió de tots els equips tècnics</p>
+            </div>
+            <Card className="border-slate-100 shadow-sm bg-white overflow-hidden p-0 rounded-2xl">
+              <EquipmentsTable />
+            </Card>
+          </div>
+        ) : <AccessDenied />
+      )}
 
-      {/* Pop-up GuBIMClass */}
-      <Dialog open={gubimOpen} onOpenChange={setGubimOpen}>
-        <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto pt-10">
-          <Suspense fallback={<PageSkeleton />}>
-            <GubimClassManager />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
+      {tab === "gubimclass" && (
+        canSeeView("gubimclass")
+          ? <Suspense fallback={<PageSkeleton />}><GubimClassManager /></Suspense>
+          : <AccessDenied />
+      )}
 
-      {/* Pop-up Diccionari de camps */}
-      <Dialog open={campsOpen} onOpenChange={setCampsOpen}>
-        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto pt-10">
-          <Suspense fallback={<PageSkeleton />}>
-            <FieldsDictionaryDialog />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
-
-      {/* Pop-up Llistat de projectes */}
-      <Dialog open={projectesOpen} onOpenChange={setProjectesOpen}>
-        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto pt-10">
-          <Suspense fallback={<PageSkeleton />}>
-            <ProjectesEquipsPage initialTab="projectes" />
-          </Suspense>
-        </DialogContent>
-      </Dialog>
+      {tab === "camps" && (
+        canSeeView("fields")
+          ? <Suspense fallback={<PageSkeleton />}><FieldsDictionaryDialog /></Suspense>
+          : <AccessDenied />
+      )}
     </div>
   );
 }
@@ -162,14 +165,21 @@ export function TaulaMasterMain() {
     !canSeeView("projectes") && !canSeeView("rosmiman");
 
   const sectionTitles: Record<string, { title: string; sub: string }> = {
-    dashboard:  { title: "Resum general",   sub: "Visió global de l'estat de la Taula Master" },
-    equips:     { title: "Taula Master",     sub: "Llista i gestió de tots els equips tècnics" },
-    "revit-bim": { title: "Documentació BIM", sub: "Portal de recursos i famílies Revit" },
-    usuaris:    { title: "Gestió d'usuaris", sub: "Administració de comptes i permisos" },
-    canviapwd:  { title: "Canvia contrasenya", sub: "Actualitza les teves credencials d'accés" },
+    dashboard:          { title: "Resum general",        sub: "Visió global de l'estat de la Taula Master" },
+    equips:             { title: "Taula Master",          sub: "Llista i gestió de tots els equips tècnics" },
+    gubimclass:         { title: "GuBIMClass",            sub: "Classificació tècnica d'actius" },
+    camps:              { title: "Diccionari de camps",   sub: "Definició i gestió de camps de dades" },
+    "revit-bim":        { title: "Documentació BIM",      sub: "Portal de recursos i famílies Revit" },
+    "projectes-equips": { title: "Llistat de projectes", sub: "Equips assignats per projecte" },
+    rosmiman:           { title: "TAGs Rosmiman",         sub: "Integració amb el sistema Rosmiman" },
+    usuaris:            { title: "Gestió d'usuaris",      sub: "Administració de comptes i permisos" },
+    canviapwd:          { title: "Canvia contrasenya",    sub: "Actualitza les teves credencials d'accés" },
   };
 
   const currentMeta = sectionTitles[activeSection] ?? { title: "TaulaMaster", sub: "" };
+
+  const dadesGroup: DadesTab[] = ["equips", "gubimclass", "camps"];
+  const isDades = dadesGroup.includes(activeSection as DadesTab);
 
   const renderContent = () => {
     if (noAccessAtAll) {
@@ -193,11 +203,36 @@ export function TaulaMasterMain() {
       case "dashboard": return <DashboardHome />;
 
       case "equips":
-        return <TaulaMasterPage />;
+      case "gubimclass":
+      case "camps":
+        return (
+          <DadesPage
+            initialTab={activeSection as DadesTab}
+            onTabChange={(tab) => setActiveSection(tab)}
+          />
+        );
 
       case "revit-bim":
         if (!canSeeView("revit")) return <AccessDenied />;
         return <RevitBimPage />;
+
+      case "projectes-equips":
+        if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;
+        return (
+          <ProjectesEquipsPage
+            initialTab="projectes"
+            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
+          />
+        );
+
+      case "rosmiman":
+        if (!canSeeView("rosmiman")) return <AccessDenied />;
+        return (
+          <ProjectesEquipsPage
+            initialTab="rosmiman"
+            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
+          />
+        );
 
       case "usuaris":
         if (!isAdmin) return <AccessDenied />;
@@ -232,6 +267,12 @@ export function TaulaMasterMain() {
           <div className="flex items-center gap-2 flex-1 min-w-0">
             <span className="text-[11.5px] text-slate-400 font-medium hidden sm:block">CBT</span>
             <ChevronRight className="h-3 w-3 text-slate-300 hidden sm:block shrink-0" />
+            {isDades && (
+              <>
+                <span className="text-[11.5px] text-slate-400 font-medium hidden sm:block">Dades</span>
+                <ChevronRight className="h-3 w-3 text-slate-300 hidden sm:block shrink-0" />
+              </>
+            )}
             <span className="text-[14px] font-bold text-slate-800 leading-tight truncate tracking-tight">
               {currentMeta.title}
             </span>
