@@ -17,7 +17,8 @@ export type AppView =
   | "fields"      // Diccionari de camps
   | "revit"       // Exportació Revit
   | "projectes"   // Llistat de projectes
-  | "rosmiman";   // Llistat d'equips Rosmiman
+  | "rosmiman"    // Llistat d'equips Rosmiman
+  | "visor3d";    // Visualitzador 3D
 
 export const ALL_VIEWS: AppView[] = [
   "equips",
@@ -26,6 +27,7 @@ export const ALL_VIEWS: AppView[] = [
   "revit",
   "projectes",
   "rosmiman",
+  "visor3d",
 ];
 
 export const VIEW_LABELS: Record<AppView, string> = {
@@ -35,6 +37,7 @@ export const VIEW_LABELS: Record<AppView, string> = {
   revit:      "Documentació BIM",
   projectes:  "Llistat de projectes (+ TAGs Rosmiman)",
   rosmiman:   "TAGs Rosmiman (pop-up dins Llistat de projectes)",
+  visor3d:    "Visualitzador 3D (models BIM de les instal·lacions)",
 };
 
 export const VIEW_ICONS: Record<AppView, string> = {
@@ -44,6 +47,7 @@ export const VIEW_ICONS: Record<AppView, string> = {
   revit:      "🏗️",
   projectes:  "📁",
   rosmiman:   "📋",
+  visor3d:    "🧊",
 };
 
 export const VIEW_GROUPS: { label: string; views: AppView[] }[] = [
@@ -53,7 +57,7 @@ export const VIEW_GROUPS: { label: string; views: AppView[] }[] = [
   },
   {
     label: "Portal BIM",
-    views: ["revit"],
+    views: ["revit", "visor3d"],
   },
   {
     label: "Projectes",
@@ -71,6 +75,7 @@ export const DEFAULT_SECTION_PERMISSIONS: SectionPermissions = {
   revit:      "none",
   projectes:  "none",
   rosmiman:   "none",
+  visor3d:    "none",
 };
 
 export const FULL_SECTION_PERMISSIONS: SectionPermissions = {
@@ -80,6 +85,7 @@ export const FULL_SECTION_PERMISSIONS: SectionPermissions = {
   revit:      "editor",
   projectes:  "editor",
   rosmiman:   "editor",
+  visor3d:    "editor",
 };
 
 export interface UserProfile {
@@ -150,7 +156,7 @@ export function parseSectionPermissions(raw: any): SectionPermissions | null {
   if (Array.isArray(raw)) {
     const perms: SectionPermissions = {
       equips: "none", gubimclass: "none", fields: "none",
-      revit: "none", projectes: "none", rosmiman: "none",
+      revit: "none", projectes: "none", rosmiman: "none", visor3d: "none",
     };
     for (const view of raw) {
       if (ALL_VIEWS.includes(view)) perms[view as AppView] = "viewer";
