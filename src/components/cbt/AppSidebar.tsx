@@ -83,7 +83,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       label: "Projectes",
       icon: <FolderOpen className="h-3.5 w-3.5" />,
       items: [
-        { id: "projectes-equips", label: "Projectes", icon: <FolderOpen className="h-[15px] w-[15px]" />, section: "projectes-equips", view: "projectes" },
+        { id: "projectes-equips", label: "Llistat de projectes", icon: <FolderOpen className="h-[15px] w-[15px]" />, section: "projectes-equips", view: "projectes" },
       ],
     },
     {

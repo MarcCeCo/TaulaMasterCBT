@@ -568,7 +568,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
           {/* Capçalera */}
           <div className="flex items-start justify-between flex-wrap gap-3">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Projectes</h1>
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Llistat de projectes</h1>
               <p className="text-sm text-slate-500 mt-0.5">Gestió de projectes i TAGs d&apos;equips</p>
             </div>
           </div>
@@ -611,7 +611,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             )}
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-                {vista === "llistat" ? "Projectes" : projecteSeleccionat?.nom ?? "Projecte"}
+                {vista === "llistat" ? "Llistat de projectes" : projecteSeleccionat?.nom ?? "Projecte"}
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 {vista === "llistat"
