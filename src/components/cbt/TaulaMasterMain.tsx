@@ -124,11 +124,11 @@ function TaulaMasterPage() {
 
       {/* Pop-up Diccionari de camps */}
       <Dialog open={campsOpen} onOpenChange={setCampsOpen}>
-        <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full overflow-hidden p-0">
+        <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full flex flex-col p-0 gap-0 overflow-hidden max-h-[90vh]">
           <DialogHeader className="sr-only">
             <DialogTitle>Diccionari de camps</DialogTitle>
           </DialogHeader>
-          <div className="p-6 pt-8">
+          <div className="p-6 pt-8 flex flex-col gap-4 overflow-hidden flex-1 min-h-0">
             <Suspense fallback={<PageSkeleton />}>
               <FieldsDictionaryDialog />
             </Suspense>

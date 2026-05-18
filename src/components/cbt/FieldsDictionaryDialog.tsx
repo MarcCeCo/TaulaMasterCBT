@@ -164,24 +164,24 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div>
+    <div className="flex flex-col gap-4 overflow-hidden flex-1 min-h-0">
+      <div className="shrink-0">
         <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Diccionari de camps</h1>
         <p className="text-sm text-slate-500 mt-1">Defineix i organitza els paràmetres tècnics CBT</p>
       </div>
 
-        {/* Filtres: 3 columnes iguals que omplen tot l'ample del popup */}
-        <div className="grid grid-cols-3 gap-2">
-          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200" />
+        {/* Filtres: 3 columnes iguals que omplen exactament l'ample del popup — mai es tallen */}
+        <div className="grid grid-cols-3 gap-2 shrink-0">
+          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200 min-w-0" />
           <Select value={grp} onValueChange={setGrp}>
-            <SelectTrigger className="w-full truncate"><SelectValue placeholder="Totes les agrupacions" /></SelectTrigger>
+            <SelectTrigger className="min-w-0 w-full"><SelectValue placeholder="Totes les agrupacions" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Totes les agrupacions</SelectItem>
               {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={cls} onValueChange={setCls}>
-            <SelectTrigger className="w-full truncate"><SelectValue placeholder="Tots els classificadors" /></SelectTrigger>
+            <SelectTrigger className="min-w-0 w-full"><SelectValue placeholder="Tots els classificadors" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Tots els classificadors</SelectItem>
               {classifiers.map((c) => <SelectItem key={c.col} value={c.col}>{c.col}</SelectItem>)}
@@ -189,7 +189,7 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
           </Select>
         </div>
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 shrink-0">
           <Button variant="outline" size="sm" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta Excel</Button>
           {canEdit && <Button variant="outline" size="sm" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa Excel</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
@@ -209,11 +209,11 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
           <div className="ml-auto text-xs text-muted-foreground self-center">{filtered.length} camps</div>
         </div>
 
-        {/* Taula: scroll horitzontal (eix X) i vertical (eix Y) totalment independent dels filtres */}
-        <div className="border border-slate-200 rounded-lg bg-white overflow-hidden">
+        {/* Taula: scroll horitzontal (←→) i vertical (↑↓) propi — filtres sempre visibles */}
+        <div className="border border-slate-200 rounded-lg bg-white overflow-hidden flex-1 min-h-0">
           <div
             ref={containerRef}
-            className="overflow-auto"
+            className="overflow-x-auto overflow-y-auto h-full"
             style={{ maxHeight: CONTAINER_H }}
             onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
           >
