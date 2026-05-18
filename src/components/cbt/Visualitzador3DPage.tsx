@@ -63,7 +63,7 @@ const SISTEMES_DATA: Sistema[] = [
         descripcio: "Estació depuradora de La Llagosta",
         codiInstallacio: "ED005",
         embedUrl:
-          "/bim-proxy/shares/public/SH512d4QTec90decfa6e44d5bb851f10e507?mode=embed",
+          "https://besostordera.autodesk360.com/g/shares/SH512d4QTec90decfa6e44d59b851f10e507?mode=embed",
       },
       // Afegeix més instal·lacions aquí:
       // {
