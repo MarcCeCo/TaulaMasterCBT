@@ -797,10 +797,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     </thead>
                     <tbody>
                       {(() => {
-                        // Agrupa els tags per codi d'instal·lació mantenint l'ordre original
+                        // Agrupa els tags per codi d'instal·lació i ordena alfabèticament
                         const grups: { codi: string; nom?: string; tags: typeof projecteSeleccionat.tags }[] = [];
                         const codisVistos: string[] = [];
-                        for (const tag of projecteSeleccionat.tags) {
+                        for (const tag of [...projecteSeleccionat.tags].sort((a, b) => a.codiInstallacio.localeCompare(b.codiInstallacio) || a.tagComplet.localeCompare(b.tagComplet))) {
                           if (!codisVistos.includes(tag.codiInstallacio)) {
                             codisVistos.push(tag.codiInstallacio);
                             const installacioInfo = projecteSeleccionat.codisInstallacio?.find(i => i.codi === tag.codiInstallacio);
