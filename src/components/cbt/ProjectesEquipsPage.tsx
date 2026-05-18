@@ -114,6 +114,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const canEdit = canEditView("projectes");
   const canSeeRosmiman = canSeeView("rosmiman");
   const [tabActiva, setTabActivaInternal] = useState<"projectes" | "rosmiman">(initialTab);
+  const [rosmimanOpen, setRosmimanOpen] = useState(initialTab === "rosmiman");
 
   const setTabActiva = (tab: "projectes" | "rosmiman") => {
     setTabActivaInternal(tab);
@@ -560,42 +561,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   }, [equipmentsAmbCodi, equipSearch]);
 
   // ─── render ─────────────────────────────────────────────────────────────────
-  // Pestanya Rosmiman — retorn anticipat quan està activa i estem al llistat
-  if (vista === "llistat" && tabActiva === "rosmiman" && canSeeRosmiman) {
-    return (
-      <TooltipProvider>
-        <div className="space-y-6">
-          {/* Capçalera */}
-          <div className="flex items-start justify-between flex-wrap gap-3">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Llistat de projectes</h1>
-              <p className="text-sm text-slate-500 mt-0.5">Gestió de projectes i TAGs d&apos;equips</p>
-            </div>
-          </div>
-          {/* Pestanyes */}
-          <div className="flex border-b border-slate-200 gap-1">
-            <button
-              onClick={() => setTabActiva("projectes")}
-              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              Llistat de projectes
-            </button>
-            {canSeeRosmiman && (
-              <button
-                onClick={() => setTabActiva("rosmiman")}
-                className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-[#0099A8] text-[#006E7A]"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
-                TAGs Rosmiman
-              </button>
-            )}
-          </div>
-          <RosmimanEquipsPage />
-        </div>
-      </TooltipProvider>
-    );
-  }
+  // Pestanya Rosmiman — ara s'obre com a pop-up (igual que GuBIMClass i Diccionari de camps)
+  // (eliminat el retorn anticipat; rosmimanOpen controla el Dialog)
 
   return (
     <TooltipProvider>
@@ -652,7 +619,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             </button>
             {canSeeRosmiman && (
               <button
-                onClick={() => setTabActiva("rosmiman")}
+                onClick={() => setRosmimanOpen(true)}
                 className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
@@ -661,6 +628,18 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             )}
           </div>
         )}
+
+        {/* Pop-up TAGs Rosmiman */}
+        <Dialog open={rosmimanOpen} onOpenChange={setRosmimanOpen}>
+          <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="sr-only">
+              <DialogTitle>TAGs Rosmiman</DialogTitle>
+            </DialogHeader>
+            <div className="pt-6">
+              <RosmimanEquipsPage />
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* ── VISTA: LLISTAT DE PROJECTES ─────────────────────────────────── */}
         {vista === "llistat" && (

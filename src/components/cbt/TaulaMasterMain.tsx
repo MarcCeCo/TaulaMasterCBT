@@ -2,7 +2,7 @@
 import { lazy, Suspense, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ShieldOff, ChevronRight, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
@@ -110,19 +110,29 @@ function TaulaMasterPage() {
 
       {/* Pop-up GuBIMClass */}
       <Dialog open={gubimOpen} onOpenChange={setGubimOpen}>
-        <DialogContent className="max-w-5xl w-full max-h-[90vh] overflow-y-auto">
-          <Suspense fallback={<PageSkeleton />}>
-            <GubimClassManager />
-          </Suspense>
+        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sr-only">
+            <DialogTitle>GuBIMClass</DialogTitle>
+          </DialogHeader>
+          <div className="pt-6">
+            <Suspense fallback={<PageSkeleton />}>
+              <GubimClassManager />
+            </Suspense>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Pop-up Diccionari de camps */}
       <Dialog open={campsOpen} onOpenChange={setCampsOpen}>
-        <DialogContent className="max-w-5xl w-full max-h-[90vh] overflow-y-auto">
-          <Suspense fallback={<PageSkeleton />}>
-            <FieldsDictionaryDialog />
-          </Suspense>
+        <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Diccionari de camps</DialogTitle>
+          </DialogHeader>
+          <div className="pt-6">
+            <Suspense fallback={<PageSkeleton />}>
+              <FieldsDictionaryDialog />
+            </Suspense>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

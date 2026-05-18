@@ -170,17 +170,17 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
         <p className="text-sm text-slate-500 mt-1">Defineix i organitza els paràmetres tècnics CBT</p>
       </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200" />
+        <div className="flex flex-wrap gap-2">
+          <Input placeholder="Cerca per nom, codi o CBT…" value={q} onChange={(e) => setQ(e.target.value)} className="border-slate-200 flex-1 min-w-[180px]" />
           <Select value={grp} onValueChange={setGrp}>
-            <SelectTrigger><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
+            <SelectTrigger className="min-w-[190px] w-auto"><SelectValue placeholder="Agrupació Revit" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Totes les agrupacions</SelectItem>
               {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={cls} onValueChange={setCls}>
-            <SelectTrigger><SelectValue placeholder="Classificador" /></SelectTrigger>
+            <SelectTrigger className="min-w-[210px] w-auto"><SelectValue placeholder="Tots els classificadors" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="__all__">Tots els classificadors</SelectItem>
               {classifiers.map((c) => <SelectItem key={c.col} value={c.col}>{c.col}</SelectItem>)}
