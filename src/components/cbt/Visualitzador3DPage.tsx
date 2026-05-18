@@ -204,11 +204,57 @@ function InstallacioFormDialog({ open, onClose, onSave, initial, title, sistemaC
 
 // ─── Pop-up Visor 3D ──────────────────────────────────────────────────────────
 
+// ─── Fix: Radix Dialog + iframe focus-loss quan es canvia de finestra ─────────
+//
+// Quan l'iframe d'Autodesk captura el focus i l'usuari canvia de finestra/pestanya
+// (alt+tab, clic fora), el navegador emet un blur sobre l'iframe. Radix UI ho
+// interpreta com que el focus ha sortit del diàleg i aplica al <body>:
+//   - pointer-events: none   → la UI queda completament bloquejada
+//   - aria-hidden: "true"    → els lectors de pantalla perden l'arbre
+// i no els neteja en tornar, de manera que la plataforma deixa de respondre.
+//
+// La solució és escoltar `visibilitychange`: quan la pàgina torna a ser visible
+// (l'usuari ha tornat a la pestanya), netegem forçosament aquests atributs del body.
+// També ho netegem quan el diàleg es desmunta (cleanup), per si Radix ha deixat
+// residus en tancar-lo mentre la finestra estava en segon pla.
+
+function useRadixDialogFocusFix(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled) return;
+
+    const fix = () => {
+      // Eliminem pointer-events: none si Radix l'ha posat al body
+      if (document.body.style.pointerEvents === "none") {
+        document.body.style.pointerEvents = "";
+      }
+      // Eliminem aria-hidden="true" si Radix l'ha posat al body
+      if (document.body.getAttribute("aria-hidden") === "true") {
+        document.body.removeAttribute("aria-hidden");
+      }
+    };
+
+    const handleVisibility = () => {
+      if (!document.hidden) fix();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    // Cleanup quan el diàleg es desmunta: netegem residus immediatament
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      fix();
+    };
+  }, [enabled]);
+}
+
 function Visor3DDialog({ installacio, sistema, onClose }: {
   installacio: Installacio; sistema: Sistema; onClose: () => void;
 }) {
   const [iframeError, setIframeError] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Apliquem el fix mentre aquest diàleg estigui muntat
+  useRadixDialogFocusFix(true);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -269,6 +315,14 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
               allowFullScreen
               onError={() => setIframeError(true)}
               onLoad={(e) => {
+                // Quan l'iframe acaba de carregar, Radix pot haver deixat
+                // pointer-events:none al body → el netegem preventivament.
+                if (document.body.style.pointerEvents === "none") {
+                  document.body.style.pointerEvents = "";
+                }
+                if (document.body.getAttribute("aria-hidden") === "true") {
+                  document.body.removeAttribute("aria-hidden");
+                }
                 try {
                   const frame = e.currentTarget as HTMLIFrameElement;
                   if (frame.contentDocument !== null) {
