@@ -5,16 +5,16 @@ import {
   Box,
   Building2,
   FolderOpen,
-  GitBranch,
+
   KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
   Package,
-  Settings2,
+
   Shield,
   Table2,
-  Tags,
+
   Users,
   X,
   Droplets,
@@ -75,7 +75,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       icon: <Building2 className="h-3.5 w-3.5" />,
       items: [
         { id: "revit-bim", label: "Documentació BIM", icon: <BookOpen className="h-[15px] w-[15px]" />, section: "revit-bim", view: "revit" },
-        { id: "visualitzador-3d", label: "Visualitzador 3D", icon: <Box className="h-[15px] w-[15px]" />, section: "visualitzador-3d", view: "revit" },
+        { id: "visualitzador-3d", label: "Visualitzador 3D", icon: <Box className="h-[15px] w-[15px]" />, section: "visualitzador-3d", view: "visor3d" },
       ],
     },
     {

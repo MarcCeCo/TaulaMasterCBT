@@ -1,12 +1,13 @@
 // src/components/auth/ChangePasswordPage.tsx
 // Pàgina de canvi de contrasenya integrada al layout principal (no pop-up).
 import { useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Eye, EyeOff, Loader2, CheckCircle2, KeyRound, ShieldCheck } from "lucide-react";
 
 export function ChangePasswordPage() {
+  const { getToken } = useAuth();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPwd, setShowPwd] = useState(false);
@@ -24,8 +25,7 @@ export function ChangePasswordPage() {
     setLoading(true);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? "";
+      const token = getToken();
 
       if (!token) {
         setError("Sessió no disponible. Torna a iniciar sessió.");

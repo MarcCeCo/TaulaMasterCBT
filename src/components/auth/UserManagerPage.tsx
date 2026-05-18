@@ -241,9 +241,12 @@ export function UserManagerPage() {
   const [editPerms, setEditPerms]   = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
 
   const fetchUsers = async () => {
+    // FIX: No fer cap crida a l'API si no hi ha token vàlid (p. ex. durant el signOut)
+    const token = getToken();
+    if (!token) return;
+
     setLoading(true);
     try {
-      const token = getToken();
       let usedApi = false;
       try {
         const res = await fetch("/api/list-users", {
@@ -302,7 +305,11 @@ export function UserManagerPage() {
     }
   };
 
-  useEffect(() => { fetchUsers(); }, []);
+  // FIX: Dependre de myProfile en lloc d'executar-se cegament al muntar.
+  // Quan myProfile és null (sessió tancada o no iniciada) no es fa cap fetch.
+  useEffect(() => {
+    if (myProfile) fetchUsers();
+  }, [myProfile]);
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();

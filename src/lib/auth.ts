@@ -180,7 +180,11 @@ export const canSeeViewFn =
   (profile: UserProfile | null, user: User | null = null) =>
   (view: AppView): boolean => {
     if (!profile && !user) return false;
-    if (!profile && user) return true;
+    // Fallback mentre el perfil s'està carregant: si hi ha usuari autenticat
+    // però el perfil encara no ha arribat, bloquegem l'accés per evitar
+    // mostrar AccessDenied prematurament. AuthProvider carrega el perfil just
+    // després de la sessió, per tant aquest estat és molt breu.
+    if (!profile && user) return false;
     if (!profile) return false;
     if (profile.role === "admin") return true;
     if (profile.section_permissions === null) return true;

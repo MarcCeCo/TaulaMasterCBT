@@ -33,47 +33,7 @@ import { type FieldMeta, sortByClassification } from "@/lib/fields";
 import { type GubimNode, isValidCode, parentCode } from "@/hooks/useGubimClass";
 import { type Equipment } from "@/hooks/useEquipments";
 
-// URL i clau anon — per construir les URLs de la REST API de Supabase
-const SUPA_URL = (import.meta.env.VITE_SUPABASE_URL as string).trim();
-const SUPA_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim();
-
-// ─── Helper: fetch directe a Supabase REST API ────────────────────────────────
-// Mateix patró que UserManagerDialog: token síncron del ref, mai getSession().
-// method: GET | POST | PATCH | DELETE
-// path: p.ex. "equipments?id=eq.xxx" (sense /rest/v1/)
-// body: objecte que es serialitza a JSON (opcional)
-// extraHeaders: capçaleres addicionals (p.ex. Prefer per a upsert)
-async function supa(
-  token: string,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
-  path: string,
-  body?: unknown,
-  extraHeaders?: Record<string, string>,
-): Promise<any[]> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-
-  const res = await fetch(`${SUPA_URL}/rest/v1/${path}`, {
-    method,
-    signal: controller.signal,
-    headers: {
-      "Authorization": `Bearer ${token}`,
-      "apikey": SUPA_KEY,
-      "Content-Type": "application/json",
-      "Prefer": "return=representation",
-      ...extraHeaders,
-    },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  }).finally(() => clearTimeout(timeout));
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`[${method} ${path}] ${res.status}: ${text}`);
-  }
-
-  const text = await res.text();
-  return text ? JSON.parse(text) : [];
-}
+import { supaFetch as supa } from "@/lib/supaFetch";
 
 // ─── Conversors ──────────────────────────────────────────────────────────────
 
@@ -213,21 +173,16 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     // Si el token no és disponible immediatament, esperem fins a 3s (amb retries).
     let token = getToken();
     if (!token) {
-      // Fallback: llegim la sessió directament de Supabase
       const { data: { session } } = await supabase.auth.getSession();
       token = session?.access_token ?? "";
-      console.log("[DataStore.load] token via getSession:", token ? "OK" : "BUIT");
-    } else {
-      console.log("[DataStore.load] token via ref:", token ? "OK" : "BUIT");
     }
 
-    // Si encara no hi ha token, esperem fins a 3s en intervals de 500ms
     if (!token) {
       for (let i = 0; i < 6; i++) {
         await new Promise((r) => setTimeout(r, 500));
         const { data: { session } } = await supabase.auth.getSession();
         token = session?.access_token ?? "";
-        if (token) { console.log("[DataStore.load] token obtingut després de", (i + 1) * 500, "ms"); break; }
+        if (token) break;
       }
     }
 
@@ -400,7 +355,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
   const clearEquips = useCallback(async () => {
     const token = getToken();
-    await supa(token, "DELETE", `equipments?id=neq.`);
+    await supa(token, "DELETE", `equipments?id=neq.00000000-0000-0000-0000-000000000000`);
     setEquipments([]);
   }, [getToken]);
 
@@ -504,7 +459,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
   const clearFields = useCallback(async () => {
     const token = getToken();
-    await supa(token, "DELETE", `fields?col=neq.`);
+    await supa(token, "DELETE", `fields?col=neq.__NEVER__`);
     setRawFields([]);
   }, [getToken]);
 
@@ -623,7 +578,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
 
   const clearGubim = useCallback(async () => {
     const token = getToken();
-    await supa(token, "DELETE", `gubim_class?id=neq.`);
+    await supa(token, "DELETE", `gubim_class?id=neq.00000000-0000-0000-0000-000000000000`);
     setGubimRaw([]);
   }, [getToken]);
 
@@ -633,6 +588,8 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     [gubimNodes],
   );
   const fieldExists   = useCallback((col: string) => fieldMap.has(col.toUpperCase()), [fieldMap]);
+  // isCustomField: tots els camps es consideren personalitzables per ara.
+  // TODO: implementar distinció entre camps de sistema i camps custom si cal.
   const isCustomField = useCallback((_col: string) => true, []);
 
   const value: DataStoreValue = {
