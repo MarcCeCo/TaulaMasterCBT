@@ -66,8 +66,6 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       icon: <Table2 className="h-3.5 w-3.5" />,
       items: [
         { id: "equips", label: "Taula Master", icon: <Package className="h-[15px] w-[15px]" />, section: "equips", view: "equips" },
-        { id: "gubimclass", label: "GuBIMClass", icon: <GitBranch className="h-[15px] w-[15px]" />, section: "gubimclass", view: "gubimclass" },
-        { id: "camps", label: "Diccionari de camps", icon: <Settings2 className="h-[15px] w-[15px]" />, section: "camps", view: "fields" },
       ],
     },
     {
