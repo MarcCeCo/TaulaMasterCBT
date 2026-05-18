@@ -423,5 +423,6 @@ export function Visualitzador3DPage() {
           )}
         </div>
       </div>
+    </div>
   );
 }
