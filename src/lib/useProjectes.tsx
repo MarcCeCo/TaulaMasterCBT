@@ -91,6 +91,9 @@ export interface Projecte {
   nom: string;
   descripcio: string;
   codiProjecte: string;
+  /** Llista de codis d'instal·lació (mínim 1). Cada codi: 5 car. alfanum. */
+  codisInstallacio: string[];
+  /** @deprecated Usa codisInstallacio[0]. Mantingut per compatibilitat amb tags existents. */
   codiInstallacio: string;
   status: ProjectStatus;
   tags: ProjectTag[];
@@ -131,24 +134,39 @@ const tagToRow = (t: ProjectTag) => ({
   created_at:       t.createdAt,
 });
 
-const toProjecte = (row: any, tags: ProjectTag[]): Projecte => ({
-  id:               row.id,
-  nom:              row.nom,
-  descripcio:       row.descripcio       ?? "",
-  codiProjecte:     row.codi_projecte    ?? "",
-  codiInstallacio:  row.codi_installacio ?? "",
-  status:           row.status           ?? "actiu",
-  tags:             tags.filter(t => t.projecteId === row.id),
-  createdAt:        row.created_at       ?? Date.now(),
-  allowedUsers:     Array.isArray(row.allowed_users) ? row.allowed_users : null,
-});
+const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
+  // Suporta tant array (nou format) com string (format antic)
+  const rawCodis = row.codis_installacio;
+  const rawCodi  = row.codi_installacio ?? "";
+  let codisInstallacio: string[];
+  if (Array.isArray(rawCodis) && rawCodis.length > 0) {
+    codisInstallacio = rawCodis.map((c: string) => c.toUpperCase().trim()).filter(Boolean);
+  } else if (rawCodi) {
+    codisInstallacio = [rawCodi.toUpperCase().trim()];
+  } else {
+    codisInstallacio = [];
+  }
+  return {
+    id:               row.id,
+    nom:              row.nom,
+    descripcio:       row.descripcio       ?? "",
+    codiProjecte:     row.codi_projecte    ?? "",
+    codisInstallacio,
+    codiInstallacio:  codisInstallacio[0]  ?? "",
+    status:           row.status           ?? "actiu",
+    tags:             tags.filter(t => t.projecteId === row.id),
+    createdAt:        row.created_at       ?? Date.now(),
+    allowedUsers:     Array.isArray(row.allowed_users) ? row.allowed_users : null,
+  };
+};
 
 const projecteToRow = (p: Projecte) => ({
   id:               p.id,
   nom:              p.nom,
   descripcio:       p.descripcio,
   codi_projecte:    p.codiProjecte,
-  codi_installacio: p.codiInstallacio,
+  codi_installacio: p.codisInstallacio[0] ?? p.codiInstallacio,
+  codis_installacio: p.codisInstallacio,
   status:           p.status,
   created_at:       p.createdAt,
   allowed_users:    p.allowedUsers ?? null,

@@ -156,7 +156,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [nouNom, setNouNom] = useState("");
   const [nouDesc, setNouDesc] = useState("");
   const [nouCodiProjecte, setNouCodiProjecte] = useState("");
-  const [nouCodiInstallacio, setNouCodiInstallacio] = useState("");
+  const [nouCodisInstallacio, setNouCodisInstallacio] = useState<string[]>([""]);
   const [nouProjecteError, setNouProjecteError] = useState<string | null>(null);
 
   // Edició projecte existent
@@ -164,12 +164,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [editNom, setEditNom] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editCodiProjecte, setEditCodiProjecte] = useState("");
-  const [editCodiInstallacio, setEditCodiInstallacio] = useState("");
+  const [editCodisInstallacio, setEditCodisInstallacio] = useState<string[]>([""]);
   const [editProjecteError, setEditProjecteError] = useState<string | null>(null);
   // Advertència canvi codi instal·lació quan el projecte té tags
   const [dialogCanviInstallacio, setDialogCanviInstallacio] = useState<{
     nouCodi: string; codiAntic: string;
-    pendingData: { nom: string; descripcio: string; codiProjecte: string; codiInstallacio: string };
+    pendingData: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: string[] };
   } | null>(null);
   const [tagCodiInstallacio, setTagCodiInstallacio] = useState("");
   const [tagEquipId, setTagEquipId] = useState("");
@@ -220,24 +220,28 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     if (!nouNom.trim()) return;
     const errCodi = validateCodiProjecte(nouCodiProjecte);
     if (errCodi) { setNouProjecteError(errCodi); return; }
-    if (!nouCodiInstallacio.trim()) {
-      setNouProjecteError("El codi d'instal·lació és obligatori.");
+    const codisNets = nouCodisInstallacio.map(c => c.toUpperCase().trim()).filter(Boolean);
+    if (codisNets.length === 0) {
+      setNouProjecteError("Cal almenys un codi d'instal·lació.");
       return;
     }
-    if (!/^[A-Z0-9]{5}$/i.test(nouCodiInstallacio)) {
-      setNouProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.");
-      return;
+    for (const c of codisNets) {
+      if (!/^[A-Z0-9]{5}$/i.test(c)) {
+        setNouProjecteError(`El codi "${c}" ha de tenir exactament 5 caràcters alfanumèrics.`);
+        return;
+      }
     }
     try {
       await createProjecte({
         nom: nouNom.trim(),
         descripcio: nouDesc.trim(),
         codiProjecte: nouCodiProjecte.trim(),
-        codiInstallacio: nouCodiInstallacio.toUpperCase().trim(),
+        codisInstallacio: codisNets,
+        codiInstallacio: codisNets[0],
         status: "actiu",
       });
       setDialogNouProjecte(false);
-      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
+      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodisInstallacio([""]); setNouProjecteError(null);
       toast.success("Projecte creat");
     } catch (e: any) {
       setNouProjecteError(e?.message ?? "Error en crear el projecte.");
@@ -286,13 +290,13 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     setEditNom(p.nom);
     setEditDesc(p.descripcio);
     setEditCodiProjecte(p.codiProjecte);
-    setEditCodiInstallacio(p.codiInstallacio);
+    setEditCodisInstallacio(p.codisInstallacio.length > 0 ? [...p.codisInstallacio] : [""]);
     setEditProjecteError(null);
     setDialogEditProjecte(id);
   }
 
   async function guardarEditProjecteReal(
-    data: { nom: string; descripcio: string; codiProjecte: string; codiInstallacio: string },
+    data: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: string[] },
     actualitzarTags: boolean
   ) {
     try {
@@ -301,9 +305,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
         if (projecteActual) {
           for (const tag of projecteActual.tags) {
-            const nouTagComplet = buildTag(data.codiInstallacio, tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
+            const nouTagComplet = buildTag(data.codisInstallacio[0] ?? "", tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
             await updateTag(dialogEditProjecte!, tag.id, {
-              codiInstallacio: data.codiInstallacio,
+              codiInstallacio: data.codisInstallacio[0] ?? "",
               tagComplet: nouTagComplet,
               status: "pendent",
             });
@@ -322,20 +326,23 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     if (!editNom.trim()) { setEditProjecteError("El nom és obligatori."); return; }
     const errCodi = validateCodiProjecte(editCodiProjecte);
     if (errCodi) { setEditProjecteError(errCodi); return; }
-    if (!editCodiInstallacio.trim()) { setEditProjecteError("El codi d'instal·lació és obligatori."); return; }
-    if (!/^[A-Z0-9]{5}$/i.test(editCodiInstallacio)) { setEditProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics."); return; }
+    const codisNets = editCodisInstallacio.map(c => c.toUpperCase().trim()).filter(Boolean);
+    if (codisNets.length === 0) { setEditProjecteError("Cal almenys un codi d'instal·lació."); return; }
+    for (const c of codisNets) {
+      if (!/^[A-Z0-9]{5}$/i.test(c)) { setEditProjecteError(`El codi "${c}" ha de tenir exactament 5 caràcters alfanumèrics.`); return; }
+    }
 
     const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
-    const codiAntic = projecteActual?.codiInstallacio ?? "";
-    const nouCodi = editCodiInstallacio.toUpperCase().trim();
+    const codiAntic = projecteActual?.codisInstallacio[0] ?? "";
+    const nouCodi = codisNets[0];
     const data = {
       nom: editNom.trim(),
       descripcio: editDesc.trim(),
       codiProjecte: editCodiProjecte.trim(),
-      codiInstallacio: nouCodi,
+      codisInstallacio: codisNets,
     };
 
-    // Si el codi d'instal·lació ha canviat i el projecte té tags, mostrem l'advertència
+    // Si el codi principal ha canviat i el projecte té tags, mostrem l'advertència
     if (codiAntic !== nouCodi && (projecteActual?.tags.length ?? 0) > 0) {
       setDialogCanviInstallacio({ nouCodi, codiAntic, pendingData: data });
       return;
@@ -366,7 +373,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   // ─── accions tags ───────────────────────────────────────────────────────────
   function obrirNouTag() {
     const projecteActual = projectes.find(p => p.id === projecteActiu);
-    setTagCodiInstallacio(projecteActual?.codiInstallacio ?? "");
+    setTagCodiInstallacio(projecteActual?.codisInstallacio?.[0] ?? projecteActual?.codiInstallacio ?? "");
     setTagEquipId(""); setTagCcm("");
     setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagError(null);
     setDialogNouTag(true);
@@ -675,7 +682,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           <p className="font-semibold text-slate-700 truncate">{p.nom}</p>
                           {p.codiProjecte && <p className="text-[10px] font-mono text-[#006E7A] mt-0.5">#{p.codiProjecte}</p>}
                           {p.descripcio && <p className="text-xs text-slate-400 truncate mt-0.5">{p.descripcio}</p>}
-                          {p.codiInstallacio && <p className="text-[10px] text-slate-400 mt-0.5 font-mono">Instal·lació: {p.codiInstallacio}</p>}
+                          {(p.codisInstallacio?.length > 0 || p.codiInstallacio) && <p className="text-[10px] text-slate-400 mt-0.5 font-mono">Instal·lació: {(p.codisInstallacio?.length > 0 ? p.codisInstallacio : [p.codiInstallacio]).join(" · ")}</p>}
                         </div>
                         <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-[#0099A8] shrink-0 mt-1 transition-colors" />
                       </div>
@@ -891,15 +898,42 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     onChange={e => { setNouCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setNouProjecteError(null); }}
                   />
                 </div>
-                <div>
-                  <Label className="text-xs font-medium">Codi instal·lació * <span className="text-slate-400 font-normal">(5 car.)</span></Label>
-                  <Input
-                    className="mt-1 font-mono uppercase"
-                    placeholder="XXXXX"
-                    maxLength={5}
-                    value={nouCodiInstallacio}
-                    onChange={e => { setNouCodiInstallacio(e.target.value.toUpperCase()); setNouProjecteError(null); }}
-                  />
+                <div className="col-span-2">
+                  <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
+                  <div className="mt-1 space-y-1.5">
+                    {nouCodisInstallacio.map((codi, idx) => (
+                      <div key={idx} className="flex gap-1.5 items-center">
+                        <Input
+                          className="font-mono uppercase flex-1"
+                          placeholder="XXXXX"
+                          maxLength={5}
+                          value={codi}
+                          onChange={e => {
+                            const next = [...nouCodisInstallacio];
+                            next[idx] = e.target.value.toUpperCase();
+                            setNouCodisInstallacio(next);
+                            setNouProjecteError(null);
+                          }}
+                        />
+                        {nouCodisInstallacio.length > 1 && (
+                          <Button
+                            type="button" variant="ghost" size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-500 shrink-0"
+                            onClick={() => setNouCodisInstallacio(nouCodisInstallacio.filter((_, i) => i !== idx))}
+                          >
+                            <span className="text-base leading-none">×</span>
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="gap-1 text-xs h-7 text-[#0099A8] border-[#0099A8]/30 hover:bg-[#0099A8]/5"
+                      onClick={() => setNouCodisInstallacio([...nouCodisInstallacio, ""])}
+                    >
+                      <Plus className="h-3 w-3" /> Afegir instal·lació
+                    </Button>
+                  </div>
                 </div>
               </div>
               {nouProjecteError && (
@@ -910,7 +944,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogNouProjecte(false)}>Cancel·la</Button>
-              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || !nouCodiInstallacio.trim()}>Crear projecte</Button>
+              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || nouCodisInstallacio.every(c => !c.trim())}>Crear projecte</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -938,15 +972,42 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     onChange={e => { setEditCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setEditProjecteError(null); }}
                   />
                 </div>
-                <div>
-                  <Label className="text-xs font-medium">Codi instal·lació * <span className="text-slate-400 font-normal">(5 car.)</span></Label>
-                  <Input
-                    className="mt-1 font-mono uppercase"
-                    placeholder="XXXXX"
-                    maxLength={5}
-                    value={editCodiInstallacio}
-                    onChange={e => { setEditCodiInstallacio(e.target.value.toUpperCase()); setEditProjecteError(null); }}
-                  />
+                <div className="col-span-2">
+                  <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
+                  <div className="mt-1 space-y-1.5">
+                    {editCodisInstallacio.map((codi, idx) => (
+                      <div key={idx} className="flex gap-1.5 items-center">
+                        <Input
+                          className="font-mono uppercase flex-1"
+                          placeholder="XXXXX"
+                          maxLength={5}
+                          value={codi}
+                          onChange={e => {
+                            const next = [...editCodisInstallacio];
+                            next[idx] = e.target.value.toUpperCase();
+                            setEditCodisInstallacio(next);
+                            setEditProjecteError(null);
+                          }}
+                        />
+                        {editCodisInstallacio.length > 1 && (
+                          <Button
+                            type="button" variant="ghost" size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-500 shrink-0"
+                            onClick={() => setEditCodisInstallacio(editCodisInstallacio.filter((_, i) => i !== idx))}
+                          >
+                            <span className="text-base leading-none">×</span>
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="gap-1 text-xs h-7 text-[#0099A8] border-[#0099A8]/30 hover:bg-[#0099A8]/5"
+                      onClick={() => setEditCodisInstallacio([...editCodisInstallacio, ""])}
+                    >
+                      <Plus className="h-3 w-3" /> Afegir instal·lació
+                    </Button>
+                  </div>
                 </div>
               </div>
               {editProjecteError && (
@@ -958,7 +1019,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogEditProjecte(null)}>Cancel·la</Button>
               <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={guardarEditProjecte}
-                disabled={!editNom.trim() || !editCodiProjecte.trim() || !editCodiInstallacio.trim()}>
+                disabled={!editNom.trim() || !editCodiProjecte.trim() || editCodisInstallacio.every(c => !c.trim())}>
                 Guardar canvis
               </Button>
             </DialogFooter>
@@ -1041,9 +1102,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       maxLength={5}
                       placeholder="XXXXX"
                       value={tagCodiInstallacio}
-                      readOnly={!!projecteSeleccionat?.codiInstallacio}
-                      onChange={e => { if (!projecteSeleccionat?.codiInstallacio) setTagCodiInstallacio(e.target.value.toUpperCase()); }}
-                      title={projecteSeleccionat?.codiInstallacio ? "Fixat a la configuració del projecte" : undefined}
+                      readOnly={!!(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio)}
+                      onChange={e => { if (!(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio)) setTagCodiInstallacio(e.target.value.toUpperCase()); }}
+                      title={(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio) ? (projecteSeleccionat?.codisInstallacio?.length > 1 ? "Selecciona a dalt" : "Fixat a la configuració del projecte") : undefined}
                     />
                   </div>
                   <div>
