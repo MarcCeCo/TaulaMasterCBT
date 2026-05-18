@@ -16,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
-import type { ProjectTag, Projecte, ProjectStatus, TagStatus } from "@/lib/useProjectes";
+import type { ProjectTag, Projecte, ProjectStatus, TagStatus, InstallacioItem } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
@@ -156,7 +156,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [nouNom, setNouNom] = useState("");
   const [nouDesc, setNouDesc] = useState("");
   const [nouCodiProjecte, setNouCodiProjecte] = useState("");
-  const [nouCodiInstallacio, setNouCodiInstallacio] = useState("");
+  const [nouCodisInstallacio, setNouCodisInstallacio] = useState<InstallacioItem[]>([{ codi: "", nom: "" }]);
   const [nouProjecteError, setNouProjecteError] = useState<string | null>(null);
 
   // Edició projecte existent
@@ -164,12 +164,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [editNom, setEditNom] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editCodiProjecte, setEditCodiProjecte] = useState("");
-  const [editCodiInstallacio, setEditCodiInstallacio] = useState("");
+  const [editCodisInstallacio, setEditCodisInstallacio] = useState<InstallacioItem[]>([{ codi: "", nom: "" }]);
   const [editProjecteError, setEditProjecteError] = useState<string | null>(null);
   // Advertència canvi codi instal·lació quan el projecte té tags
   const [dialogCanviInstallacio, setDialogCanviInstallacio] = useState<{
     nouCodi: string; codiAntic: string;
-    pendingData: { nom: string; descripcio: string; codiProjecte: string; codiInstallacio: string };
+    pendingData: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: InstallacioItem[] };
   } | null>(null);
   const [tagCodiInstallacio, setTagCodiInstallacio] = useState("");
   const [tagEquipId, setTagEquipId] = useState("");
@@ -177,6 +177,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [tagFuncio, setTagFuncio] = useState("");
   const [tagDuplicitat, setTagDuplicitat] = useState("A");
   const [tagComentari, setTagComentari] = useState("");
+  const [tagDescripcio, setTagDescripcio] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
   const [equipSearch, setEquipSearch] = useState("");
 
@@ -220,24 +221,30 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     if (!nouNom.trim()) return;
     const errCodi = validateCodiProjecte(nouCodiProjecte);
     if (errCodi) { setNouProjecteError(errCodi); return; }
-    if (!nouCodiInstallacio.trim()) {
-      setNouProjecteError("El codi d'instal·lació és obligatori.");
+    const codisNets: InstallacioItem[] = nouCodisInstallacio
+      .map(i => ({ codi: i.codi.toUpperCase().trim(), nom: i.nom?.trim() ?? "" }))
+      .filter(i => i.codi);
+    if (codisNets.length === 0) {
+      setNouProjecteError("Cal almenys un codi d'instal·lació.");
       return;
     }
-    if (!/^[A-Z0-9]{5}$/i.test(nouCodiInstallacio)) {
-      setNouProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.");
-      return;
+    for (const i of codisNets) {
+      if (!/^[A-Z0-9]{5}$/i.test(i.codi)) {
+        setNouProjecteError(`El codi "${i.codi}" ha de tenir exactament 5 caràcters alfanumèrics.`);
+        return;
+      }
     }
     try {
       await createProjecte({
         nom: nouNom.trim(),
         descripcio: nouDesc.trim(),
         codiProjecte: nouCodiProjecte.trim(),
-        codiInstallacio: nouCodiInstallacio.toUpperCase().trim(),
+        codisInstallacio: codisNets,
+        codiInstallacio: codisNets[0].codi,
         status: "actiu",
       });
       setDialogNouProjecte(false);
-      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiInstallacio(""); setNouProjecteError(null);
+      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodisInstallacio([{ codi: "", nom: "" }]); setNouProjecteError(null);
       toast.success("Projecte creat");
     } catch (e: any) {
       setNouProjecteError(e?.message ?? "Error en crear el projecte.");
@@ -286,13 +293,13 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     setEditNom(p.nom);
     setEditDesc(p.descripcio);
     setEditCodiProjecte(p.codiProjecte);
-    setEditCodiInstallacio(p.codiInstallacio);
+    setEditCodisInstallacio(p.codisInstallacio.length > 0 ? p.codisInstallacio.map(i => ({ ...i })) : [{ codi: "", nom: "" }]);
     setEditProjecteError(null);
     setDialogEditProjecte(id);
   }
 
   async function guardarEditProjecteReal(
-    data: { nom: string; descripcio: string; codiProjecte: string; codiInstallacio: string },
+    data: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: InstallacioItem[] },
     actualitzarTags: boolean
   ) {
     try {
@@ -301,9 +308,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
         if (projecteActual) {
           for (const tag of projecteActual.tags) {
-            const nouTagComplet = buildTag(data.codiInstallacio, tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
+            const nouTagComplet = buildTag(data.codisInstallacio[0]?.codi ?? "", tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
             await updateTag(dialogEditProjecte!, tag.id, {
-              codiInstallacio: data.codiInstallacio,
+              codiInstallacio: data.codisInstallacio[0]?.codi ?? "",
               tagComplet: nouTagComplet,
               status: "pendent",
             });
@@ -322,20 +329,25 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     if (!editNom.trim()) { setEditProjecteError("El nom és obligatori."); return; }
     const errCodi = validateCodiProjecte(editCodiProjecte);
     if (errCodi) { setEditProjecteError(errCodi); return; }
-    if (!editCodiInstallacio.trim()) { setEditProjecteError("El codi d'instal·lació és obligatori."); return; }
-    if (!/^[A-Z0-9]{5}$/i.test(editCodiInstallacio)) { setEditProjecteError("El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics."); return; }
+    const codisNets: InstallacioItem[] = editCodisInstallacio
+      .map(i => ({ codi: i.codi.toUpperCase().trim(), nom: i.nom?.trim() ?? "" }))
+      .filter(i => i.codi);
+    if (codisNets.length === 0) { setEditProjecteError("Cal almenys un codi d'instal·lació."); return; }
+    for (const i of codisNets) {
+      if (!/^[A-Z0-9]{5}$/i.test(i.codi)) { setEditProjecteError(`El codi "${i.codi}" ha de tenir exactament 5 caràcters alfanumèrics.`); return; }
+    }
 
-    const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
-    const codiAntic = projecteActual?.codiInstallacio ?? "";
-    const nouCodi = editCodiInstallacio.toUpperCase().trim();
+    const projecteActual = projectes.find(pr => pr.id === dialogEditProjecte);
+    const codiAntic = projecteActual?.codisInstallacio[0]?.codi ?? "";
+    const nouCodi = codisNets[0].codi;
     const data = {
       nom: editNom.trim(),
       descripcio: editDesc.trim(),
       codiProjecte: editCodiProjecte.trim(),
-      codiInstallacio: nouCodi,
+      codisInstallacio: codisNets,
     };
 
-    // Si el codi d'instal·lació ha canviat i el projecte té tags, mostrem l'advertència
+    // Si el codi principal ha canviat i el projecte té tags, mostrem l'advertència
     if (codiAntic !== nouCodi && (projecteActual?.tags.length ?? 0) > 0) {
       setDialogCanviInstallacio({ nouCodi, codiAntic, pendingData: data });
       return;
@@ -366,9 +378,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   // ─── accions tags ───────────────────────────────────────────────────────────
   function obrirNouTag() {
     const projecteActual = projectes.find(p => p.id === projecteActiu);
-    setTagCodiInstallacio(projecteActual?.codiInstallacio ?? "");
+    setTagCodiInstallacio(projecteActual?.codisInstallacio?.[0] ?? projecteActual?.codiInstallacio ?? "");
     setTagEquipId(""); setTagCcm("");
-    setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagError(null);
+    setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagDescripcio(""); setTagError(null);
     setDialogNouTag(true);
   }
 
@@ -407,6 +419,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         tagComplet: tagCandidat,
         status: "pendent",
         comentari: tagComentari,
+        descripcioEquip: tagDescripcio.toUpperCase(),
         fieldValues: {},
       });
       setDialogNouTag(false);
@@ -449,6 +462,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         duplicitat: tagDuplicitat.toUpperCase(),
         tagComplet: tagCandidatEdit,
         comentari: tagComentari,
+        descripcioEquip: tagDescripcio.toUpperCase(),
       });
       setDialogEditTag(null);
       toast.success("Tag actualitzat");
@@ -528,6 +542,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     setTagFuncio(tag.funcio);
     setTagDuplicitat(tag.duplicitat);
     setTagComentari(tag.comentari);
+    setTagDescripcio(tag.descripcioEquip ?? "");
     setTagError(null);
     setDialogEditTag(tag);
   }
@@ -555,9 +570,19 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const equipsFiltrats = useMemo(() => {
     const q = equipSearch.toLowerCase().trim();
     if (!q) return equipmentsAmbCodi;
-    return equipmentsAmbCodi.filter(e =>
+    const filtrats = equipmentsAmbCodi.filter(e =>
       e.equipCode.toLowerCase().includes(q) || e.equipName.toLowerCase().includes(q) || (e.tableName && e.tableName.toLowerCase().includes(q))
     );
+    // Prioritzem coincidències per nom/descripció per sobre del codi
+    filtrats.sort((a, b) => {
+      const nomA = (a.tableName || a.equipName).toLowerCase();
+      const nomB = (b.tableName || b.equipName).toLowerCase();
+      const aStartsName = nomA.startsWith(q) ? 0 : nomA.includes(q) ? 1 : 2;
+      const bStartsName = nomB.startsWith(q) ? 0 : nomB.includes(q) ? 1 : 2;
+      if (aStartsName !== bStartsName) return aStartsName - bStartsName;
+      return a.equipCode.localeCompare(b.equipCode);
+    });
+    return filtrats;
   }, [equipmentsAmbCodi, equipSearch]);
 
   // ─── render ─────────────────────────────────────────────────────────────────
@@ -675,7 +700,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           <p className="font-semibold text-slate-700 truncate">{p.nom}</p>
                           {p.codiProjecte && <p className="text-[10px] font-mono text-[#006E7A] mt-0.5">#{p.codiProjecte}</p>}
                           {p.descripcio && <p className="text-xs text-slate-400 truncate mt-0.5">{p.descripcio}</p>}
-                          {p.codiInstallacio && <p className="text-[10px] text-slate-400 mt-0.5 font-mono">Instal·lació: {p.codiInstallacio}</p>}
+                          {(p.codisInstallacio?.length > 0 || p.codiInstallacio) && (
+                            <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                              Instal·lació: {(p.codisInstallacio?.length > 0 ? p.codisInstallacio.map(i => i.nom ? `${i.codi} ${i.nom}` : i.codi) : [p.codiInstallacio]).join(" · ")}
+                            </p>
+                          )}
                         </div>
                         <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-[#0099A8] shrink-0 mt-1 transition-colors" />
                       </div>
@@ -755,10 +784,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </Card>
             ) : (
               <Card className="border-0 shadow-sm bg-white overflow-hidden">
-                <div className="overflow-x-auto">
+                <div className="overflow-auto" style={{ maxHeight: "calc(100vh - 320px)" }}>
                   <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50/60">
+                    <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                      <tr>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">TAG complet</th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Equip</th>
                         <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estat</th>
@@ -767,7 +796,33 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       </tr>
                     </thead>
                     <tbody>
-                      {projecteSeleccionat.tags.map(tag => {
+                      {(() => {
+                        // Agrupa els tags per codi d'instal·lació i ordena alfabèticament
+                        const grups: { codi: string; nom?: string; tags: typeof projecteSeleccionat.tags }[] = [];
+                        const codisVistos: string[] = [];
+                        for (const tag of [...projecteSeleccionat.tags].sort((a, b) => a.codiInstallacio.localeCompare(b.codiInstallacio) || a.tagComplet.localeCompare(b.tagComplet))) {
+                          if (!codisVistos.includes(tag.codiInstallacio)) {
+                            codisVistos.push(tag.codiInstallacio);
+                            const installacioInfo = projecteSeleccionat.codisInstallacio?.find(i => i.codi === tag.codiInstallacio);
+                            grups.push({ codi: tag.codiInstallacio, nom: installacioInfo?.nom, tags: [] });
+                          }
+                          grups[codisVistos.indexOf(tag.codiInstallacio)].tags.push(tag);
+                        }
+                        const mostrarGrups = grups.length > 1;
+                        return grups.map(grup => (
+                          <>
+                            {mostrarGrups && (
+                              <tr key={`grup-${grup.codi}`} className="bg-slate-50/80 border-t border-slate-200">
+                                <td colSpan={5} className="px-3 py-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-xs font-bold text-[#006E7A] bg-[#0099A8]/10 px-2 py-0.5 rounded">{grup.codi}</span>
+                                    {grup.nom && <span className="text-xs text-slate-500">{grup.nom}</span>}
+                                    <span className="text-[10px] text-slate-400 ml-1">{grup.tags.length} tag{grup.tags.length !== 1 ? "s" : ""}</span>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            {grup.tags.map(tag => {
                         const equip = equipMap.get(tag.equipId);
                         return (
                           <tr key={tag.id} className="border-t hover:bg-muted/30">
@@ -796,7 +851,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                   className="text-left group/eq hover:underline underline-offset-2"
                                   onClick={() => setDetallEquip(tag.id)}
                                 >
-                                  <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">{equip.equipName}</p>
+                                  <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">
+                                    {tag.descripcioEquip || equip.equipName}
+                                  </p>
                                   <p className="text-[10px] text-slate-400 font-mono">{equip.equipCode}</p>
                                 </button>
                               ) : (
@@ -860,6 +917,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           </tr>
                         );
                       })}
+                          </>
+                        ));
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -891,15 +951,50 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     onChange={e => { setNouCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setNouProjecteError(null); }}
                   />
                 </div>
-                <div>
-                  <Label className="text-xs font-medium">Codi instal·lació * <span className="text-slate-400 font-normal">(5 car.)</span></Label>
-                  <Input
-                    className="mt-1 font-mono uppercase"
-                    placeholder="XXXXX"
-                    maxLength={5}
-                    value={nouCodiInstallacio}
-                    onChange={e => { setNouCodiInstallacio(e.target.value.toUpperCase()); setNouProjecteError(null); }}
-                  />
+                <div className="col-span-2">
+                  <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
+                  <div className="mt-1 space-y-1.5">
+                    {nouCodisInstallacio.map((item, idx) => (
+                      <div key={idx} className="flex gap-1.5 items-center">
+                        <Input
+                          className="font-mono uppercase w-24 shrink-0"
+                          placeholder="XXXXX"
+                          maxLength={5}
+                          value={item.codi}
+                          onChange={e => {
+                            const next = nouCodisInstallacio.map((x, i) => i === idx ? { ...x, codi: e.target.value.toUpperCase() } : x);
+                            setNouCodisInstallacio(next);
+                            setNouProjecteError(null);
+                          }}
+                        />
+                        <Input
+                          className="flex-1 text-xs uppercase placeholder:normal-case"
+                          placeholder="Nom de la instal·lació (opcional)"
+                          value={item.nom ?? ""}
+                          onChange={e => {
+                            const next = nouCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value.toUpperCase() } : x);
+                            setNouCodisInstallacio(next);
+                          }}
+                        />
+                        {nouCodisInstallacio.length > 1 && (
+                          <Button
+                            type="button" variant="ghost" size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-500 shrink-0"
+                            onClick={() => setNouCodisInstallacio(nouCodisInstallacio.filter((_, i) => i !== idx))}
+                          >
+                            <span className="text-base leading-none">×</span>
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="gap-1 text-xs h-7 text-[#0099A8] border-[#0099A8]/30 hover:bg-[#0099A8]/5"
+                      onClick={() => setNouCodisInstallacio([...nouCodisInstallacio, { codi: "", nom: "" }])}
+                    >
+                      <Plus className="h-3 w-3" /> Afegir instal·lació
+                    </Button>
+                  </div>
                 </div>
               </div>
               {nouProjecteError && (
@@ -910,7 +1005,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogNouProjecte(false)}>Cancel·la</Button>
-              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || !nouCodiInstallacio.trim()}>Crear projecte</Button>
+              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || nouCodisInstallacio.every(c => !c.codi.trim())}>Crear projecte</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -938,15 +1033,50 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     onChange={e => { setEditCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setEditProjecteError(null); }}
                   />
                 </div>
-                <div>
-                  <Label className="text-xs font-medium">Codi instal·lació * <span className="text-slate-400 font-normal">(5 car.)</span></Label>
-                  <Input
-                    className="mt-1 font-mono uppercase"
-                    placeholder="XXXXX"
-                    maxLength={5}
-                    value={editCodiInstallacio}
-                    onChange={e => { setEditCodiInstallacio(e.target.value.toUpperCase()); setEditProjecteError(null); }}
-                  />
+                <div className="col-span-2">
+                  <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
+                  <div className="mt-1 space-y-1.5">
+                    {editCodisInstallacio.map((item, idx) => (
+                      <div key={idx} className="flex gap-1.5 items-center">
+                        <Input
+                          className="font-mono uppercase w-24 shrink-0"
+                          placeholder="XXXXX"
+                          maxLength={5}
+                          value={item.codi}
+                          onChange={e => {
+                            const next = editCodisInstallacio.map((x, i) => i === idx ? { ...x, codi: e.target.value.toUpperCase() } : x);
+                            setEditCodisInstallacio(next);
+                            setEditProjecteError(null);
+                          }}
+                        />
+                        <Input
+                          className="flex-1 text-xs uppercase placeholder:normal-case"
+                          placeholder="Nom de la instal·lació (opcional)"
+                          value={item.nom ?? ""}
+                          onChange={e => {
+                            const next = editCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value.toUpperCase() } : x);
+                            setEditCodisInstallacio(next);
+                          }}
+                        />
+                        {editCodisInstallacio.length > 1 && (
+                          <Button
+                            type="button" variant="ghost" size="icon"
+                            className="h-8 w-8 text-slate-400 hover:text-red-500 shrink-0"
+                            onClick={() => setEditCodisInstallacio(editCodisInstallacio.filter((_, i) => i !== idx))}
+                          >
+                            <span className="text-base leading-none">×</span>
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      type="button" variant="outline" size="sm"
+                      className="gap-1 text-xs h-7 text-[#0099A8] border-[#0099A8]/30 hover:bg-[#0099A8]/5"
+                      onClick={() => setEditCodisInstallacio([...editCodisInstallacio, { codi: "", nom: "" }])}
+                    >
+                      <Plus className="h-3 w-3" /> Afegir instal·lació
+                    </Button>
+                  </div>
                 </div>
               </div>
               {editProjecteError && (
@@ -958,7 +1088,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             <DialogFooter>
               <Button variant="outline" onClick={() => setDialogEditProjecte(null)}>Cancel·la</Button>
               <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={guardarEditProjecte}
-                disabled={!editNom.trim() || !editCodiProjecte.trim() || !editCodiInstallacio.trim()}>
+                disabled={!editNom.trim() || !editCodiProjecte.trim() || editCodisInstallacio.every(c => !c.codi.trim())}>
                 Guardar canvis
               </Button>
             </DialogFooter>
@@ -980,39 +1110,59 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 {!dialogEditTag && (
                   <div>
                     <Label className="text-xs font-medium">Equip de la Taula Master *</Label>
-                    <div className="mt-1 border rounded-md overflow-hidden">
-                      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b bg-slate-50">
-                        <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                        <input
-                          className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
-                          placeholder="Cerca per codi o nom..."
-                          value={equipSearch}
-                          onChange={e => setEquipSearch(e.target.value)}
-                        />
-                        {equipSearch && (
-                          <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
-                            <XCircle className="h-3.5 w-3.5" />
-                          </button>
-                        )}
+                    {/* Si ja hi ha un equip seleccionat, mostrem-lo com a pastilla amb opció de canvi */}
+                    {tagEquipId && equipMap.get(tagEquipId) ? (
+                      <div className="mt-1 flex items-center gap-2 p-2 bg-[#0099A8]/8 border border-[#0099A8]/30 rounded-md">
+                        <CheckCircle2 className="h-4 w-4 text-[#0099A8] shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium text-[#006E7A] truncate block">{equipMap.get(tagEquipId)!.tableName || equipMap.get(tagEquipId)!.equipName}</span>
+                          <span className="text-xs font-mono text-slate-500">{equipMap.get(tagEquipId)!.equipCode}</span>
+                        </div>
+                        <button onClick={() => { setTagEquipId(""); setEquipSearch(""); }}
+                          className="text-xs text-[#0099A8] hover:text-[#006E7A] shrink-0 underline">
+                          Canviar
+                        </button>
                       </div>
-                      <div className="max-h-44 overflow-y-auto">
-                        {equipsFiltrats.length === 0 ? (
-                          <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
-                        ) : (
-                          equipsFiltrats.map(e => (
-                            <button key={e.id} onClick={() => setTagEquipId(e.id)}
-                              className={cn(
-                                "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
-                                tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
-                              )}>
-                              <span className="font-mono shrink-0">{e.equipCode}</span>
-                              <span className="text-slate-500 truncate">{e.tableName || e.equipName}</span>
-                              {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                    ) : (
+                      <div className="mt-1 border rounded-md overflow-hidden">
+                        <div className="flex items-center gap-2 px-2.5 py-1.5 border-b bg-slate-50">
+                          <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <input
+                            className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
+                            placeholder="Escriu la descripció de l'equip..."
+                            value={equipSearch}
+                            onChange={e => setEquipSearch(e.target.value)}
+                            autoFocus
+                          />
+                          {equipSearch && (
+                            <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
+                              <XCircle className="h-3.5 w-3.5" />
                             </button>
-                          ))
-                        )}
+                          )}
+                        </div>
+                        <div className="max-h-44 overflow-y-auto">
+                          {!equipSearch.trim() ? (
+                            <p className="text-xs text-slate-400 px-3 py-2 italic">Comença a escriure per buscar equips per descripció o codi…</p>
+                          ) : equipsFiltrats.length === 0 ? (
+                            <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
+                          ) : (
+                            equipsFiltrats.map(e => (
+                              <button key={e.id} onClick={() => { setTagEquipId(e.id); setEquipSearch(""); }}
+                                className={cn(
+                                  "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
+                                  tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
+                                )}>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block truncate font-medium">{e.tableName || e.equipName}</span>
+                                  <span className="font-mono text-slate-400">{e.equipCode}</span>
+                                </div>
+                                {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                              </button>
+                            ))
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
                 {dialogEditTag && (
@@ -1025,10 +1175,34 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
                 {/* Camps del TAG */}
                 {/* Codi instal·lació del projecte (informatiu si ja està fixat) */}
-                {projecteSeleccionat?.codiInstallacio ? (
+                {projecteSeleccionat && (projecteSeleccionat.codisInstallacio?.length > 1) ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Instal·lació *</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {projecteSeleccionat.codisInstallacio.map((item) => (
+                        <button
+                          key={item.codi} type="button"
+                          className={cn(
+                            "px-3 py-1 rounded-full text-xs font-medium border transition-all",
+                            tagCodiInstallacio === item.codi
+                              ? "bg-[#0099A8] text-white border-[#0099A8]"
+                              : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#0099A8]/50"
+                          )}
+                          onClick={() => setTagCodiInstallacio(item.codi)}
+                        >
+                          <span className="font-mono">{item.codi}</span>
+                          {item.nom && <span className="ml-1 font-normal opacity-80">— {item.nom}</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (projecteSeleccionat?.codisInstallacio?.[0]?.codi ?? projecteSeleccionat?.codiInstallacio) ? (
                   <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs flex items-center gap-2">
                     <span className="text-slate-500">Instal·lació del projecte:</span>
-                    <span className="font-mono font-semibold text-slate-700">{projecteSeleccionat.codiInstallacio}</span>
+                    <span className="font-mono font-semibold text-slate-700">{projecteSeleccionat.codisInstallacio?.[0]?.codi ?? projecteSeleccionat.codiInstallacio}</span>
+                    {projecteSeleccionat.codisInstallacio?.[0]?.nom && (
+                      <span className="text-slate-500">— {projecteSeleccionat.codisInstallacio[0].nom}</span>
+                    )}
                   </div>
                 ) : null}
                 <div className="grid grid-cols-2 gap-3">
@@ -1041,9 +1215,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       maxLength={5}
                       placeholder="XXXXX"
                       value={tagCodiInstallacio}
-                      readOnly={!!projecteSeleccionat?.codiInstallacio}
-                      onChange={e => { if (!projecteSeleccionat?.codiInstallacio) setTagCodiInstallacio(e.target.value.toUpperCase()); }}
-                      title={projecteSeleccionat?.codiInstallacio ? "Fixat a la configuració del projecte" : undefined}
+                      readOnly={!!(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio)}
+                      onChange={e => { if (!(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio)) setTagCodiInstallacio(e.target.value.toUpperCase()); }}
+                      title={(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio) ? (projecteSeleccionat?.codisInstallacio?.length > 1 ? "Selecciona a dalt" : "Fixat a la configuració del projecte") : undefined}
                     />
                   </div>
                   <div>
@@ -1087,6 +1261,17 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     )}
                   </div>
                 )}
+
+                {/* Descripció de l'equip */}
+                <div>
+                  <Label className="text-xs font-medium">Descripció de l'equip</Label>
+                  <Input
+                    className="mt-1 uppercase placeholder:normal-case"
+                    placeholder="Descripció personalitzada de l'equip (opcional)"
+                    value={tagDescripcio}
+                    onChange={e => setTagDescripcio(e.target.value.toUpperCase())}
+                  />
+                </div>
 
                 {/* Comentari */}
                 <div>

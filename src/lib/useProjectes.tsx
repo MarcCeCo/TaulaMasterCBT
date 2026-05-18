@@ -82,8 +82,14 @@ export interface ProjectTag {
   tagComplet: string;
   status: TagStatus;
   comentari: string;
+  descripcioEquip: string;  // descripció lliure de l'equip al projecte
   fieldValues: Record<string, string>;
   createdAt: number;
+}
+
+export interface InstallacioItem {
+  codi: string;  // 5 car. alfanumèrics, majúscules
+  nom?: string;  // opcional, text lliure
 }
 
 export interface Projecte {
@@ -91,6 +97,9 @@ export interface Projecte {
   nom: string;
   descripcio: string;
   codiProjecte: string;
+  /** Cada instal·lació: codi obligatori (5 car.) + nom opcional */
+  codisInstallacio: InstallacioItem[];
+  /** @deprecated Usa codisInstallacio[0]. Mantingut per compatibilitat amb tags existents. */
   codiInstallacio: string;
   status: ProjectStatus;
   tags: ProjectTag[];
@@ -112,6 +121,7 @@ const toTag = (row: any): ProjectTag => ({
   tagComplet:      row.tag_complet      ?? "",
   status:          row.status           ?? "pendent",
   comentari:       row.comentari        ?? "",
+  descripcioEquip: row.descripcio_equip  ?? "",
   fieldValues:     row.field_values     ?? {},
   createdAt:       row.created_at       ?? Date.now(),
 });
@@ -127,28 +137,50 @@ const tagToRow = (t: ProjectTag) => ({
   tag_complet:      t.tagComplet,
   status:           t.status,
   comentari:        t.comentari,
+  descripcio_equip: t.descripcioEquip,
   field_values:     t.fieldValues,
   created_at:       t.createdAt,
 });
 
-const toProjecte = (row: any, tags: ProjectTag[]): Projecte => ({
-  id:               row.id,
-  nom:              row.nom,
-  descripcio:       row.descripcio       ?? "",
-  codiProjecte:     row.codi_projecte    ?? "",
-  codiInstallacio:  row.codi_installacio ?? "",
-  status:           row.status           ?? "actiu",
-  tags:             tags.filter(t => t.projecteId === row.id),
-  createdAt:        row.created_at       ?? Date.now(),
-  allowedUsers:     Array.isArray(row.allowed_users) ? row.allowed_users : null,
-});
+const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
+  // Suporta tant array (nou format) com string (format antic)
+  const rawCodis = row.codis_installacio;
+  const rawCodi  = row.codi_installacio ?? "";
+  let codisInstallacio: InstallacioItem[];
+  if (Array.isArray(rawCodis) && rawCodis.length > 0) {
+    codisInstallacio = rawCodis.map((c: any) => {
+      if (typeof c === "object" && c !== null && c.codi) {
+        return { codi: String(c.codi).toUpperCase().trim(), nom: c.nom ?? "" };
+      }
+      // format antic: string simple
+      return { codi: String(c).toUpperCase().trim(), nom: "" };
+    }).filter(c => c.codi);
+  } else if (rawCodi) {
+    codisInstallacio = [{ codi: rawCodi.toUpperCase().trim(), nom: "" }];
+  } else {
+    codisInstallacio = [];
+  }
+  return {
+    id:               row.id,
+    nom:              row.nom,
+    descripcio:       row.descripcio       ?? "",
+    codiProjecte:     row.codi_projecte    ?? "",
+    codisInstallacio,
+    codiInstallacio:  codisInstallacio[0]?.codi  ?? "",
+    status:           row.status           ?? "actiu",
+    tags:             tags.filter(t => t.projecteId === row.id),
+    createdAt:        row.created_at       ?? Date.now(),
+    allowedUsers:     Array.isArray(row.allowed_users) ? row.allowed_users : null,
+  };
+};
 
 const projecteToRow = (p: Projecte) => ({
   id:               p.id,
   nom:              p.nom,
   descripcio:       p.descripcio,
   codi_projecte:    p.codiProjecte,
-  codi_installacio: p.codiInstallacio,
+  codi_installacio: p.codisInstallacio[0]?.codi ?? p.codiInstallacio,
+  codis_installacio: p.codisInstallacio,
   status:           p.status,
   created_at:       p.createdAt,
   allowed_users:    p.allowedUsers ?? null,
@@ -298,14 +330,27 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     const token = getToken();
     // Convertim el patch a noms de columna SQL
     const rowPatch: Record<string, any> = {};
-    if (patch.nom             !== undefined) rowPatch.nom              = patch.nom;
-    if (patch.descripcio      !== undefined) rowPatch.descripcio       = patch.descripcio;
-    if (patch.codiProjecte    !== undefined) rowPatch.codi_projecte    = patch.codiProjecte;
-    if (patch.codiInstallacio !== undefined) rowPatch.codi_installacio = patch.codiInstallacio;
-    if (patch.status          !== undefined) rowPatch.status           = patch.status;
+    if (patch.nom                !== undefined) rowPatch.nom               = patch.nom;
+    if (patch.descripcio         !== undefined) rowPatch.descripcio        = patch.descripcio;
+    if (patch.codiProjecte       !== undefined) rowPatch.codi_projecte     = patch.codiProjecte;
+    if (patch.codiInstallacio    !== undefined) rowPatch.codi_installacio  = patch.codiInstallacio;
+    if (patch.codisInstallacio   !== undefined) {
+      rowPatch.codis_installacio = patch.codisInstallacio;
+      // Mantenim codi_installacio sincronitzat amb el primer element (compatibilitat)
+      rowPatch.codi_installacio  = patch.codisInstallacio[0]?.codi ?? "";
+    }
+    if (patch.status             !== undefined) rowPatch.status            = patch.status;
 
     await supa(token, "PATCH", `projectes?id=eq.${id}`, rowPatch, { "Prefer": "return=minimal" });
-    setProjectes(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
+    setProjectes(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      const updated = { ...p, ...patch };
+      // Mantenim codiInstallacio sincronitzat
+      if (patch.codisInstallacio !== undefined) {
+        updated.codiInstallacio = patch.codisInstallacio[0]?.codi ?? p.codiInstallacio;
+      }
+      return updated;
+    }));
   }, [getToken]);
 
   const deleteProjecte = useCallback(async (id: string) => {
@@ -359,7 +404,8 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     if (patch.funcio      !== undefined) rowPatch.funcio        = patch.funcio;
     if (patch.duplicitat  !== undefined) rowPatch.duplicitat   = patch.duplicitat;
     if (patch.tagComplet  !== undefined) rowPatch.tag_complet  = patch.tagComplet;
-    if (patch.codiInstallacio !== undefined) rowPatch.codi_installacio = patch.codiInstallacio;
+    if (patch.codiInstallacio  !== undefined) rowPatch.codi_installacio  = patch.codiInstallacio;
+    if (patch.descripcioEquip  !== undefined) rowPatch.descripcio_equip = patch.descripcioEquip;
 
     await supa(token, "PATCH", `projecte_tags?id=eq.${tagId}`, rowPatch, { "Prefer": "return=minimal" });
     setProjectes(prev => prev.map(p =>
