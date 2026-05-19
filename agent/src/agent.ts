@@ -1,21 +1,22 @@
 // src/agent.ts
-// Agent scraping Autodesk Fusion 360 → Supabase visor3d
+// Agent APS (Autodesk Platform Services) → Supabase visor3d
+// Usa 2-legged OAuth — sense login interactiu, sense 2FA, sense Playwright
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { chromium, Browser, Page } from "playwright";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
 interface InstallacioTrobada {
-  codi: string;        // ex: ED005
-  nom: string;         // ex: LA LLAGOSTA
-  embedUrl: string;    // ex: https://besostordera.autodesk360.com/shares/public/SH...?mode=embed
+  codi: string;
+  nom: string;
+  embedUrl: string;
+  urn: string;
 }
 
 interface SistemaTrobat {
-  nom: string;               // ex: LA LLAGOSTA
+  nom: string;
   installacions: InstallacioTrobada[];
 }
 
@@ -27,233 +28,198 @@ interface ResultatSync {
   errors: string[];
 }
 
+interface APSToken {
+  access_token: string;
+  expires_in: number;
+  token_type: string;
+  obtingutAt: number;
+}
+
+// ─── Constants APS ───────────────────────────────────────────────────────────
+
+const APS_BASE = "https://developer.api.autodesk.com";
+const APS_AUTH_URL = `${APS_BASE}/authentication/v2/token`;
+
 // ─── Helpers de parseig ───────────────────────────────────────────────────────
 
-// "005_LA-LLAGOSTA" → "LA LLAGOSTA"
 function parsejaNomCarpeta(nomCarpeta: string): string {
-  // Elimina el prefix numèric i el guió baix: "005_" → ""
   const sensePrefixNumeric = nomCarpeta.replace(/^\d+_/, "");
-  // Substitueix guions per espais
   return sensePrefixNumeric.replace(/-/g, " ").trim();
 }
 
-// "ED005_LA-LLAGOSTA.rvt" → { codi: "ED005", nom: "LA LLAGOSTA" }
 function parsejaNomFitxer(nomFitxer: string): { codi: string; nom: string } | null {
-  // Elimina l'extensió
   const sensExtensio = nomFitxer.replace(/\.[^.]+$/, "");
-  // El codi és tot fins al primer "_"
   const indexGuioBaix = sensExtensio.indexOf("_");
   if (indexGuioBaix === -1) return null;
-
   const codi = sensExtensio.substring(0, indexGuioBaix);
   const nomRaw = sensExtensio.substring(indexGuioBaix + 1);
   const nom = nomRaw.replace(/-/g, " ").trim();
-
-  // Validació: el codi ha de tenir lletres i números (ex: ED005, MLA01)
   if (!/^[A-Z]+\d+$/.test(codi)) return null;
-
   return { codi, nom };
 }
 
-// Extreu la URL del src= de l'iframe
-function extrauEmbedUrl(htmlIframe: string): string | null {
-  const match = htmlIframe.match(/src="([^"]+)"/);
-  return match ? match[1] : null;
+function construeixEmbedUrl(urn: string): string {
+  return `https://viewer.autodesk.com/id/${urn}`;
 }
 
-// ─── Login Autodesk ───────────────────────────────────────────────────────────
+// ─── Autenticació APS 2-legged OAuth ─────────────────────────────────────────
 
-async function login(page: Page, email: string, password: string): Promise<void> {
-  console.log("🔐 Iniciant sessió a Autodesk...");
+let tokenCache: APSToken | null = null;
 
-  // Navega directament a Autodesk Fusion 360 — redirigirà al login
-  await page.goto("https://besostordera.autodesk360.com/g/all_projects/active", {
-    waitUntil: "domcontentloaded",
-    timeout: 30000,
+async function obteToken(clientId: string, clientSecret: string): Promise<APSToken> {
+  if (tokenCache && Date.now() < tokenCache.obtingutAt + (tokenCache.expires_in - 300) * 1000) {
+    console.log("🔑 Reutilitzant token APS existent");
+    return tokenCache;
+  }
+
+  console.log("🔐 Obtenint token APS 2-legged...");
+
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    scope: "data:read",
   });
 
-  // Espera el camp d'email (signin.autodesk.com)
-  await page.waitForSelector('input[type="email"], input[name="email"], input[name="userName"]', {
-    timeout: 20000,
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+  const resp = await fetch(APS_AUTH_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${credentials}`,
+    },
+    body: body.toString(),
   });
 
-  console.log("📧 Introduint email...");
-  await page.fill('input[type="email"], input[name="email"], input[name="userName"]', email);
-  await page.waitForTimeout(500);
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Error obtenint token APS: ${resp.status} ${text}`);
+  }
 
-  // Clica Next / Continuar
-  await page.click('button[type="submit"], button[data-testid="btn-next"], #btn-next').catch(() =>
-    page.keyboard.press("Enter")
-  );
-  await page.waitForTimeout(2000);
-
-  // Espera el camp de contrasenya
-  await page.waitForSelector('input[type="password"]', { timeout: 20000 });
-  console.log("🔑 Introduint contrasenya...");
-  await page.fill('input[type="password"]', password);
-  await page.waitForTimeout(500);
-
-  // Clica Sign In
-  await page.click('button[type="submit"], button[data-testid="btn-signin"], #btn-signin').catch(() =>
-    page.keyboard.press("Enter")
-  );
-
-  // Espera que arribi al dashboard de Fusion 360
-  await page.waitForURL(/autodesk360\.com/i, { timeout: 40000 });
-
-  console.log("✅ Sessió iniciada correctament");
+  const data = await resp.json() as { access_token: string; expires_in: number; token_type: string };
+  tokenCache = { ...data, obtingutAt: Date.now() };
+  console.log(`✅ Token APS obtingut (expira en ${data.expires_in}s)`);
+  return tokenCache;
 }
 
-// ─── Navega a 000_MODELS i extreu sistemes ────────────────────────────────────
+// ─── APS Data Management API ──────────────────────────────────────────────────
 
-async function extrauSistemes(page: Page): Promise<SistemaTrobat[]> {
-  console.log("📂 Navegant a WEB → 000_MODELS...");
-
-  // Navega directament al projecte WEB de CBT
-  await page.goto(
-    "https://besostordera.autodesk360.com/g/projects/20230927679505251/data",
-    { waitUntil: "networkidle", timeout: 30000 }
+async function llistaContingutCarpeta(projectId: string, carpetaId: string, token: string): Promise<any[]> {
+  const resp = await fetch(
+    `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents`,
+    { headers: { Authorization: `Bearer ${token}` } }
   );
+  if (!resp.ok) throw new Error(`Error llistant carpeta ${carpetaId}: ${resp.status}`);
+  const data = await resp.json() as { data: any[] };
+  return data.data;
+}
 
-  // Espera la llista de carpetes
-  await page.waitForSelector('[data-testid="folder-name"], .item-name, a[title]', {
-    timeout: 20000,
+async function obteArrelCarpetes(hubId: string, projectId: string, token: string): Promise<any[]> {
+  const resp = await fetch(`${APS_BASE}/project/v1/hubs/${hubId}/projects/${projectId}/topFolders`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
+  if (!resp.ok) throw new Error(`Error obtenint carpetes arrel: ${resp.status}`);
+  const data = await resp.json() as { data: any[] };
+  return data.data;
+}
 
-  // Clica a la carpeta WEB
-  await page.click('text=WEB');
-  await page.waitForLoadState("networkidle");
+async function trobaSubcarpeta(
+  projectId: string, carpetaParentId: string, nomObjectiu: string, token: string
+): Promise<any | null> {
+  const contingut = await llistaContingutCarpeta(projectId, carpetaParentId, token);
+  return contingut.find(
+    (item) => item.type === "folders" && item.attributes?.displayName === nomObjectiu
+  ) ?? null;
+}
 
-  // Clica a 000_MODELS
-  await page.click('text=000_MODELS');
-  await page.waitForLoadState("networkidle");
+// ─── Extreu sistemes via APS ──────────────────────────────────────────────────
 
-  // Obté totes les subcarpetes (sistemes)
-  const carpetes = await page.$$eval(
-    '[data-testid="folder-name"], .folder-name, td.item-name',
-    (els) => els
-      .map((el) => el.textContent?.trim() ?? "")
-      .filter((nom) => /^\d+_/.test(nom)) // Només les que comencen per números
+async function extrauSistemes(hubId: string, projectId: string, token: string): Promise<SistemaTrobat[]> {
+  console.log("📂 Navegant a WEB → 000_MODELS via APS...");
+
+  const carpetesArrel = await obteArrelCarpetes(hubId, projectId, token);
+  console.log(`  Carpetes arrel: ${carpetesArrel.map((c: any) => c.attributes?.displayName).join(", ")}`);
+
+  // Cerca la carpeta WEB
+  const carpetaWEB = carpetesArrel.find(
+    (c: any) => c.type === "folders" && c.attributes?.displayName === "WEB"
   );
 
-  console.log(`📁 Trobades ${carpetes.length} carpetes de sistema: ${carpetes.join(", ")}`);
+  let carpeta000Models: any = null;
+
+  if (carpetaWEB) {
+    console.log(`  ✅ Carpeta WEB trobada: ${carpetaWEB.id}`);
+    carpeta000Models = await trobaSubcarpeta(projectId, carpetaWEB.id, "000_MODELS", token);
+  } else {
+    // Busca 000_MODELS directament a l'arrel
+    console.warn("⚠️  Carpeta WEB no trobada, buscant 000_MODELS a l'arrel...");
+    for (const c of carpetesArrel) {
+      carpeta000Models = await trobaSubcarpeta(projectId, c.id, "000_MODELS", token);
+      if (carpeta000Models) break;
+    }
+  }
+
+  if (!carpeta000Models) throw new Error("No s'ha trobat la carpeta '000_MODELS'");
+  console.log(`  ✅ Carpeta 000_MODELS trobada: ${carpeta000Models.id}`);
+
+  const contingut000Models = await llistaContingutCarpeta(projectId, carpeta000Models.id, token);
+  const carpetesSistemes = contingut000Models.filter(
+    (item) => item.type === "folders" && /^\d+_/.test(item.attributes?.displayName ?? "")
+  );
+
+  console.log(`📁 Trobades ${carpetesSistemes.length} carpetes de sistema`);
 
   const sistemes: SistemaTrobat[] = [];
 
-  for (const nomCarpeta of carpetes) {
-    console.log(`\n📂 Processant carpeta: ${nomCarpeta}`);
+  for (const carpeta of carpetesSistemes) {
+    const nomCarpeta: string = carpeta.attributes?.displayName ?? "";
     const nomSistema = parsejaNomCarpeta(nomCarpeta);
+    console.log(`\n📂 Processant sistema: ${nomCarpeta} → "${nomSistema}"`);
 
-    // Entra a la carpeta
-    await page.click(`text=${nomCarpeta}`);
-    await page.waitForLoadState("networkidle");
-
-    // Obté tots els fitxers .rvt
-    const fitxers = await page.$$eval(
-      '[data-testid="file-name"], .file-name, td.item-name',
-      (els) => els
-        .map((el) => el.textContent?.trim() ?? "")
-        .filter((nom) => nom.endsWith(".rvt"))
+    const contingut = await llistaContingutCarpeta(projectId, carpeta.id, token);
+    const fitxersRvt = contingut.filter(
+      (item) => item.type === "items" && item.attributes?.displayName?.endsWith(".rvt")
     );
 
-    console.log(`  📄 Fitxers .rvt: ${fitxers.join(", ")}`);
+    console.log(`  📄 Fitxers .rvt: ${fitxersRvt.map((f: any) => f.attributes?.displayName).join(", ")}`);
 
     const installacions: InstallacioTrobada[] = [];
 
-    for (const nomFitxer of fitxers) {
+    for (const fitxer of fitxersRvt) {
+      const nomFitxer: string = fitxer.attributes?.displayName ?? "";
       const parsed = parsejaNomFitxer(nomFitxer);
       if (!parsed) {
         console.warn(`  ⚠️  No s'ha pogut parsejar: ${nomFitxer}`);
         continue;
       }
 
-      console.log(`  🔗 Obtenint embed URL per: ${nomFitxer}`);
+      const itemId: string = fitxer.id ?? "";
+      const urn = Buffer.from(itemId).toString("base64url");
+      const embedUrl = construeixEmbedUrl(urn);
 
-      try {
-        const embedUrl = await obteEmbedUrl(page, nomFitxer);
-        if (embedUrl) {
-          installacions.push({ ...parsed, embedUrl });
-          console.log(`  ✅ ${parsed.codi} - ${parsed.nom}: ${embedUrl}`);
-        } else {
-          console.warn(`  ⚠️  No s'ha trobat embed URL per: ${nomFitxer}`);
-        }
-      } catch (err) {
-        console.error(`  ❌ Error amb ${nomFitxer}:`, err);
-      }
+      installacions.push({ ...parsed, embedUrl, urn });
+      console.log(`  ✅ ${parsed.codi} - ${parsed.nom}`);
     }
 
     sistemes.push({ nom: nomSistema, installacions });
-
-    // Torna enrere a 000_MODELS
-    await page.click('text=000_MODELS');
-    await page.waitForLoadState("networkidle");
   }
 
   return sistemes;
 }
 
-// ─── Obté l'embed URL d'un fitxer ────────────────────────────────────────────
-
-async function obteEmbedUrl(page: Page, nomFitxer: string): Promise<string | null> {
-  // Obre el menú contextual del fitxer (botó ...)
-  const fila = page.locator(`tr:has-text("${nomFitxer}")`).first();
-  await fila.hover();
-
-  // Clica el botó d'opcions (...)
-  const botoOpcions = fila.locator('button[aria-label="More options"], button.options-btn, [data-testid="item-options"]').first();
-  await botoOpcions.click({ timeout: 10000 });
-
-  // Clica "Compartir"
-  await page.click('text=Compartir', { timeout: 10000 });
-  await page.waitForLoadState("networkidle");
-
-  // Espera el modal de compartir
-  await page.waitForSelector('text=Incrustar', { timeout: 15000 });
-
-  // Clica la pestanya "Incrustar"
-  await page.click('text=Incrustar');
-  await page.waitForTimeout(1000);
-
-  // Llegeix el codi de l'iframe del textarea
-  const codiIframe = await page.inputValue(
-    'textarea, input[readonly]',
-    { timeout: 10000 }
-  ).catch(() => null);
-
-  // Tanca el modal
-  await page.click('text=Cerrar', { timeout: 5000 }).catch(() => {
-    page.keyboard.press("Escape");
-  });
-  await page.waitForTimeout(500);
-
-  if (!codiIframe) return null;
-  return extrauEmbedUrl(codiIframe);
-}
-
 // ─── Sincronitza amb Supabase ─────────────────────────────────────────────────
 
-async function sincronitzaSupabase(
-  supabase: SupabaseClient,
-  sistemes: SistemaTrobat[]
-): Promise<ResultatSync> {
+async function sincronitzaSupabase(supabase: SupabaseClient, sistemes: SistemaTrobat[]): Promise<ResultatSync> {
   const resultat: ResultatSync = {
-    sistemesCreats: [],
-    sistemesActualitzats: [],
-    installacionsCreades: [],
-    installacionsActualitzades: [],
-    errors: [],
+    sistemesCreats: [], sistemesActualitzats: [],
+    installacionsCreades: [], installacionsActualitzades: [], errors: [],
   };
 
   for (const [index, sistema] of sistemes.entries()) {
     try {
       console.log(`\n💾 Sincronitzant sistema: ${sistema.nom}`);
 
-      // Busca si ja existeix el sistema (per nom)
       const { data: sistemaExistent } = await supabase
-        .from("visor3d_sistemes")
-        .select("id, nom")
-        .ilike("nom", sistema.nom)
-        .single();
+        .from("visor3d_sistemes").select("id, nom").ilike("nom", sistema.nom).single();
 
       let sistemaId: string;
 
@@ -262,62 +228,33 @@ async function sincronitzaSupabase(
         resultat.sistemesActualitzats.push(sistema.nom);
         console.log(`  ♻️  Sistema ja existent: ${sistema.nom}`);
       } else {
-        // Crea el sistema nou
         const { data: nouSistema, error } = await supabase
           .from("visor3d_sistemes")
-          .insert({
-            nom: sistema.nom,
-            color: colorPerOrdre(index),
-            ordre: index,
-          })
-          .select()
-          .single();
-
+          .insert({ nom: sistema.nom, color: colorPerOrdre(index), ordre: index })
+          .select().single();
         if (error) throw error;
         sistemaId = nouSistema.id;
         resultat.sistemesCreats.push(sistema.nom);
         console.log(`  ✅ Sistema creat: ${sistema.nom}`);
       }
 
-      // Sincronitza les instal·lacions
       for (const inst of sistema.installacions) {
         try {
-          // Busca per codi
           const { data: instExistent } = await supabase
-            .from("visor3d_installacions")
-            .select("id")
-            .eq("sistema_id", sistemaId)
-            .eq("codi_installacio", inst.codi)
-            .single();
+            .from("visor3d_installacions").select("id")
+            .eq("sistema_id", sistemaId).eq("codi_installacio", inst.codi).single();
 
           if (instExistent) {
-            // Actualitza la URL (pot haver canviat)
-            await supabase
-              .from("visor3d_installacions")
-              .update({
-                nom: inst.nom,
-                embed_url: inst.embedUrl,
-                updated_at: new Date().toISOString(),
-              })
+            await supabase.from("visor3d_installacions")
+              .update({ nom: inst.nom, embed_url: inst.embedUrl, urn: inst.urn, updated_at: new Date().toISOString() })
               .eq("id", instExistent.id);
-
             resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
-            console.log(`  ♻️  Instal·lació actualitzada: ${inst.codi} - ${inst.nom}`);
           } else {
-            // Crea nova instal·lació
-            const ordre = sistema.installacions.indexOf(inst);
-            await supabase
-              .from("visor3d_installacions")
-              .insert({
-                sistema_id: sistemaId,
-                nom: inst.nom,
-                codi_installacio: inst.codi,
-                embed_url: inst.embedUrl,
-                ordre,
-              });
-
+            await supabase.from("visor3d_installacions").insert({
+              sistema_id: sistemaId, nom: inst.nom, codi_installacio: inst.codi,
+              embed_url: inst.embedUrl, urn: inst.urn, ordre: sistema.installacions.indexOf(inst),
+            });
             resultat.installacionsCreades.push(`${inst.codi} - ${inst.nom}`);
-            console.log(`  ✅ Instal·lació creada: ${inst.codi} - ${inst.nom}`);
           }
         } catch (err) {
           const msg = `Error amb instal·lació ${inst.codi}: ${err}`;
@@ -335,93 +272,63 @@ async function sincronitzaSupabase(
   return resultat;
 }
 
-// ─── Colors per defecte ───────────────────────────────────────────────────────
+// ─── Colors ───────────────────────────────────────────────────────────────────
 
-const COLORS = [
-  "#0099A8", "#6366F1", "#10B981", "#F59E0B",
-  "#EF4444", "#8B5CF6", "#EC4899", "#F97316",
-  "#06B6D4", "#84CC16", "#64748B", "#0EA5E9",
-];
-
-function colorPerOrdre(index: number): string {
-  return COLORS[index % COLORS.length];
-}
+const COLORS = ["#0099A8","#6366F1","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#F97316","#06B6D4","#84CC16","#64748B","#0EA5E9"];
+function colorPerOrdre(index: number): string { return COLORS[index % COLORS.length]; }
 
 // ─── Funció principal ─────────────────────────────────────────────────────────
 
 export async function executaAgent(): Promise<ResultatSync> {
-  console.log("🤖 Agent Visor3D iniciant...");
+  console.log("🤖 Agent Visor3D (APS) iniciant...");
   console.log(`🕐 ${new Date().toISOString()}`);
 
-  // Llegeix variables d'entorn
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const autdeskEmail = process.env.AUTODESK_EMAIL;
-  const autdeskPassword = process.env.AUTODESK_PASSWORD;
+  const apsClientId = process.env.APS_CLIENT_ID;
+  const apsClientSecret = process.env.APS_CLIENT_SECRET;
+  const apsHubId = process.env.APS_HUB_ID;
+  const apsProjectId = process.env.APS_PROJECT_ID;
 
   if (!supabaseUrl || !supabaseKey) throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
-  if (!autdeskEmail || !autdeskPassword) throw new Error("Falten AUTODESK_EMAIL o AUTODESK_PASSWORD");
+  if (!apsClientId || !apsClientSecret) throw new Error("Falten APS_CLIENT_ID o APS_CLIENT_SECRET");
+  if (!apsHubId || !apsProjectId) throw new Error("Falten APS_HUB_ID o APS_PROJECT_ID");
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
     global: { headers: {} },
     realtime: { transport: WebSocket as any },
   });
 
-  let browser: Browser | null = null;
+  const tokenData = await obteToken(apsClientId, apsClientSecret);
+  const token = tokenData.access_token;
 
-  try {
-    // Inicia el navegador
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
-    });
+  const sistemesTrobats = await extrauSistemes(apsHubId, apsProjectId, token);
 
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
-      viewport: { width: 1280, height: 800 },
-    });
+  console.log(`\n📊 Resum extracció:`);
+  console.log(`  Sistemes trobats: ${sistemesTrobats.length}`);
+  sistemesTrobats.forEach((s) => console.log(`  - ${s.nom}: ${s.installacions.length} instal·lacions`));
 
-    const page = await context.newPage();
+  const resultat = await sincronitzaSupabase(supabase, sistemesTrobats);
 
-    // Login
-    await login(page, autdeskEmail, autdeskPassword);
-
-    // Extreu sistemes i instal·lacions d'Autodesk
-    const sistemesTrobats = await extrauSistemes(page);
-
-    console.log(`\n📊 Resum extracció:`);
-    console.log(`  Sistemes trobats: ${sistemesTrobats.length}`);
-    sistemesTrobats.forEach((s) => {
-      console.log(`  - ${s.nom}: ${s.installacions.length} instal·lacions`);
-    });
-
-    // Sincronitza amb Supabase
-    const resultat = await sincronitzaSupabase(supabase, sistemesTrobats);
-
-    console.log("\n✅ Sincronització completada:");
-    console.log(`  Sistemes creats: ${resultat.sistemesCreats.length}`);
-    console.log(`  Sistemes actualitzats: ${resultat.sistemesActualitzats.length}`);
-    console.log(`  Instal·lacions creades: ${resultat.installacionsCreades.length}`);
-    console.log(`  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
-    if (resultat.errors.length > 0) {
-      console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
-      resultat.errors.forEach((e) => console.error(`    - ${e}`));
-    }
-
-    // Guarda log a Supabase
-    await supabase.from("visor3d_sync_log").insert({
-      executat_a: new Date().toISOString(),
-      sistemes_creats: resultat.sistemesCreats.length,
-      sistemes_actualitzats: resultat.sistemesActualitzats.length,
-      installacions_creades: resultat.installacionsCreades.length,
-      installacions_actualitzades: resultat.installacionsActualitzades.length,
-      errors: resultat.errors,
-      detalls: resultat,
-    });
-
-    return resultat;
-  } finally {
-    if (browser) await browser.close();
+  console.log("\n✅ Sincronització completada:");
+  console.log(`  Sistemes creats: ${resultat.sistemesCreats.length}`);
+  console.log(`  Sistemes actualitzats: ${resultat.sistemesActualitzats.length}`);
+  console.log(`  Instal·lacions creades: ${resultat.installacionsCreades.length}`);
+  console.log(`  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
+  if (resultat.errors.length > 0) {
+    console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
+    resultat.errors.forEach((e) => console.error(`    - ${e}`));
   }
+
+  await supabase.from("visor3d_sync_log").insert({
+    executat_a: new Date().toISOString(),
+    sistemes_creats: resultat.sistemesCreats.length,
+    sistemes_actualitzats: resultat.sistemesActualitzats.length,
+    installacions_creades: resultat.installacionsCreades.length,
+    installacions_actualitzades: resultat.installacionsActualitzades.length,
+    errors: resultat.errors,
+    detalls: resultat,
+  });
+
+  return resultat;
 }
