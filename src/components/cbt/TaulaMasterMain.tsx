@@ -13,6 +13,7 @@ import { Visualitzador3DPage } from "./Visualitzador3DPage";
 import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
 import { UserManagerPage } from "@/components/auth/UserManagerPage";
 import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
+import { ControlAgentsPage } from "./ControlAgentsPage";
 import { useAuth } from "@/lib/auth";
 
 const GubimClassManager = lazy(() =>
@@ -160,6 +161,7 @@ export function TaulaMasterMain() {
     "projectes-equips": { title: "Llistat de projectes", sub: "Equips assignats per projecte" },
     rosmiman:           { title: "TAGs Rosmiman",         sub: "Integració amb el sistema Rosmiman" },
     usuaris:            { title: "Gestió d'usuaris",      sub: "Administració de comptes i permisos" },
+    "control-agents":   { title: "Control d'agents",      sub: "Estat i gestió de la sincronització amb Autodesk" },
     canviapwd:          { title: "Canvia contrasenya",    sub: "Actualitza les teves credencials d'accés" },
   };
 
@@ -218,6 +220,10 @@ export function TaulaMasterMain() {
       case "usuaris":
         if (!isAdmin) return <AccessDenied />;
         return <UserManagerPage />;
+
+      case "control-agents":
+        if (!isAdmin) return <AccessDenied />;
+        return <ControlAgentsPage />;
 
       case "canviapwd":
         return <ChangePasswordPage />;
