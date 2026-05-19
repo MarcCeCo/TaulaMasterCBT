@@ -376,7 +376,7 @@ const server = http.createServer(async (req, res) => {
 
       const params = new URLSearchParams({
         grant_type:    "client_credentials",
-        scope:         "viewables:read",
+        scope:         "viewables:read data:read",
         client_id:     clientId,
         client_secret: clientSecret,
       });
