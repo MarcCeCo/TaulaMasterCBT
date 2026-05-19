@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts"
+    "dev": "ts-node src/server.ts",
+    "auth-setup": "ts-node src/auth-setup.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.0",
