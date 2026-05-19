@@ -14,32 +14,21 @@ import {
 } from "@/lib/auth";
 
 // ─── fetchProfile ─────────────────────────────────────────────────────────────
-// Rep un AbortSignal opcional per cancel·lar la petició si l'usuari tanca
-// sessió mentre el fetch és en vol. Evita que el resultat d'un perfil antic
-// sobreescrigui l'estat net després d'un signOut.
-async function fetchProfile(u: User, signal?: AbortSignal): Promise<UserProfile | null> {
+async function fetchProfile(u: User): Promise<UserProfile | null> {
   const authEmail = u.email ?? "";
-
   try {
     const { data, error } = await supabase
       .from("user_profiles")
       .select("id, email, full_name, role, allowed_views")
       .eq("id", u.id)
-      .abortSignal(signal ?? null)
       .single();
-
-    if (signal?.aborted) return null;
 
     if (error) {
       const { data: data2 } = await supabase
         .from("user_profiles")
         .select("id, email, full_name, role")
         .eq("id", u.id)
-        .abortSignal(signal ?? null)
         .single();
-
-      if (signal?.aborted) return null;
-
       return data2
         ? {
             ...data2,
@@ -76,39 +65,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const tokenRef = useRef<string>("");
 
-  // AbortController de la petició fetchProfile en vol.
-  // Quan fem signOut o arriba un SIGNED_OUT, el cancel·lem per evitar
-  // que el resultat d'un perfil antic sobreescrigui l'estat net.
-  const profileFetchAbortRef = useRef<AbortController | null>(null);
+  // "Generació" de sessió activa. S'incrementa cada vegada que fem signOut.
+  // Qualsevol fetchProfile asíncron que hagi començat en una generació anterior
+  // descarta el resultat quan arriba, perquè compara la seva generació amb
+  // la generació actual. Això és més robust que AbortController perquè
+  // el client de Supabase no sempre respecta l'abort.
+  const sessionGenRef = useRef<number>(0);
 
   // Marca per recarregar el perfil quan l'usuari torna a la pàgina
-  // (el token s'ha refrescat mentre estava en segon pla).
+  // (token refrescat mentre estava en segon pla).
   const needsProfileRefreshRef = useRef(false);
 
   const getToken = useCallback(() => tokenRef.current, []);
 
-  // ── Helper intern: carrega el perfil d'un usuari cancel·lant el fetch anterior ──
-  const loadProfile = useCallback(async (u: User): Promise<UserProfile | null> => {
-    // Cancel·la qualsevol fetch de perfil anterior en vol
-    profileFetchAbortRef.current?.abort();
-    const controller = new AbortController();
-    profileFetchAbortRef.current = controller;
+  // ── Helper: carrega el perfil lligat a una generació de sessió ───────────────
+  // Si la generació ha canviat quan el fetch acaba (p. ex. signOut entremig),
+  // descarta el resultat silenciosament.
+  const loadProfile = useCallback(
+    async (u: User, gen: number, setProfileFn: (p: UserProfile | null) => void) => {
+      const p = await fetchProfile(u);
+      // Descarta si ja no correspon a la sessió activa
+      if (sessionGenRef.current !== gen) return;
+      setProfileFn(p);
+    },
+    []
+  );
 
-    const p = await fetchProfile(u, controller.signal);
-
-    // Si hem signat fora mentre el fetch era en vol, no actualitzem res
-    if (controller.signal.aborted) return null;
-
-    profileFetchAbortRef.current = null;
-    return p;
-  }, []);
-
-  // ── Efecte principal: sessió inicial + tots els events d'auth ────────────────
+  // ── Efecte principal ─────────────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
 
     async function init() {
-      // ── 1. Sessió inicial (fora de /auth/callback) ───────────────────────
+      // ── 1. Sessió inicial ────────────────────────────────────────────────
       if (!isAuthCallbackUrl()) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted) return;
@@ -118,8 +106,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(u);
 
         if (u) {
-          const p = await loadProfile(u);
-          if (mounted && p !== null) setProfile(p);
+          const gen = sessionGenRef.current;
+          await loadProfile(u, gen, (p) => {
+            if (mounted) setProfile(p);
+          });
         }
         if (mounted) setLoading(false);
       }
@@ -129,92 +119,101 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         async (event, session) => {
           if (!mounted) return;
 
-          // Sempre actualitzem el token immediatament
           tokenRef.current = session?.access_token ?? "";
 
-          // ── INITIAL_SESSION (només rellevant a /auth/callback) ───────────
+          // INITIAL_SESSION — només a /auth/callback
           if (event === "INITIAL_SESSION") {
             if (isAuthCallbackUrl()) {
               const u2 = session?.user ?? null;
               setUser(u2);
               if (u2) {
-                const p = await loadProfile(u2);
-                if (mounted && p !== null) setProfile(p);
+                const gen = sessionGenRef.current;
+                await loadProfile(u2, gen, (p) => {
+                  if (mounted) setProfile(p);
+                });
               }
               if (mounted) setLoading(false);
             }
             return;
           }
 
-          // ── SIGNED_OUT ───────────────────────────────────────────────────
-          // Cancel·la qualsevol fetch de perfil en vol i neteja tot l'estat.
+          // SIGNED_OUT — incrementa la generació per invalidar qualsevol
+          // fetchProfile en vol, i neteja tot l'estat.
           if (event === "SIGNED_OUT") {
-            profileFetchAbortRef.current?.abort();
-            profileFetchAbortRef.current = null;
+            sessionGenRef.current += 1;
             needsProfileRefreshRef.current = false;
             tokenRef.current = "";
-            setUser(null);
-            setProfile(null);
-            if (mounted) setLoading(false);
+            if (mounted) {
+              setUser(null);
+              setProfile(null);
+              setLoading(false);
+            }
             return;
           }
 
-          // ── SIGNED_IN ────────────────────────────────────────────────────
-          // Sempre carreguem el perfil del NOU usuari, cancel·lant l'anterior.
+          // SIGNED_IN — nou usuari. Usem la generació ACTUAL (ja incrementada
+          // pel SIGNED_OUT anterior si n'hi va haver un).
           if (event === "SIGNED_IN") {
             const u2 = session?.user ?? null;
-            setUser(u2);
+            if (mounted) setUser(u2);
             if (u2) {
-              const p = await loadProfile(u2);
-              if (mounted && p !== null) setProfile(p);
+              const gen = sessionGenRef.current;
+              await loadProfile(u2, gen, (p) => {
+                if (mounted) setProfile(p);
+              });
             } else {
-              setProfile(null);
+              if (mounted) setProfile(null);
             }
             if (mounted) setLoading(false);
             return;
           }
 
-          // ── TOKEN_REFRESHED ───────────────────────────────────────────────
-          // Supabase refresca el token automàticament (~50 min), fins i tot
-          // en segon pla. Si la pàgina és oculta, ho diferim a visibilitychange.
+          // TOKEN_REFRESHED — el token es refresca automàticament (~50 min).
+          // Si la pàgina és oculta, ho diferim a visibilitychange.
           if (event === "TOKEN_REFRESHED") {
             if (document.hidden) {
               needsProfileRefreshRef.current = true;
             } else {
               const u2 = session?.user ?? null;
               if (u2) {
-                const p = await loadProfile(u2);
-                if (mounted && p !== null) setProfile(p);
+                const gen = sessionGenRef.current;
+                await loadProfile(u2, gen, (p) => {
+                  if (mounted) setProfile(p);
+                });
               }
             }
             return;
           }
 
-          // ── Qualsevol altre event (USER_UPDATED, PASSWORD_RECOVERY…) ─────
+          // Qualsevol altre event (USER_UPDATED, PASSWORD_RECOVERY…)
           const u2 = session?.user ?? null;
-          setUser(u2);
+          if (mounted) setUser(u2);
           if (u2) {
-            const p = await loadProfile(u2);
-            if (mounted && p !== null) setProfile(p);
+            const gen = sessionGenRef.current;
+            await loadProfile(u2, gen, (p) => {
+              if (mounted) setProfile(p);
+            });
           } else {
-            setProfile(null);
+            if (mounted) setProfile(null);
           }
           if (mounted) setLoading(false);
         }
       );
 
-      // ── 3. visibilitychange: recarrega si el token es va refrescar en segon pla ──
+      // ── 3. visibilitychange ──────────────────────────────────────────────
       const handleVisibility = async () => {
         if (!mounted || document.hidden) return;
         if (!needsProfileRefreshRef.current) return;
-
         needsProfileRefreshRef.current = false;
+
         const { data: { session } } = await supabase.auth.getSession();
         if (!mounted || !session) return;
 
         tokenRef.current = session.access_token;
-        const p = await loadProfile(session.user);
-        if (mounted && p !== null) setProfile(p);
+        const gen = sessionGenRef.current;
+        await loadProfile(session.user, gen, (p) => {
+          if (mounted) setProfile(p);
+        });
       };
 
       document.addEventListener("visibilitychange", handleVisibility);
@@ -226,12 +225,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const cleanup = init();
-    // Fallback: si la inicialització triga més de 5s, desbloquegem la UI
     const timeout = setTimeout(() => { if (mounted) setLoading(false); }, 5000);
 
     return () => {
       mounted = false;
-      profileFetchAbortRef.current?.abort();
       cleanup.then((fn) => fn?.());
       clearTimeout(timeout);
     };
@@ -244,12 +241,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // ── signOut ──────────────────────────────────────────────────────────────────
-  // Neteja l'estat i cancel·la el fetch de perfil en vol ABANS de cridar
-  // Supabase. Evita que components fills facin crides amb token buit mentre
-  // esperen l'event SIGNED_OUT asíncron.
+  // Incrementa la generació IMMEDIATAMENT per invalidar qualsevol fetchProfile
+  // en vol, i neteja l'estat de la UI sense esperar l'event SIGNED_OUT asíncron.
+  // El SIGNED_OUT que arribarà després tornarà a incrementar la generació (és
+  // idempotent perquè ja no hi haurà cap fetch en vol amb la nova generació).
   async function signOut() {
-    profileFetchAbortRef.current?.abort();
-    profileFetchAbortRef.current = null;
+    sessionGenRef.current += 1;
     needsProfileRefreshRef.current = false;
     tokenRef.current = "";
     setUser(null);
