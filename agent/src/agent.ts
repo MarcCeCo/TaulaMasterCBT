@@ -165,8 +165,21 @@ async function obteTipVersionId(projectId: string, itemId: string, token: string
       return null;
     }
     const data = await resp.json() as any;
-    // El versionId és de tipus urn:adsk.wipprod:fs.version:...
-    const versionId: string | null = data?.data?.id ?? null;
+    let versionId: string | null = data?.data?.id ?? null;
+
+    // La Share API necessita un URN de tipus fs.version, NO fs.file.
+    // En alguns entorns ACC, /tip retorna fs.file:vf.XXXX?version=N — el convertim.
+    if (versionId && versionId.includes("fs.file")) {
+      // Primer intentem agafar el fs.version dels relationships
+      const relVersionId = data?.data?.relationships?.version?.data?.id ?? null;
+      if (relVersionId && relVersionId.includes("fs.version")) {
+        versionId = relVersionId;
+      } else {
+        // Conversió directa: fs.file:vf.XXXX?version=N → fs.version:vf.XXXX
+        versionId = versionId.replace("fs.file:", "fs.version:").split("?")[0];
+      }
+    }
+
     console.log(`  🔍 [DEBUG] Tip versionId: ${versionId}`);
     return versionId;
   } catch (e) {
