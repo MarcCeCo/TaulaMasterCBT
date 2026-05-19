@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Instal·la dependències Node
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copia el codi
 COPY . .
