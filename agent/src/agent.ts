@@ -325,7 +325,7 @@ async function sincronitzaSupabase(
 
   const { data: installacionsSupabase, error: errInst } = await supabase
     .from("visor3d_installacions")
-    .select("id, sistema_id, codi_installacio, nom, updated_at");
+    .select("id, sistema_id, codi_installacio, nom, updated_at, embed_url");
   if (errInst) throw new Error(`Error llegint instal·lacions de Supabase: ${errInst.message}`);
 
   // Maps per accés ràpid
@@ -334,7 +334,7 @@ async function sincronitzaSupabase(
     sistemaPerNom.set(s.nom.toUpperCase(), { id: s.id, ordre: s.ordre });
   }
 
-  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string }>();
+  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string; embed_url?: string }>();
   for (const i of (installacionsSupabase ?? [])) {
     if (i.codi_installacio) instPerCodi.set(i.codi_installacio, i);
   }
