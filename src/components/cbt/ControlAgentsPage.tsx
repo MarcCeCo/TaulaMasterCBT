@@ -1,10 +1,15 @@
 // src/components/cbt/ControlAgentsPage.tsx
 // Pàgina d'administració: Control d'Agents
-// Mostra l'última execució de l'agent i la propera data programada
+// Segueix EXACTAMENT el mateix patró que useVisor3DSistemes.ts:
+//  - fetch directe a la REST API de Supabase amb Bearer token (supaFetch)
+//  - TOKEN_REFRESHED: si pàgina en segon pla, marca needsReloadRef = true
+//  - visibilitychange: quan l'usuari torna, recarrega les dades amb token fresc
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { supaFetch as supa } from "@/lib/supaFetch";
+import { useAuth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,17 +47,15 @@ interface ApsToken {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// Interpreta el cron "0 2 1 * *" → text llegible
 function cronToText(schedule: string): string {
   const parts = schedule.trim().split(/\s+/);
   if (parts.length < 5) return schedule;
   const [min, hour, dom, , dow] = parts;
-
   if (dom !== "*" && dow === "*") {
     const d = parseInt(dom);
     const h = parseInt(hour);
     const m = parseInt(min);
-    const suffix = d === 1 ? "er" : `è`;
+    const suffix = d === 1 ? "er" : "è";
     return `El dia ${d}${suffix} de cada mes a les ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}h`;
   }
   if (dom === "*" && dow === "*") {
@@ -61,7 +64,6 @@ function cronToText(schedule: string): string {
   return schedule;
 }
 
-// Calcula la propera execució donada la expressió cron
 function nextCronDate(schedule: string): Date | null {
   try {
     const parts = schedule.trim().split(/\s+/);
@@ -70,12 +72,9 @@ function nextCronDate(schedule: string): Date | null {
     const min  = parseInt(minS);
     const hour = parseInt(hourS);
     const dom  = parseInt(domS);
-
-    const now = new Date();
+    const now  = new Date();
     const candidate = new Date(now);
-
     if (!isNaN(dom)) {
-      // El dia N de cada mes
       candidate.setDate(dom);
       candidate.setHours(hour, min, 0, 0);
       if (candidate <= now) {
@@ -84,16 +83,11 @@ function nextCronDate(schedule: string): Date | null {
         candidate.setHours(hour, min, 0, 0);
       }
     } else {
-      // Cada dia
       candidate.setHours(hour, min, 0, 0);
-      if (candidate <= now) {
-        candidate.setDate(candidate.getDate() + 1);
-      }
+      if (candidate <= now) candidate.setDate(candidate.getDate() + 1);
     }
     return candidate;
-  } catch {
-    return null;
-  }
+  } catch { return null; }
 }
 
 function formatDate(iso: string): string {
@@ -127,40 +121,107 @@ function timeUntil(date: Date): string {
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
+const CRON_SCHEDULE = "0 2 1 * *";
+
 export function ControlAgentsPage() {
-  const [logs, setLogs]           = useState<SyncLog[]>([]);
-  const [token, setToken]         = useState<ApsToken | null>(null);
-  const [cronSchedule]            = useState("0 2 1 * *"); // llegit de Supabase
-  const [loading, setLoading]     = useState(true);
+  const { getToken, loading: authLoading, user } = useAuth();
+  const [logs, setLogs]     = useState<SyncLog[]>([]);
+  const [token, setToken]   = useState<ApsToken | null>(null);
+  const [loading, setLoading]       = useState(true);
   const [triggering, setTriggering] = useState(false);
   const [triggerMsg, setTriggerMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
-  const agentUrl = import.meta.env.VITE_AGENT_URL as string | undefined;
+  const loadingRef     = useRef(false);
+  const needsReloadRef = useRef(false);
+
+  const agentUrl    = import.meta.env.VITE_AGENT_URL as string | undefined;
   const agentSecret = import.meta.env.VITE_AGENT_SECRET as string | undefined;
 
-  const fetchData = async () => {
+  // ── Fetch dades (patró idèntic a useVisor3DSistemes) ──────────────────────
+
+  const fetchAll = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     setLoading(true);
+
+    // Token fresc — igual que dataStore i useVisor3DSistemes
+    let tok = getToken();
+    if (!tok) {
+      const { data: { session } } = await supabase.auth.getSession();
+      tok = session?.access_token ?? "";
+    }
+    if (!tok) {
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        const { data: { session } } = await supabase.auth.getSession();
+        tok = session?.access_token ?? "";
+        if (tok) break;
+      }
+    }
+
+    if (!tok) {
+      setLoading(false);
+      loadingRef.current = false;
+      return;
+    }
+
     try {
-      const [logsRes, tokenRes] = await Promise.all([
-        supabase
-          .from("visor3d_sync_log")
-          .select("*")
-          .order("executat_a", { ascending: false })
-          .limit(10),
-        supabase
-          .from("aps_tokens")
-          .select("updated_at, expires_at")
-          .eq("id", 1)
-          .single(),
+      const [logsData, tokenData] = await Promise.all([
+        supa(tok, "GET", "visor3d_sync_log?select=*&order=executat_a.desc&limit=10"),
+        supa(tok, "GET", "aps_tokens?select=updated_at,expires_at&id=eq.1"),
       ]);
-      if (logsRes.data)  setLogs(logsRes.data as SyncLog[]);
-      if (tokenRes.data) setToken(tokenRes.data as ApsToken);
+      setLogs(logsData as SyncLog[]);
+      setToken((tokenData[0] as ApsToken) ?? null);
+    } catch (_err) {
+      // silent — la UI mostra "Sense registres" si no hi ha dades
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
-  };
+  }, [getToken]);
 
-  useEffect(() => { fetchData(); }, []);
+  // Càrrega inicial
+  useEffect(() => {
+    if (!authLoading && user) fetchAll();
+  }, [authLoading, user, fetchAll]);
+
+  // TOKEN_REFRESHED + visibilitychange — EXACTAMENT el mateix patró que
+  // useVisor3DSistemes.ts per evitar la pàgina penjada en tornar a la finestra
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") {
+        setTimeout(() => fetchAll(), 50);
+      }
+      if (event === "SIGNED_OUT") {
+        setLogs([]);
+        setToken(null);
+        setLoading(false);
+        loadingRef.current = false;
+      }
+      if (event === "TOKEN_REFRESHED") {
+        if (document.hidden) {
+          needsReloadRef.current = true;
+        } else {
+          fetchAll();
+        }
+      }
+    });
+
+    const handleVisibility = () => {
+      if (!document.hidden && needsReloadRef.current) {
+        needsReloadRef.current = false;
+        fetchAll();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [fetchAll]);
+
+  // ── Execució manual ───────────────────────────────────────────────────────
 
   const handleTrigger = async () => {
     if (!agentUrl) {
@@ -175,21 +236,23 @@ export function ControlAgentsPage() {
       const res = await fetch(`${agentUrl}/sync`, { method: "POST", headers });
       if (res.ok) {
         setTriggerMsg({ ok: true, text: "Agent iniciat correctament. Revisa els logs en uns moments." });
-        setTimeout(fetchData, 4000);
+        setTimeout(fetchAll, 4000);
       } else {
         const body = await res.json().catch(() => ({}));
         setTriggerMsg({ ok: false, text: body?.error ?? `Error ${res.status}` });
       }
-    } catch (e) {
+    } catch {
       setTriggerMsg({ ok: false, text: "No s'ha pogut connectar amb l'agent." });
     } finally {
       setTriggering(false);
     }
   };
 
-  const lastLog    = logs[0] ?? null;
-  const nextRun    = nextCronDate(cronSchedule);
-  const tokenOk    = token ? token.expires_at > Date.now() : null;
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const lastLog = logs[0] ?? null;
+  const nextRun = nextCronDate(CRON_SCHEDULE);
+  const tokenOk = token ? token.expires_at > Date.now() : null;
 
   return (
     <div className="space-y-6">
@@ -201,11 +264,9 @@ export function ControlAgentsPage() {
           <p className="text-sm text-slate-500 mt-1">Estat i gestió de la sincronització amb Autodesk</p>
         </div>
         <Button
-          variant="outline"
-          size="sm"
+          variant="outline" size="sm"
           className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
-          onClick={fetchData}
-          disabled={loading}
+          onClick={fetchAll} disabled={loading}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Actualitza
@@ -221,17 +282,13 @@ export function ControlAgentsPage() {
             <div className="h-9 w-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
               <Clock className="h-4 w-4 text-slate-400" />
             </div>
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-              Última execució
-            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Última execució</span>
           </div>
           {loading ? (
             <div className="h-8 bg-slate-100 rounded animate-pulse" />
           ) : lastLog ? (
             <>
-              <p className="text-[15px] font-bold text-slate-800 leading-tight">
-                {formatDate(lastLog.executat_a)}
-              </p>
+              <p className="text-[15px] font-bold text-slate-800 leading-tight">{formatDate(lastLog.executat_a)}</p>
               <p className="text-[12px] text-slate-400 mt-1">{timeAgo(lastLog.executat_a)}</p>
               <div className="mt-2">
                 {!lastLog.errors ? (
@@ -256,18 +313,14 @@ export function ControlAgentsPage() {
             <div className="h-9 w-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
               <CalendarClock className="h-4 w-4 text-slate-400" />
             </div>
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-              Propera execució
-            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Propera execució</span>
           </div>
           {nextRun ? (
             <>
-              <p className="text-[15px] font-bold text-slate-800 leading-tight">
-                {formatDate(nextRun.toISOString())}
-              </p>
+              <p className="text-[15px] font-bold text-slate-800 leading-tight">{formatDate(nextRun.toISOString())}</p>
               <p className="text-[12px] text-slate-400 mt-1">{timeUntil(nextRun)}</p>
               <p className="text-[11px] text-slate-400 mt-2 font-mono bg-slate-50 px-2 py-1 rounded-lg inline-block">
-                {cronToText(cronSchedule)}
+                {cronToText(CRON_SCHEDULE)}
               </p>
             </>
           ) : (
@@ -281,9 +334,7 @@ export function ControlAgentsPage() {
             <div className="h-9 w-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
               <Bot className="h-4 w-4 text-slate-400" />
             </div>
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">
-              Token Autodesk
-            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Token Autodesk</span>
           </div>
           {loading ? (
             <div className="h-8 bg-slate-100 rounded animate-pulse" />
@@ -300,16 +351,10 @@ export function ControlAgentsPage() {
                   </Badge>
                 )}
               </div>
-              <p className="text-[12px] text-slate-400 mt-1">
-                Renovat: {formatDate(token.updated_at)}
-              </p>
+              <p className="text-[12px] text-slate-400 mt-1">Renovat: {formatDate(token.updated_at)}</p>
               {!tokenOk && (
-                <a
-                  href={`${agentUrl ?? ""}/auth/login`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium"
-                >
+                <a href={`${agentUrl ?? ""}/auth/login`} target="_blank" rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium">
                   Renova el token →
                 </a>
               )}
@@ -317,12 +362,8 @@ export function ControlAgentsPage() {
           ) : (
             <>
               <p className="text-[13px] text-slate-400 mb-2">Sense token</p>
-              <a
-                href={`${agentUrl ?? ""}/auth/login`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium"
-              >
+              <a href={`${agentUrl ?? ""}/auth/login`} target="_blank" rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium">
                 Fes el login Autodesk →
               </a>
             </>
@@ -330,14 +371,12 @@ export function ControlAgentsPage() {
         </Card>
       </div>
 
-      {/* Executar agent manualment */}
+      {/* Execució manual */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <p className="text-[14px] font-semibold text-slate-700">Execució manual</p>
-            <p className="text-[12px] text-slate-400 mt-0.5">
-              Llança l'agent ara sense esperar la propera execució programada
-            </p>
+            <p className="text-[12px] text-slate-400 mt-0.5">Llança l'agent ara sense esperar la propera execució programada</p>
           </div>
           <Button
             size="sm"
@@ -351,24 +390,20 @@ export function ControlAgentsPage() {
         </div>
         {!agentUrl && (
           <p className="mt-3 text-[11px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-            Configura <code className="font-mono">VITE_AGENT_URL</code> al fitxer <code className="font-mono">.env.local</code> per habilitar l'execució manual.
+            Configura <code className="font-mono">VITE_AGENT_URL</code> a Vercel per habilitar l'execució manual.
           </p>
         )}
         {triggerMsg && (
           <div className={`mt-3 flex items-center gap-2 text-[12px] px-3 py-2 rounded-lg ${
-            triggerMsg.ok
-              ? "bg-emerald-50 text-emerald-700"
-              : "bg-red-50 text-red-700"
+            triggerMsg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
           }`}>
-            {triggerMsg.ok
-              ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-              : <XCircle className="h-3.5 w-3.5 shrink-0" />}
+            {triggerMsg.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <XCircle className="h-3.5 w-3.5 shrink-0" />}
             {triggerMsg.text}
           </div>
         )}
       </Card>
 
-      {/* Historial de logs */}
+      {/* Historial */}
       <div>
         <h2 className="text-[13px] font-semibold text-slate-600 mb-3 uppercase tracking-widest">
           Historial d'execucions
@@ -376,14 +411,10 @@ export function ControlAgentsPage() {
         <Card className="border-slate-100 shadow-sm bg-white rounded-2xl overflow-hidden">
           {loading ? (
             <div className="p-6 space-y-3">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="h-10 bg-slate-100 rounded animate-pulse" />
-              ))}
+              {[1, 2, 3].map(i => <div key={i} className="h-10 bg-slate-100 rounded animate-pulse" />)}
             </div>
           ) : logs.length === 0 ? (
-            <div className="p-10 text-center text-slate-400 text-[13px]">
-              Sense registres d'execució
-            </div>
+            <div className="p-10 text-center text-slate-400 text-[13px]">Sense registres d'execució</div>
           ) : (
             <table className="w-full text-[12.5px]">
               <thead>
@@ -391,7 +422,7 @@ export function ControlAgentsPage() {
                   <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Data</th>
                   <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Estat</th>
                   <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 hidden md:table-cell">Canvis</th>
-                  <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 hidden lg:table-cell">Missatge</th>
+                  <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 hidden lg:table-cell">Detalls</th>
                 </tr>
               </thead>
               <tbody>
@@ -404,12 +435,9 @@ export function ControlAgentsPage() {
                     (log.installacions_creades ?? 0) +
                     (log.installacions_actualitzades ?? 0) +
                     (log.installacions_eliminades ?? 0);
-
                   return (
-                    <tr
-                      key={log.id}
-                      className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i === 0 ? "bg-slate-50/40" : ""}`}
-                    >
+                    <tr key={log.id}
+                      className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i === 0 ? "bg-slate-50/40" : ""}`}>
                       <td className="px-5 py-3 font-medium text-slate-700 whitespace-nowrap">
                         {formatDate(log.executat_a)}
                         <span className="ml-2 text-slate-400 font-normal">{timeAgo(log.executat_a)}</span>
@@ -421,16 +449,14 @@ export function ControlAgentsPage() {
                           </Badge>
                         ) : (
                           <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
-                            <XCircle className="h-3 w-3" /> Error
+                            <XCircle className="h-3 w-3" /> {log.errors} errors
                           </Badge>
                         )}
                       </td>
                       <td className="px-5 py-3 text-slate-500 hidden md:table-cell">
-                        {totalCanvis > 0 ? (
-                          <span className="font-medium text-slate-700">{totalCanvis} canvis</span>
-                        ) : (
-                          <span className="text-slate-400">Sense canvis</span>
-                        )}
+                        {totalCanvis > 0
+                          ? <span className="font-medium text-slate-700">{totalCanvis} canvis</span>
+                          : <span className="text-slate-400">Sense canvis</span>}
                       </td>
                       <td className="px-5 py-3 text-slate-400 hidden lg:table-cell max-w-xs truncate">
                         {log.details ?? "—"}
