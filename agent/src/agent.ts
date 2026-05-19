@@ -170,10 +170,16 @@ async function obteTipVersionId(projectId: string, itemId: string, token: string
     }
 
     const data = await resp.json() as any;
-    const versionId: string | null = data?.data?.id ?? null;
+    const rawVersionId: string | null = data?.data?.id ?? null;
     const versionType: string | null = data?.data?.type ?? null;
-    console.log(`  🔍 [DEBUG] Tip versionId: ${versionId}`);
-    console.log(`  🔍 [DEBUG] Tip versionType: ${versionType}`);
+
+    // La Share API NO accepta el paràmetre ?version=N al resourceId.
+    // Ex: "urn:adsk.wipprod:fs.file:vf.XXXX?version=2" → "urn:adsk.wipprod:fs.file:vf.XXXX"
+    const versionId = rawVersionId ? rawVersionId.split("?")[0] : null;
+
+    console.log(`  🔍 [DEBUG] Tip versionId raw:    ${rawVersionId}`);
+    console.log(`  🔍 [DEBUG] Tip versionId net:    ${versionId}`);
+    console.log(`  🔍 [DEBUG] Tip versionType:      ${versionType}`);
     return versionId;
   } catch (e) {
     console.error(`  ❌ [DEBUG] Error obteTipVersionId: ${e}`);
