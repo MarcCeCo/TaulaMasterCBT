@@ -23,16 +23,16 @@ import {
 
 interface SyncLog {
   id: number;
-  created_at: string;
-  status: string;
-  missatge?: string;
+  executat_a: string;
   sistemes_creats?: number;
   sistemes_actualitzats?: number;
   sistemes_eliminats?: number;
   installacions_creades?: number;
   installacions_actualitzades?: number;
-  installacions_eliminats?: number;
-  error?: string;
+  installacions_eliminades?: number;
+  installacions_sense_canvis?: number;
+  errors?: number;
+  details?: string;
 }
 
 interface ApsToken {
@@ -145,7 +145,7 @@ export function ControlAgentsPage() {
         supabase
           .from("visor3d_sync_log")
           .select("*")
-          .order("created_at", { ascending: false })
+          .order("executat_a", { ascending: false })
           .limit(10),
         supabase
           .from("aps_tokens")
@@ -230,21 +230,17 @@ export function ControlAgentsPage() {
           ) : lastLog ? (
             <>
               <p className="text-[15px] font-bold text-slate-800 leading-tight">
-                {formatDate(lastLog.created_at)}
+                {formatDate(lastLog.executat_a)}
               </p>
-              <p className="text-[12px] text-slate-400 mt-1">{timeAgo(lastLog.created_at)}</p>
+              <p className="text-[12px] text-slate-400 mt-1">{timeAgo(lastLog.executat_a)}</p>
               <div className="mt-2">
-                {lastLog.status === "ok" || lastLog.status === "success" ? (
+                {!lastLog.errors ? (
                   <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Correcte
                   </Badge>
-                ) : lastLog.status === "error" ? (
-                  <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
-                    <XCircle className="h-3 w-3" /> Error
-                  </Badge>
                 ) : (
-                  <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">
-                    {lastLog.status}
+                  <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
+                    <XCircle className="h-3 w-3" /> {lastLog.errors} errors
                   </Badge>
                 )}
               </div>
@@ -400,14 +396,14 @@ export function ControlAgentsPage() {
               </thead>
               <tbody>
                 {logs.map((log, i) => {
-                  const isOk = log.status === "ok" || log.status === "success";
+                  const isOk = !log.errors;
                   const totalCanvis =
                     (log.sistemes_creats ?? 0) +
                     (log.sistemes_actualitzats ?? 0) +
                     (log.sistemes_eliminats ?? 0) +
                     (log.installacions_creades ?? 0) +
                     (log.installacions_actualitzades ?? 0) +
-                    (log.installacions_eliminats ?? 0);
+                    (log.installacions_eliminades ?? 0);
 
                   return (
                     <tr
@@ -415,8 +411,8 @@ export function ControlAgentsPage() {
                       className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i === 0 ? "bg-slate-50/40" : ""}`}
                     >
                       <td className="px-5 py-3 font-medium text-slate-700 whitespace-nowrap">
-                        {formatDate(log.created_at)}
-                        <span className="ml-2 text-slate-400 font-normal">{timeAgo(log.created_at)}</span>
+                        {formatDate(log.executat_a)}
+                        <span className="ml-2 text-slate-400 font-normal">{timeAgo(log.executat_a)}</span>
                       </td>
                       <td className="px-5 py-3">
                         {isOk ? (
@@ -437,7 +433,7 @@ export function ControlAgentsPage() {
                         )}
                       </td>
                       <td className="px-5 py-3 text-slate-400 hidden lg:table-cell max-w-xs truncate">
-                        {log.error ?? log.missatge ?? "—"}
+                        {log.details ?? "—"}
                       </td>
                     </tr>
                   );
