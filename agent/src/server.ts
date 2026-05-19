@@ -16,7 +16,7 @@ const AGENT_SECRET = process.env.AGENT_SECRET || "";
 
 // ─── APS OAuth ───────────────────────────────────────────────────────────────
 const APS_AUTH_BASE = "https://developer.api.autodesk.com/authentication/v2";
-const APS_SCOPE = "data:read";
+const APS_SCOPE = "data:read viewables:read account:read";
 
 // State temporal en memòria (valid mentre el servidor és viu)
 // Clau: state string  →  Valor: timestamp de creació (per expirar-los)
@@ -418,7 +418,7 @@ const server = http.createServer(async (req, res) => {
         const refreshBody = new URLSearchParams({
           grant_type:    "refresh_token",
           refresh_token: row.refresh_token,
-          scope:         "data:read viewables:read",
+          scope:         "data:read viewables:read account:read",
         });
 
         const refreshResp = await fetch(`${APS_AUTH_BASE}/token`, {
