@@ -62,7 +62,9 @@ function parsejaNomFitxer(nomFitxer: string): { codi: string; nom: string } | nu
   return { codi, nom };
 }
 
-function construeixEmbedUrl(urn: string): string {
+// Nota: la URL d'embed real es llegeix de l'API de versions (attributes.links.webView)
+// Aquesta funció és el fallback si no es troba el link de compartició
+function construeixEmbedUrlFallback(urn: string): string {
   return `https://viewer.autodesk.com/id/${urn}`;
 }
 
@@ -182,6 +184,49 @@ async function trobaSubcarpeta(
   ) ?? null;
 }
 
+// ─── Obté la URL d'embed real des de les versions de l'ítem ──────────────────
+// L'endpoint retorna a attributes.links.webView la URL del tipus:
+//   https://<hub>.autodesk360.com/shares/public/SH...?mode=embed
+// que és la mateixa que apareix a la pestanya "Incrustar" d'Autodesk Docs.
+
+async function obteEmbedUrlDeVersions(
+  projectId: string,
+  itemId: string,
+  token: string
+): Promise<string | null> {
+  try {
+    const resp = await fetch(
+      `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/versions`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!resp.ok) {
+      console.warn(`  ⚠️  Error obtenint versions de ${itemId}: ${resp.status}`);
+      return null;
+    }
+    const data = await resp.json() as { data: any[] };
+    // La primera versió del llistat és la més recent
+    const versioRecent = data.data?.[0];
+    if (!versioRecent) return null;
+
+    // La URL de compartició pública (pestanya "Incrustar") es troba aquí:
+    const webViewUrl: string | undefined =
+      versioRecent.attributes?.links?.webView?.href;
+
+    if (webViewUrl) {
+      // Afegim ?mode=embed si no hi és
+      const url = new URL(webViewUrl);
+      if (!url.searchParams.has("mode")) {
+        url.searchParams.set("mode", "embed");
+      }
+      return url.toString();
+    }
+    return null;
+  } catch (err) {
+    console.warn(`  ⚠️  Excepció obtenint versions de ${itemId}:`, err);
+    return null;
+  }
+}
+
 // ─── Extreu sistemes via APS ──────────────────────────────────────────────────
 
 async function extrauSistemes(
@@ -245,7 +290,17 @@ async function extrauSistemes(
 
       const itemId: string = fitxer.id ?? "";
       const urn = Buffer.from(itemId).toString("base64url");
-      const embedUrl = construeixEmbedUrl(urn);
+
+      // Obtenim la URL real d'embed (pestanya "Incrustar" d'Autodesk Docs)
+      // des de les versions de l'ítem. Si no es troba, fem servir el fallback.
+      const embedUrlReal = await obteEmbedUrlDeVersions(projectId, itemId, token);
+      const embedUrl = embedUrlReal ?? construeixEmbedUrlFallback(urn);
+
+      if (embedUrlReal) {
+        console.log(`  🔗 Embed URL real: ${embedUrlReal}`);
+      } else {
+        console.warn(`  ⚠️  No s'ha pogut obtenir la URL real d'embed per ${parsed.codi}, fent servir fallback`);
+      }
 
       // lastModifiedTime = data de l'última versió pujada a Fusion
       const lastModifiedTime: string =
