@@ -67,24 +67,27 @@ async function login(page: Page, email: string, password: string): Promise<void>
   console.log("🔐 Iniciant sessió a Autodesk...");
 
   await page.goto("https://accounts.autodesk.com/Authentication/LogOn", {
-    waitUntil: "networkidle",
+    waitUntil: "domcontentloaded",
     timeout: 30000,
+  });
+
+  // Espera qualsevol input de text visible
+  await page.waitForSelector('input[type="email"], input[type="text"], #userName', {
+    timeout: 15000,
   });
 
   // Introdueix l'email
-  await page.waitForSelector('input[name="userName"]', { timeout: 15000 });
-  await page.fill('input[name="userName"]', email);
-  await page.click('button[type="submit"]');
+  await page.fill('input[type="email"], input[type="text"], #userName', email);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(2000);
 
   // Introdueix la contrasenya
-  await page.waitForSelector('input[name="password"]', { timeout: 15000 });
-  await page.fill('input[name="password"]', password);
-  await page.click('button[type="submit"]');
+  await page.waitForSelector('input[type="password"], #password', { timeout: 15000 });
+  await page.fill('input[type="password"], #password', password);
+  await page.keyboard.press("Enter");
 
   // Espera que carregui el dashboard
-  await page.waitForURL(/autodesk360\.com|accounts\.autodesk\.com\/users/i, {
-    timeout: 30000,
-  });
+  await page.waitForURL(/autodesk360\.com/i, { timeout: 30000 });
 
   console.log("✅ Sessió iniciada correctament");
 }
