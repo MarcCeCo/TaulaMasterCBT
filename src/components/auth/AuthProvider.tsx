@@ -65,12 +65,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const tokenRef = useRef<string>("");
 
-  // "Generació" de sessió activa. S'incrementa cada vegada que fem signOut.
-  // Qualsevol fetchProfile asíncron que hagi començat en una generació anterior
-  // descarta el resultat quan arriba, perquè compara la seva generació amb
-  // la generació actual. Això és més robust que AbortController perquè
-  // el client de Supabase no sempre respecta l'abort.
+  // Comptador de generació de sessió. Cada fetchProfile captura la generació
+  // en que comença i, quan acaba, compara amb l'actual. Si no coincideix,
+  // descarta el resultat (hi ha hagut un signOut entremig).
   const sessionGenRef = useRef<number>(0);
+
+  // Quan signOut() ja ha incrementat la generació i netejat l'estat,
+  // el SIGNED_OUT que Supabase dispara a continuació NO ha de tornar
+  // a incrementar-la — si ho fes, el SIGNED_IN posterior capturaria
+  // una generació diferent de la que hi ha quan el fetch acaba, i
+  // descartaria el perfil del nou usuari.
+  const signOutHandledRef = useRef<boolean>(false);
 
   // Marca per recarregar el perfil quan l'usuari torna a la pàgina
   // (token refrescat mentre estava en segon pla).
@@ -79,14 +84,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const getToken = useCallback(() => tokenRef.current, []);
 
   // ── Helper: carrega el perfil lligat a una generació de sessió ───────────────
-  // Si la generació ha canviat quan el fetch acaba (p. ex. signOut entremig),
-  // descarta el resultat silenciosament.
   const loadProfile = useCallback(
-    async (u: User, gen: number, setProfileFn: (p: UserProfile | null) => void) => {
+    async (u: User, gen: number, onDone: (p: UserProfile | null) => void) => {
       const p = await fetchProfile(u);
-      // Descarta si ja no correspon a la sessió activa
-      if (sessionGenRef.current !== gen) return;
-      setProfileFn(p);
+      if (sessionGenRef.current !== gen) return; // sessió obsoleta, descarta
+      onDone(p);
     },
     []
   );
@@ -121,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
           tokenRef.current = session?.access_token ?? "";
 
-          // INITIAL_SESSION — només a /auth/callback
+          // INITIAL_SESSION — només rellevant a /auth/callback
           if (event === "INITIAL_SESSION") {
             if (isAuthCallbackUrl()) {
               const u2 = session?.user ?? null;
@@ -137,10 +139,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          // SIGNED_OUT — incrementa la generació per invalidar qualsevol
-          // fetchProfile en vol, i neteja tot l'estat.
+          // SIGNED_OUT — només incrementem la generació si signOut() no ho
+          // ha fet ja. Si ho hem fet nosaltres (signOutHandledRef = true),
+          // simplement resetegem el flag i netegem l'estat sense incrementar.
           if (event === "SIGNED_OUT") {
-            sessionGenRef.current += 1;
+            if (signOutHandledRef.current) {
+              // signOut() ja ha incrementat la generació i netejat l'estat.
+              // Només resetegem el flag perquè el proper signOut funcioni bé.
+              signOutHandledRef.current = false;
+            } else {
+              // Sessió tancada externament (des d'una altra pestanya, expiració, etc.)
+              sessionGenRef.current += 1;
+            }
             needsProfileRefreshRef.current = false;
             tokenRef.current = "";
             if (mounted) {
@@ -151,8 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          // SIGNED_IN — nou usuari. Usem la generació ACTUAL (ja incrementada
-          // pel SIGNED_OUT anterior si n'hi va haver un).
+          // SIGNED_IN — nou usuari. La generació ja és la correcta
+          // (incrementada per signOut() o per SIGNED_OUT extern).
           if (event === "SIGNED_IN") {
             const u2 = session?.user ?? null;
             if (mounted) setUser(u2);
@@ -168,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          // TOKEN_REFRESHED — el token es refresca automàticament (~50 min).
+          // TOKEN_REFRESHED — Supabase refresca el token automàticament (~50 min).
           // Si la pàgina és oculta, ho diferim a visibilitychange.
           if (event === "TOKEN_REFRESHED") {
             if (document.hidden) {
@@ -201,6 +211,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
 
       // ── 3. visibilitychange ──────────────────────────────────────────────
+      // Si el token s'ha refrescat mentre la pàgina era en segon pla,
+      // recarreguem el perfil amb el token nou quan l'usuari torna.
       const handleVisibility = async () => {
         if (!mounted || document.hidden) return;
         if (!needsProfileRefreshRef.current) return;
@@ -241,12 +253,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   // ── signOut ──────────────────────────────────────────────────────────────────
-  // Incrementa la generació IMMEDIATAMENT per invalidar qualsevol fetchProfile
-  // en vol, i neteja l'estat de la UI sense esperar l'event SIGNED_OUT asíncron.
-  // El SIGNED_OUT que arribarà després tornarà a incrementar la generació (és
-  // idempotent perquè ja no hi haurà cap fetch en vol amb la nova generació).
+  // 1. Incrementa la generació immediatament → invalida qualsevol fetchProfile en vol
+  // 2. Marca signOutHandledRef = true → el SIGNED_OUT que Supabase dispararà
+  //    a continuació NO tornarà a incrementar la generació (evita el doble increment
+  //    que feia que el perfil del nou usuari fos descartat)
+  // 3. Neteja l'estat de la UI sense esperar l'event asíncron
   async function signOut() {
     sessionGenRef.current += 1;
+    signOutHandledRef.current = true;
     needsProfileRefreshRef.current = false;
     tokenRef.current = "";
     setUser(null);
