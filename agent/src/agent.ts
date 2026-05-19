@@ -62,9 +62,9 @@ function parsejaNomFitxer(nomFitxer: string): { codi: string; nom: string } | nu
   return { codi, nom };
 }
 
-// Nota: la URL d'embed real es llegeix de l'API de versions (attributes.links.webView)
-// Aquesta funció és el fallback si no es troba el link de compartició
-function construeixEmbedUrlFallback(urn: string): string {
+function construeixEmbedUrl(urn: string): string {
+  // URL de fallback basada en URN (viewer genèric d'Autodesk).
+  // Preferentment s'utilitza l'embed_url manual de autodesk360.com.
   return `https://viewer.autodesk.com/id/${urn}`;
 }
 
@@ -155,6 +155,24 @@ async function obteToken3Legged(
 
 // ─── APS Data Management API ──────────────────────────────────────────────────
 
+async function obteShareEmbedUrl(itemId: string, token: string): Promise<string | null> {
+  try {
+    const resp = await fetch(
+      `${APS_BASE}/sharing/v1/shares?resourceId=${encodeURIComponent(itemId)}&resourceType=C360Item`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    if (!resp.ok) return null;
+    const data = await resp.json() as { results?: any[] };
+    const share = data.results?.find((s: any) => s.shareType === "public" && s.url);
+    if (!share) return null;
+    const url = new URL(share.url);
+    url.searchParams.set("mode", "embed");
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 async function llistaContingutCarpeta(projectId: string, carpetaId: string, token: string): Promise<any[]> {
   const resp = await fetch(
     `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents`,
@@ -182,49 +200,6 @@ async function trobaSubcarpeta(
   return contingut.find(
     (item) => item.type === "folders" && item.attributes?.displayName === nomObjectiu
   ) ?? null;
-}
-
-// ─── Obté la URL d'embed real des de les versions de l'ítem ──────────────────
-// L'endpoint retorna a attributes.links.webView la URL del tipus:
-//   https://<hub>.autodesk360.com/shares/public/SH...?mode=embed
-// que és la mateixa que apareix a la pestanya "Incrustar" d'Autodesk Docs.
-
-async function obteEmbedUrlDeVersions(
-  projectId: string,
-  itemId: string,
-  token: string
-): Promise<string | null> {
-  try {
-    const resp = await fetch(
-      `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/versions`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    if (!resp.ok) {
-      console.warn(`  ⚠️  Error obtenint versions de ${itemId}: ${resp.status}`);
-      return null;
-    }
-    const data = await resp.json() as { data: any[] };
-    // La primera versió del llistat és la més recent
-    const versioRecent = data.data?.[0];
-    if (!versioRecent) return null;
-
-    // La URL de compartició pública (pestanya "Incrustar") es troba aquí:
-    const webViewUrl: string | undefined =
-      versioRecent.attributes?.links?.webView?.href;
-
-    if (webViewUrl) {
-      // Afegim ?mode=embed si no hi és
-      const url = new URL(webViewUrl);
-      if (!url.searchParams.has("mode")) {
-        url.searchParams.set("mode", "embed");
-      }
-      return url.toString();
-    }
-    return null;
-  } catch (err) {
-    console.warn(`  ⚠️  Excepció obtenint versions de ${itemId}:`, err);
-    return null;
-  }
 }
 
 // ─── Extreu sistemes via APS ──────────────────────────────────────────────────
@@ -291,15 +266,14 @@ async function extrauSistemes(
       const itemId: string = fitxer.id ?? "";
       const urn = Buffer.from(itemId).toString("base64url");
 
-      // Obtenim la URL real d'embed (pestanya "Incrustar" d'Autodesk Docs)
-      // des de les versions de l'ítem. Si no es troba, fem servir el fallback.
-      const embedUrlReal = await obteEmbedUrlDeVersions(projectId, itemId, token);
-      const embedUrl = embedUrlReal ?? construeixEmbedUrlFallback(urn);
-
-      if (embedUrlReal) {
-        console.log(`  🔗 Embed URL real: ${embedUrlReal}`);
+      // Intentem obtenir l'URL de shared embed directament de l'API APS
+      // (la mateixa que genera "Opcions d'incrustació" a Fusion 360)
+      const shareEmbedUrl = await obteShareEmbedUrl(itemId, token);
+      const embedUrl = shareEmbedUrl ?? construeixEmbedUrl(urn);
+      if (shareEmbedUrl) {
+        console.log(`  🔗 Share embed URL obtinguda per ${parsed.codi}`);
       } else {
-        console.warn(`  ⚠️  No s'ha pogut obtenir la URL real d'embed per ${parsed.codi}, fent servir fallback`);
+        console.warn(`  ⚠️  No s'ha trobat share públic per ${parsed.codi}, usant URL de fallback`);
       }
 
       // lastModifiedTime = data de l'última versió pujada a Fusion
@@ -420,10 +394,18 @@ async function sincronitzaSupabase(
 
             if (dataFusion > dataSupabase) {
               // MODIFICAT
+              // Prioritat d'embed_url:
+              // 1. URL obtinguda via share API (autodesk360.com) → sempre la millor
+              // 2. URL manual existent a la BD (introduïda per l'usuari)
+              // 3. URL de fallback generada per l'agent (viewer.autodesk.com)
+              const esShareUrl = inst.embedUrl.includes("autodesk360.com");
+              const embedUrlFinal = esShareUrl
+                ? inst.embedUrl
+                : (existent.embed_url?.trim() || inst.embedUrl);
               await supabase.from("visor3d_installacions")
                 .update({
                   nom: inst.nom,
-                  embed_url: inst.embedUrl,
+                  embed_url: embedUrlFinal,
                   urn: inst.urn,
                   updated_at: inst.lastModifiedTime,
                 })
