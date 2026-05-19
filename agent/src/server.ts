@@ -4,8 +4,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import http from "http";
+import WebSocket from "ws";
 import { createClient } from "@supabase/supabase-js";
 import { executaAgent } from "./agent";
+
+// Node.js < 22 no té WebSocket natiu — el client de Supabase el necessita
+(globalThis as any).WebSocket = WebSocket;
 
 const PORT = process.env.PORT || 3000;
 const AGENT_SECRET = process.env.AGENT_SECRET || "";

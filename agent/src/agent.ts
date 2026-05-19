@@ -6,6 +6,9 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
 
+// Node.js < 22 no té WebSocket natiu — el client de Supabase el necessita
+(globalThis as any).WebSocket = WebSocket;
+
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
 interface InstallacioTrobada {
