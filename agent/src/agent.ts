@@ -155,11 +155,36 @@ async function obteToken3Legged(
 
 // ─── APS Data Management API ──────────────────────────────────────────────────
 
-async function obteShareEmbedUrl(itemId: string, token: string): Promise<string | null> {
+// Obté el versionId del "tip" (versió actual) d'un item de tipus dm.lineage
+async function obteTipVersionId(projectId: string, itemId: string, token: string): Promise<string | null> {
   try {
-    const url1 = `${APS_BASE}/sharing/v1/shares?resourceId=${encodeURIComponent(itemId)}&resourceType=C360Item`;
-    console.log(`  🔍 [DEBUG] Share API URL: ${url1}`);
-    const resp = await fetch(url1, { headers: { Authorization: `Bearer ${token}` } });
+    const url = `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/tip`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) {
+      console.log(`  🔍 [DEBUG] Tip API status: ${resp.status}`);
+      return null;
+    }
+    const data = await resp.json() as any;
+    // El versionId és de tipus urn:adsk.wipprod:fs.version:...
+    const versionId: string | null = data?.data?.id ?? null;
+    console.log(`  🔍 [DEBUG] Tip versionId: ${versionId}`);
+    return versionId;
+  } catch (e) {
+    console.error(`  ❌ [DEBUG] Error obteTipVersionId: ${e}`);
+    return null;
+  }
+}
+
+async function obteShareEmbedUrl(projectId: string, itemId: string, token: string): Promise<string | null> {
+  // La Share API requereix el versionId del tip (dm.version), NO el lineage ID (dm.lineage).
+  // Si passem el lineage ID directament, sempre retorna 404.
+  try {
+    const versionId = await obteTipVersionId(projectId, itemId, token);
+    const resourceId = versionId ?? itemId; // fallback al lineage si no trobem el tip
+
+    const url = `${APS_BASE}/sharing/v1/shares?resourceId=${encodeURIComponent(resourceId)}&resourceType=C360Item`;
+    console.log(`  🔍 [DEBUG] Share API URL: ${url}`);
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     console.log(`  🔍 [DEBUG] Share API status: ${resp.status}`);
     const rawText = await resp.text();
     console.log(`  🔍 [DEBUG] Share API response: ${rawText.substring(0, 500)}`);
@@ -168,10 +193,12 @@ async function obteShareEmbedUrl(itemId: string, token: string): Promise<string 
     console.log(`  🔍 [DEBUG] Share results count: ${data.results?.length ?? 0}`);
     const share = data.results?.find((s: any) => s.shareType === "public" && s.url);
     if (!share) {
-      console.warn(`  ⚠️  [DEBUG] Tots els shares: ${JSON.stringify(data.results?.map((s:any) => ({ type: s.shareType, url: s.url })))}`);
+      console.warn(`  ⚠️  [DEBUG] Tots els shares: ${JSON.stringify(data.results?.map((s: any) => ({ type: s.shareType, url: s.url })))}`);
       return null;
     }
+    // La Share API retorna /shares/public/HASH però l'embed necessita /g/shares/HASH
     const finalUrl = new URL(share.url);
+    finalUrl.pathname = finalUrl.pathname.replace("/shares/public/", "/g/shares/");
     finalUrl.searchParams.set("mode", "embed");
     return finalUrl.toString();
   } catch (e) {
@@ -275,7 +302,7 @@ async function extrauSistemes(
 
       // Intentem obtenir l'URL de shared embed directament de l'API APS
       // (la mateixa que genera "Opcions d'incrustació" a Fusion 360)
-      const shareEmbedUrl = await obteShareEmbedUrl(itemId, token);
+      const shareEmbedUrl = await obteShareEmbedUrl(projectId, itemId, token);
       const embedUrl = shareEmbedUrl ?? construeixEmbedUrl(urn);
       if (shareEmbedUrl) {
         console.log(`  🔗 Share embed URL obtinguda per ${parsed.codi}`);
