@@ -66,28 +66,40 @@ function extrauEmbedUrl(htmlIframe: string): string | null {
 async function login(page: Page, email: string, password: string): Promise<void> {
   console.log("🔐 Iniciant sessió a Autodesk...");
 
-  await page.goto("https://accounts.autodesk.com/Authentication/LogOn", {
+  // Navega directament a Autodesk Fusion 360 — redirigirà al login
+  await page.goto("https://besostordera.autodesk360.com/g/all_projects/active", {
     waitUntil: "domcontentloaded",
     timeout: 30000,
   });
 
-  // Espera qualsevol input de text visible
-  await page.waitForSelector('input[type="email"], input[type="text"], #userName', {
-    timeout: 15000,
+  // Espera el camp d'email (signin.autodesk.com)
+  await page.waitForSelector('input[type="email"], input[name="email"], input[name="userName"]', {
+    timeout: 20000,
   });
 
-  // Introdueix l'email
-  await page.fill('input[type="email"], input[type="text"], #userName', email);
-  await page.keyboard.press("Enter");
+  console.log("📧 Introduint email...");
+  await page.fill('input[type="email"], input[name="email"], input[name="userName"]', email);
+  await page.waitForTimeout(500);
+
+  // Clica Next / Continuar
+  await page.click('button[type="submit"], button[data-testid="btn-next"], #btn-next').catch(() =>
+    page.keyboard.press("Enter")
+  );
   await page.waitForTimeout(2000);
 
-  // Introdueix la contrasenya
-  await page.waitForSelector('input[type="password"], #password', { timeout: 15000 });
-  await page.fill('input[type="password"], #password', password);
-  await page.keyboard.press("Enter");
+  // Espera el camp de contrasenya
+  await page.waitForSelector('input[type="password"]', { timeout: 20000 });
+  console.log("🔑 Introduint contrasenya...");
+  await page.fill('input[type="password"]', password);
+  await page.waitForTimeout(500);
 
-  // Espera que carregui el dashboard
-  await page.waitForURL(/autodesk360\.com/i, { timeout: 30000 });
+  // Clica Sign In
+  await page.click('button[type="submit"], button[data-testid="btn-signin"], #btn-signin').catch(() =>
+    page.keyboard.press("Enter")
+  );
+
+  // Espera que arribi al dashboard de Fusion 360
+  await page.waitForURL(/autodesk360\.com/i, { timeout: 40000 });
 
   console.log("✅ Sessió iniciada correctament");
 }
