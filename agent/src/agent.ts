@@ -4,6 +4,7 @@
 
 import { chromium, Browser, Page } from "playwright";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import WebSocket from "ws";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -346,7 +347,10 @@ export async function executaAgent(): Promise<ResultatSync> {
   if (!supabaseUrl || !supabaseKey) throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
   if (!autdeskEmail || !autdeskPassword) throw new Error("Falten AUTODESK_EMAIL o AUTODESK_PASSWORD");
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    global: { headers: {} },
+    realtime: { transport: WebSocket },
+  });
 
   let browser: Browser | null = null;
 
