@@ -349,7 +349,7 @@ export async function executaAgent(): Promise<ResultatSync> {
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
     global: { headers: {} },
-    realtime: { transport: WebSocket },
+    realtime: { transport: WebSocket as any },
   });
 
   let browser: Browser | null = null;
