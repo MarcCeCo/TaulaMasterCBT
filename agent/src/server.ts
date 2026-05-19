@@ -359,6 +359,68 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── APS Token públic 2-legged per al Viewer SDK ──────────────────────────
+  // GET /api/aps-token
+  // Retorna un token 2-legged amb scope viewables:read per al Viewer SDK.
+  // No requereix autenticació de l'usuari (token públic de viewer).
+  if (url.pathname === "/api/aps-token" && req.method === "GET") {
+    try {
+      const clientId     = process.env.APS_CLIENT_ID;
+      const clientSecret = process.env.APS_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "APS_CLIENT_ID o APS_CLIENT_SECRET no configurats" }));
+        return;
+      }
+
+      const params = new URLSearchParams({
+        grant_type:    "client_credentials",
+        scope:         "viewables:read",
+        client_id:     clientId,
+        client_secret: clientSecret,
+      });
+
+      const apsResp = await fetch(
+        "https://developer.api.autodesk.com/authentication/v2/token",
+        {
+          method:  "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body:    params.toString(),
+        }
+      );
+
+      if (!apsResp.ok) {
+        const errText = await apsResp.text();
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: `Error APS: ${apsResp.status} ${errText}` }));
+        return;
+      }
+
+      const tokenData = await apsResp.json() as {
+        access_token: string;
+        token_type: string;
+        expires_in: number;
+      };
+
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        // Permet caché al client durant (expires_in - 60) segons
+        "Cache-Control": `public, max-age=${Math.max(0, tokenData.expires_in - 60)}`,
+      });
+      res.end(JSON.stringify({
+        access_token: tokenData.access_token,
+        expires_in:   tokenData.expires_in,
+        token_type:   tokenData.token_type,
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
   // ── Ruta no trobada ───────────────────────────────────────────────────────
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Ruta no trobada" }));
@@ -372,4 +434,5 @@ server.listen(PORT, () => {
   console.log(`   GET  /auth/login    → inicia flux OAuth Autodesk`);
   console.log(`   GET  /auth/callback → callback OAuth (configura a APS_CALLBACK_URL)`);
   console.log(`   POST /sync          → executa l'agent (requereix Authorization: Bearer <secret>)`);
+  console.log(`   GET  /api/aps-token → token 2-legged per al Viewer SDK (viewables:read)`);
 });

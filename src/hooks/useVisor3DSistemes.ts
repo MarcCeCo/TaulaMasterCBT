@@ -28,6 +28,7 @@ export interface Installacio {
   descripcio?: string;
   codiInstallacio?: string;
   embedUrl: string;
+  urn?: string;
 }
 
 export interface Sistema {
@@ -57,6 +58,7 @@ interface InstallacioRow {
   descripcio: string | null;
   codi_installacio: string | null;
   embed_url: string;
+  urn: string | null;
   ordre: number;
   created_at: string;
   updated_at: string;
@@ -71,6 +73,7 @@ function rowToInstallacio(row: InstallacioRow): Installacio {
     descripcio: row.descripcio ?? undefined,
     codiInstallacio: row.codi_installacio ?? undefined,
     embedUrl: row.embed_url,
+    urn: row.urn ?? undefined,
   };
 }
 
@@ -251,7 +254,7 @@ export function useVisor3DSistemes() {
   const createInstallacio = useCallback(
     async (
       sistemaId: string,
-      data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string }
+      data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string; urn?: string }
     ) => {
       const token = getToken();
       const sistema = sistemes.find((s) => s.id === sistemaId);
@@ -261,7 +264,8 @@ export function useVisor3DSistemes() {
         nom: data.nom.trim(),
         descripcio: data.descripcio.trim() || null,
         codi_installacio: data.codiInstallacio.trim() || null,
-        embed_url: data.embedUrl.trim(),
+        embed_url: data.embedUrl.trim() || null,
+        urn: data.urn?.trim() || null,
         ordre,
       });
       const nova = rowToInstallacio(rows[0] as InstallacioRow);
@@ -281,14 +285,15 @@ export function useVisor3DSistemes() {
     async (
       sistemaId: string,
       installacioId: string,
-      data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string }
+      data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string; urn?: string }
     ) => {
       const token = getToken();
       await supa(token, "PATCH", `visor3d_installacions?id=eq.${installacioId}`, {
         nom: data.nom.trim(),
         descripcio: data.descripcio.trim() || null,
         codi_installacio: data.codiInstallacio.trim() || null,
-        embed_url: data.embedUrl.trim(),
+        embed_url: data.embedUrl.trim() || null,
+        urn: data.urn?.trim() || null,
         updated_at: new Date().toISOString(),
       });
       setSistemes((prev) =>
@@ -304,6 +309,7 @@ export function useVisor3DSistemes() {
                         descripcio: data.descripcio.trim() || undefined,
                         codiInstallacio: data.codiInstallacio.trim() || undefined,
                         embedUrl: data.embedUrl.trim(),
+                        urn: data.urn?.trim() || undefined,
                       }
                     : i
                 ),
