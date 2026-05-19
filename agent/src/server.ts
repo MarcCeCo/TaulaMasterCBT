@@ -11,9 +11,19 @@ const AGENT_SECRET = process.env.AGENT_SECRET || "";
 let agentEnExecucio = false;
 
 const server = http.createServer(async (req, res) => {
+  // ── CORS ──────────────────────────────────────────────────────────────────
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
-  // ── Health check (Render el necessita per saber que el servei és viu) ──────
+  // ── Health check ──────────────────────────────────────────────────────────
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok", timestamp: new Date().toISOString() }));
@@ -22,7 +32,6 @@ const server = http.createServer(async (req, res) => {
 
   // ── Endpoint principal de l'agent ─────────────────────────────────────────
   if (url.pathname === "/sync" && req.method === "POST") {
-    // Verifica el secret per evitar crides no autoritzades
     const authHeader = req.headers["authorization"] ?? "";
     const token = authHeader.replace("Bearer ", "");
 
@@ -32,21 +41,18 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Evita execucions simultànies
     if (agentEnExecucio) {
       res.writeHead(409, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "L'agent ja s'està executant" }));
       return;
     }
 
-    // Respon immediatament (Render té timeout de 30s a free tier)
     res.writeHead(202, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       status: "acceptat",
       missatge: "L'agent s'ha iniciat, comprova els logs a Supabase visor3d_sync_log",
     }));
 
-    // Executa l'agent en segon pla
     agentEnExecucio = true;
     executaAgent()
       .then((resultat) => {
@@ -62,7 +68,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── Endpoint de wake-up (per despertar el servei de Render) ───────────────
+  // ── Wake-up ───────────────────────────────────────────────────────────────
   if (url.pathname === "/wake") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "despert", timestamp: new Date().toISOString() }));
