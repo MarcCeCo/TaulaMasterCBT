@@ -294,6 +294,71 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── Diagnòstic: llista hubs i projectes ──────────────────────────────────
+  // GET /debug/hubs          → llista tots els hubs accessibles
+  // GET /debug/projects?hub=ID → llista projectes d'un hub
+  // TEMPORAL: elimina aquest endpoint un cop tinguis els IDs correctes
+  if (url.pathname === "/debug/hubs" && req.method === "GET") {
+    const authHeader = req.headers["authorization"] ?? "";
+    const secret = authHeader.replace("Bearer ", "");
+    if (AGENT_SECRET && secret !== AGENT_SECRET) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "No autoritzat" }));
+      return;
+    }
+    try {
+      const supabaseUrl = process.env.SUPABASE_URL!;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: {} },
+        realtime: { transport: WebSocket as any },
+      });
+      const { data: tokenRow } = await supabase
+        .from("aps_tokens").select("access_token").eq("id", 1).single();
+      const apsToken = (tokenRow as any)?.access_token;
+      if (!apsToken) throw new Error("No hi ha token APS a Supabase");
+
+      const hubsResp = await fetch(
+        "https://developer.api.autodesk.com/project/v1/hubs",
+        { headers: { Authorization: `Bearer ${apsToken}` } }
+      );
+      const hubsData = await hubsResp.json() as { data?: any[] };
+      const hubs = (hubsData.data ?? []).map((h: any) => ({
+        id: h.id,
+        nom: h.attributes?.name,
+        tipus: h.attributes?.extension?.type,
+      }));
+
+      // Si demanen projectes d'un hub concret
+      const hubId = url.searchParams.get("hub");
+      let projectes: any[] = [];
+      if (hubId) {
+        const projResp = await fetch(
+          `https://developer.api.autodesk.com/project/v1/hubs/${hubId}/projects`,
+          { headers: { Authorization: `Bearer ${apsToken}` } }
+        );
+        const projData = await projResp.json() as { data?: any[] };
+        projectes = (projData.data ?? []).map((p: any) => ({
+          id: p.id,
+          nom: p.attributes?.name,
+        }));
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        APS_HUB_ID_actual: process.env.APS_HUB_ID,
+        APS_PROJECT_ID_actual: process.env.APS_PROJECT_ID,
+        hubs,
+        projectes: hubId ? projectes : "(afegeix ?hub=ID per veure els projectes)",
+      }, null, 2));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
   // ── Ruta no trobada ───────────────────────────────────────────────────────
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Ruta no trobada" }));
