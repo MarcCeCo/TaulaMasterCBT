@@ -461,7 +461,7 @@ async function sincronitzaSupabase(
 
   const { data: installacionsSupabase, error: errInst } = await supabase
     .from("visor3d_installacions")
-    .select("id, sistema_id, codi_installacio, nom, updated_at, embed_url");
+    .select("id, sistema_id, codi_installacio, nom, updated_at, embed_url, urn");
   if (errInst) throw new Error(`Error llegint instal·lacions de Supabase: ${errInst.message}`);
 
   const sistemaPerNom = new Map<string, { id: string; ordre: number }>();
@@ -469,7 +469,7 @@ async function sincronitzaSupabase(
     sistemaPerNom.set(s.nom.toUpperCase(), { id: s.id, ordre: s.ordre });
   }
 
-  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string; embed_url?: string }>();
+  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string; embed_url?: string; urn?: string }>();
   for (const i of (installacionsSupabase ?? [])) {
     if (i.codi_installacio) instPerCodi.set(i.codi_installacio, i);
   }
@@ -524,39 +524,27 @@ async function sincronitzaSupabase(
             console.log(`  ➕ Nova: ${inst.codi} - ${inst.nom}`);
 
           } else {
-            const dataFusion = new Date(inst.lastModifiedTime).getTime();
-            const dataSupabase = new Date(existent.updated_at).getTime();
+            // Fusion és la font de veritat: sempre sobreescrivim nom, urn i embed_url.
+            // Prioritat embed_url:
+            //   1. Share URL de Fusion (autodesk360.com/g/shares/) → millor opció
+            //   2. URL manual guardada a Supabase per l'usuari
+            //   3. URL fallback generada per l'agent
+            const esShareUrl = inst.embedUrl.includes("autodesk360.com/g/shares/");
+            const embedUrlFinal = esShareUrl
+              ? inst.embedUrl
+              : (existent.embed_url?.trim() || inst.embedUrl);
 
-            if (dataFusion > dataSupabase) {
-              // Prioritat d'embed_url:
-              // 1. URL obtinguda via share API (autodesk360.com/g/shares/...?mode=embed) → la millor
-              // 2. URL manual existent a la BD introduïda per l'usuari
-              // 3. URL de fallback generada per l'agent (viewer.autodesk.com)
-              const esShareUrl = inst.embedUrl.includes("autodesk360.com/g/shares/");
-              const embedUrlFinal = esShareUrl
-                ? inst.embedUrl
-                : (existent.embed_url?.trim() || inst.embedUrl);
-
-              console.log(`  🔍 [DEBUG] embed_url decisió per ${inst.codi}:`);
-              console.log(`     esShareUrl (autodesk360.com/g/shares/): ${esShareUrl}`);
-              console.log(`     embedUrl de Fusion:   ${inst.embedUrl}`);
-              console.log(`     embed_url a Supabase: ${existent.embed_url ?? "(buida)"}`);
-              console.log(`     → embed_url final:    ${embedUrlFinal}`);
-
-              await supabase.from("visor3d_installacions")
-                .update({
-                  nom: inst.nom,
-                  embed_url: embedUrlFinal,
-                  urn: inst.urn,
-                  updated_at: inst.lastModifiedTime,
-                })
-                .eq("id", existent.id);
-              resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
-              console.log(`  ✏️  Modificat: ${inst.codi} - ${inst.nom}`);
-            } else {
-              resultat.installacionsSenseCanvis.push(inst.codi);
-              console.log(`  ─  Sense canvis: ${inst.codi}`);
-            }
+            await supabase.from("visor3d_installacions")
+              .update({
+                nom: inst.nom,
+                embed_url: embedUrlFinal,
+                urn: inst.urn,
+                sistema_id: sistemaId,
+                updated_at: inst.lastModifiedTime,
+              })
+              .eq("id", existent.id);
+            resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
+            console.log(`  ✏️  Actualitzat: ${inst.codi} (urn: ${inst.urn?.substring(0, 30)}…)`);
           }
         } catch (err) {
           const msg = `Error amb instal·lació ${inst.codi}: ${err}`;
