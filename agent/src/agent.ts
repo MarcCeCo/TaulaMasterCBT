@@ -173,14 +173,15 @@ async function obteTipVersionId(projectId: string, itemId: string, token: string
     const rawVersionId: string | null = data?.data?.id ?? null;
     const versionType: string | null = data?.data?.type ?? null;
 
-    // La Share API NO accepta el paràmetre ?version=N al resourceId.
-    // Ex: "urn:adsk.wipprod:fs.file:vf.XXXX?version=2" → "urn:adsk.wipprod:fs.file:vf.XXXX"
-    const versionId = rawVersionId ? rawVersionId.split("?")[0] : null;
+    // Per a la Share API eliminem ?version=N (no l'accepta).
+    // Però per al Viewer SDK necessitem l'URN AMB ?version=N.
+    // Retornem el rawVersionId complet (amb versió) per usar-lo com a URN del Viewer.
+    const versionIdSenseVersio = rawVersionId ? rawVersionId.split("?")[0] : null;
 
     console.log(`  🔍 [DEBUG] Tip versionId raw:    ${rawVersionId}`);
-    console.log(`  🔍 [DEBUG] Tip versionId net:    ${versionId}`);
+    console.log(`  🔍 [DEBUG] Tip versionId net:    ${versionIdSenseVersio}`);
     console.log(`  🔍 [DEBUG] Tip versionType:      ${versionType}`);
-    return versionId;
+    return rawVersionId; // retornem amb ?version=N per al Viewer
   } catch (e) {
     console.error(`  ❌ [DEBUG] Error obteTipVersionId: ${e}`);
     return null;
@@ -214,7 +215,8 @@ async function obteShareEmbedUrl(projectId: string, itemId: string, token: strin
       console.warn(`  ⚠️  [DEBUG] No s'ha pogut obtenir el tip versionId. Fem fallback al lineage ID.`);
     }
 
-    const resourceId = versionId ?? itemId;
+    // La Share API necessita l'URN sense ?version=N
+    const resourceId = (versionId ?? itemId).split("?")[0];
     console.log(`  🔍 [DEBUG] resourceId enviat a Share API: ${resourceId}`);
 
     // ── PAS 2: Share API ──────────────────────────────────────────────────
