@@ -118,21 +118,23 @@ const EquipmentRow = memo(function EquipmentRow({
         <div className="flex gap-0.5">
           <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => onView(e)}><Eye className="h-3.5 w-3.5" /></Button>
           {canEdit && <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-slate-100" onClick={() => onEdit(e)}><Pencil className="h-3.5 w-3.5" /></Button>}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50" disabled={!canEdit}><Trash2 className="h-3.5 w-3.5" /></Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Esborrar equip {e.equipName}?</AlertDialogTitle>
-                <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={() => onDelete(e)}>Esborra</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {canEdit && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Esborrar equip {e.equipName}?</AlertDialogTitle>
+                  <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onDelete(e)}>Esborra</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </td>
     </tr>
@@ -483,9 +485,10 @@ export function EquipmentsTable() {
               ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }}
             />
+            {canEdit && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" disabled={!canEdit || loading}
+                <Button size="sm" variant="outline" disabled={loading}
                   className="h-8 text-xs gap-1.5 border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600">
                   <Trash2 className="h-3.5 w-3.5" /> Esborra tot
                 </Button>
@@ -504,6 +507,7 @@ export function EquipmentsTable() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            )}
           </div>
 
           {/* Acció principal */}
@@ -632,6 +636,7 @@ export function EquipmentsTable() {
           open={detailOpen} onOpenChange={setDetailOpen}
           equipment={viewing} nodeMap={nodeMap} fieldMap={fieldMap} fields={fields}
           onEdit={() => { setDetailOpen(false); setEditing(viewing); setFormOpen(true); }}
+          canEdit={canEdit}
         />
 
 
