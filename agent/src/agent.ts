@@ -671,7 +671,7 @@ export async function executaAgent(): Promise<ResultatSync> {
     installacions_actualitzades: resultat.installacionsActualitzades.length,
     installacions_eliminades: resultat.installacionsEliminades.length,
     installacions_sense_canvis: resultat.installacionsSenseCanvis.length,
-    errors: resultat.errors,
+    errors: resultat.errors.length,
     detalls: resultat,
   });
 
