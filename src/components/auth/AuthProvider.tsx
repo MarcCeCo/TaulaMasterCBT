@@ -13,6 +13,27 @@ import {
   type UserProfile,
 } from "@/lib/auth";
 
+// ─── prefetchApsToken ────────────────────────────────────────────────────────
+// Crida silenciosa a l'agent APS en segon pla quan un usuari inicia sessió.
+// Si el token Autodesk caduca aviat, l'agent el refresca i el guarda a Supabase
+// de forma transparent, sense bloquejar el login ni mostrar cap error a l'usuari.
+// Utilitza keepalive: true per garantir que la petició acaba tot i si el component
+// es desmunta durant la crida.
+
+async function prefetchApsToken(): Promise<void> {
+  const agentUrl = (import.meta.env.VITE_AGENT_URL as string | undefined)?.trim();
+  if (!agentUrl) return; // agent no configurat → no fem res
+  try {
+    await fetch(`${agentUrl}/api/aps-token`, {
+      method: "GET",
+      keepalive: true,
+      signal: AbortSignal.timeout(10_000), // màx 10s, no bloqueja
+    });
+  } catch {
+    // Error silenciós — el token es refrescarà quan s'obri el visor
+  }
+}
+
 // ─── fetchProfile ─────────────────────────────────────────────────────────────
 async function fetchProfile(u: User): Promise<UserProfile | null> {
   const authEmail = u.email ?? "";
@@ -171,6 +192,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               await loadProfile(u2, gen, (p) => {
                 if (mounted) setProfile(p);
               });
+              // Refresca el token APS en segon pla — silenciós, no bloqueja el login
+              prefetchApsToken();
             } else {
               if (mounted) setProfile(null);
             }
