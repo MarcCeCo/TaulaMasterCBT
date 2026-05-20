@@ -393,10 +393,21 @@ async function extrauSistemes(
       }
 
       const itemId: string = fitxer.id ?? "";
-      const urn = Buffer.from(itemId).toString("base64url");
 
       console.log(`\n  🔎 Processant fitxer: ${nomFitxer}`);
       console.log(`     itemId (lineage): ${itemId}`);
+
+      // ── Obté el tip versionId (fs.file) per usar com a URN del Viewer ─────
+      // El Viewer SDK necessita un URN de tipus fs.file (vf.), no dm.lineage.
+      const tipVersionId = await obteTipVersionId(projectId, itemId, token);
+      const urnBase = tipVersionId ?? itemId;
+      const urn = Buffer.from(urnBase).toString("base64url");
+
+      if (tipVersionId) {
+        console.log(`     tipVersionId (fs.file): ${tipVersionId}`);
+      } else {
+        console.warn(`  ⚠️  No s\'ha pogut obtenir el tipVersionId. Usant lineage com a URN (pot no funcionar al Viewer).`);
+      }
 
       const shareEmbedUrl = await obteShareEmbedUrl(projectId, itemId, token);
       const embedUrl = shareEmbedUrl ?? construeixEmbedUrlFallback(urn);

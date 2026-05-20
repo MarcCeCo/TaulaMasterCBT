@@ -331,11 +331,27 @@ function useApsViewer(
       setEstat("inicialitzant");
       const AV = window.Autodesk.Viewing;
 
+      // Normalitza URN → base64url sense padding
+      // L'URN pot ser:
+      //   a) ja en base64url (no comença per "urn:")
+      //   b) urn:adsk.wipprod:fs.file:vf.XXXX  → codificar
+      //   c) urn:adsk.wipprod:dm.lineage:XXXX  → cal convertir al tip version primer
+      // En tots els casos, el Viewer espera `urn:<base64url>` on la part
+      // decodificada ha de ser un URN de tipus fs.file o vf., mai dm.lineage.
+      // Si és dm.lineage, intentem igualment — el Viewer intentarà resoldre'l.
+      const urnB64 = urn.startsWith("urn:")
+        ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+        : urn;
+
+      // Detecta la regió: els models wipprod europeus van per MD20ProdEU
+      const isEU = urn.includes("wipprod");
+      const env  = isEU ? "MD20ProdEU" : "MD20ProdUS";
+
       await new Promise<void>((res) => {
         AV.Initializer(
           {
-            env: "AutodeskProduction2",
-            api: "streamingV2",
+            env,
+            api: "streamingV2_EU",
             getAccessToken: (cb: (t: string, e: number) => void) => cb(access_token, expires_in),
           },
           () => res()
@@ -348,11 +364,6 @@ function useApsViewer(
       viewerRef.current = viewer;
 
       setEstat("carregant-model");
-
-      // Normalitza URN → base64 sense padding
-      const urnB64 = urn.startsWith("urn:")
-        ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
-        : urn;
 
       await new Promise<void>((res, rej) => {
         AV.Document.load(
