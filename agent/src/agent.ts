@@ -400,6 +400,9 @@ async function extrauSistemes(
       // ── Obté el tip versionId (fs.file) per usar com a URN del Viewer ─────
       // El Viewer SDK necessita un URN de tipus fs.file (vf.), no dm.lineage.
       const tipVersionId = await obteTipVersionId(projectId, itemId, token);
+      // L'URN per al Viewer ha d'incloure ?version=N codificat.
+      // base64url de "urn:...fs.file:vf.XXXX?version=1" → el Viewer l'accepta.
+      // Si no tenim tipVersionId, fem fallback al lineage (menys fiable).
       const urnBase = tipVersionId ?? itemId;
       const urn = Buffer.from(urnBase).toString("base64url");
 

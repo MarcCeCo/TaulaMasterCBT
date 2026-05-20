@@ -343,15 +343,11 @@ function useApsViewer(
         ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
         : urn;
 
-      // Detecta la regió: els models wipprod europeus van per MD20ProdEU
-      const isEU = urn.includes("wipprod");
-      const env  = isEU ? "MD20ProdEU" : "MD20ProdUS";
-
       await new Promise<void>((res) => {
         AV.Initializer(
           {
-            env,
-            api: "streamingV2_EU",
+            env: "AutodeskProduction2",
+            api: "streamingV2",
             getAccessToken: (cb: (t: string, e: number) => void) => cb(access_token, expires_in),
           },
           () => res()
