@@ -275,15 +275,32 @@ function injectaViewerSDK(): Promise<void> {
 
 type ViewerEstat = "idle" | "carregant-sdk" | "carregant-token" | "inicialitzant" | "carregant-model" | "ok" | "error";
 
+// ─── Tipus per a les vistes del model ────────────────────────────────────────
+
+interface VistaModel {
+  node: any;          // Autodesk.Viewing.BubbleNode
+  nom: string;
+  rol: "3d" | "2d";
+  index: number;
+}
+
+// ─── Hook useApsViewer ────────────────────────────────────────────────────────
+
 function useApsViewer(
   containerRef: React.RefObject<HTMLDivElement>,
   urn: string | undefined,
   agentUrl: string | undefined
 ) {
-  const [estat, setEstat] = useState<ViewerEstat>("idle");
-  const [error, setError] = useState<string | null>(null);
-  const viewerRef      = useRef<any>(null);
-  const mountedRef     = useRef(true);
+  const [estat, setEstat]         = useState<ViewerEstat>("idle");
+  const [error, setError]         = useState<string | null>(null);
+  const [vistes, setVistes]       = useState<VistaModel[]>([]);
+  const [vistaActual, setVistaActual] = useState<number>(0);
+  const [canviantVista, setCanviantVista] = useState(false);
+
+  const viewerRef  = useRef<any>(null);
+  const docRef     = useRef<any>(null);   // Autodesk.Viewing.Document
+  const mountedRef = useRef(true);
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -296,18 +313,13 @@ function useApsViewer(
   }, []);
 
   const inicialitza = useCallback(async () => {
-    // Si el container del DOM encara no s'ha muntat (condició de carrera
-    // entre el Dialog de Radix UI i el primer render), esperem fins a 2 s
-    // que el ref estigui disponible abans de decidir si hi ha URN o no.
+    // Espera que el container del DOM estigui disponible (race condition amb Dialog Radix)
     if (!containerRef.current) {
       let waited = 0;
       await new Promise<void>((resolve) => {
         const poll = setInterval(() => {
           waited += 50;
-          if (containerRef.current || waited >= 2000) {
-            clearInterval(poll);
-            resolve();
-          }
+          if (containerRef.current || waited >= 2000) { clearInterval(poll); resolve(); }
         }, 50);
       });
     }
@@ -324,7 +336,9 @@ function useApsViewer(
       try { viewerRef.current.finish(); } catch { /* ignora */ }
       viewerRef.current = null;
     }
-
+    docRef.current = null;
+    setVistes([]);
+    setVistaActual(0);
     setEstat("carregant-sdk");
     setError(null);
 
@@ -335,9 +349,7 @@ function useApsViewer(
       setEstat("carregant-token");
       const tokenUrl = agentUrl ? `${agentUrl}/api/aps-token` : "/api/aps-token";
       const tokenResp = await fetch(tokenUrl);
-      if (!tokenResp.ok) {
-        throw new Error(`Error obtenint token APS: ${tokenResp.status}`);
-      }
+      if (!tokenResp.ok) throw new Error(`Error obtenint token APS: ${tokenResp.status}`);
       const { access_token, expires_in } = await tokenResp.json() as {
         access_token: string; expires_in: number;
       };
@@ -347,15 +359,6 @@ function useApsViewer(
       const AV = window.Autodesk.Viewing;
 
       // Normalitza URN → base64url sense padding
-      // L'URN pot ser:
-      //   a) ja en base64url (no comença per "urn:")
-      //   b) urn:adsk.wipprod:fs.file:vf.XXXX  → codificar
-      //   c) urn:adsk.wipprod:dm.lineage:XXXX  → cal convertir al tip version primer
-      // En tots els casos, el Viewer espera `urn:<base64url>` on la part
-      // decodificada ha de ser un URN de tipus fs.file o vf., mai dm.lineage.
-      // Si és dm.lineage, intentem igualment — el Viewer intentarà resoldre'l.
-      // L'URN a Supabase és base64url de "urn:adsk.wipprod:fs.file:vf.XXXX?version=N"
-      // Si comença per "urn:", el codifiquem. Si ja és base64url, l'usem directament.
       const urnB64 = urn.startsWith("urn:")
         ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
         : urn;
@@ -383,8 +386,31 @@ function useApsViewer(
           `urn:${urnB64}`,
           (doc: any) => {
             if (!mountedRef.current) { rej(new Error("_desmontat_")); return; }
-            const geometry = doc.getRoot().getDefaultGeometry();
-            viewer.loadDocumentNode(doc, geometry);
+            docRef.current = doc;
+
+            // Recull totes les vistes publicades (3D i 2D)
+            const root = doc.getRoot();
+            const nodes3d: any[] = root.search({ type: "geometry", role: "3d" }) ?? [];
+            const nodes2d: any[] = root.search({ type: "geometry", role: "2d" }) ?? [];
+
+            const toVista = (role: "3d" | "2d") => (node: any, i: number): VistaModel => ({
+              node,
+              nom: node.name() || node.guid() || `Vista ${i + 1}`,
+              rol: role,
+              index: i,
+            });
+
+            const totes: VistaModel[] = [
+              ...nodes3d.map(toVista("3d")),
+              ...nodes2d.map(toVista("2d")),
+            ];
+
+            // Carrega la primera vista disponible (getDefaultGeometry com a fallback)
+            const primerNode = totes[0]?.node ?? root.getDefaultGeometry();
+            viewer.loadDocumentNode(doc, primerNode);
+
+            setVistes(totes);
+            setVistaActual(0);
             setEstat("ok");
             res();
           },
@@ -402,9 +428,196 @@ function useApsViewer(
     }
   }, [containerRef, urn, agentUrl]);
 
+  // Canvia a una vista concreta
+  const carregaVista = useCallback(async (idx: number) => {
+    const vista = vistes[idx];
+    if (!vista || !viewerRef.current || !docRef.current || canviantVista) return;
+    setCanviantVista(true);
+    try {
+      await viewerRef.current.loadDocumentNode(docRef.current, vista.node);
+      setVistaActual(idx);
+    } catch { /* ignora errors de transició */ }
+    finally { setCanviantVista(false); }
+  }, [vistes, canviantVista]);
+
   useEffect(() => { inicialitza(); }, [inicialitza]);
 
-  return { estat, error, reintentar: inicialitza };
+  return { estat, error, reintentar: inicialitza, vistes, vistaActual, carregaVista, canviantVista };
+}
+
+// ─── Selector de vistes ───────────────────────────────────────────────────────
+
+function SelectorVistes({ vistes, vistaActual, canviantVista, onSeleccionar, sistemaColor }: {
+  vistes: VistaModel[];
+  vistaActual: number;
+  canviantVista: boolean;
+  onSeleccionar: (idx: number) => void;
+  sistemaColor: string;
+}) {
+  const [obert, setObert] = useState(false);
+  const [filtre, setFiltre] = useState("");
+  const panellRef = useRef<HTMLDivElement>(null);
+
+  // Tanca el panell si es clica fora
+  useEffect(() => {
+    if (!obert) return;
+    const handle = (e: MouseEvent) => {
+      if (panellRef.current && !panellRef.current.contains(e.target as Node)) setObert(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [obert]);
+
+  if (vistes.length === 0) return null;
+
+  const vistes3d = vistes.filter(v => v.rol === "3d");
+  const vistes2d = vistes.filter(v => v.rol === "2d");
+  const vistasel = vistes[vistaActual];
+
+  const filtrades3d = vistes3d.filter(v => v.nom.toLowerCase().includes(filtre.toLowerCase()));
+  const filtrades2d = vistes2d.filter(v => v.nom.toLowerCase().includes(filtre.toLowerCase()));
+
+  return (
+    <div className="relative shrink-0" ref={panellRef}>
+      {/* Botó principal */}
+      <button
+        onClick={() => setObert(o => !o)}
+        disabled={canviantVista}
+        className={cn(
+          "flex items-center gap-2 h-7 pl-2.5 pr-2 rounded-lg border text-[11px] font-semibold transition-all select-none",
+          "bg-slate-800/80 border-slate-700 text-slate-200 hover:bg-slate-700 hover:border-slate-600",
+          obert && "bg-slate-700 border-slate-500",
+          canviantVista && "opacity-60 cursor-wait"
+        )}
+      >
+        {canviantVista
+          ? <Loader2 className="h-3 w-3 animate-spin text-slate-400 shrink-0" />
+          : <Monitor className="h-3 w-3 shrink-0" style={{ color: vistasel?.rol === "2d" ? "#94a3b8" : sistemaColor }} />
+        }
+        <span className="max-w-[160px] truncate hidden sm:block">
+          {vistasel?.nom ?? "Vistes"}
+        </span>
+        <span
+          className="text-[9px] font-bold px-1 py-0.5 rounded shrink-0"
+          style={{ background: `${sistemaColor}25`, color: sistemaColor }}
+        >
+          {vistes.length}
+        </span>
+        <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform shrink-0", obert && "rotate-180")} />
+      </button>
+
+      {/* Panell desplegable */}
+      {obert && (
+        <div className={cn(
+          "absolute right-0 top-9 z-50 w-72 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl",
+          "flex flex-col overflow-hidden"
+        )}>
+          {/* Capçalera */}
+          <div className="px-3 pt-3 pb-2 border-b border-slate-800">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+              Vistes publicades
+            </p>
+            {vistes.length > 5 && (
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Filtrar vistes…"
+                  value={filtre}
+                  onChange={e => setFiltre(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-lg pl-7 pr-3 py-1.5 text-[11px] text-slate-200 placeholder-slate-500 outline-none focus:border-slate-500 transition-colors"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Llista de vistes */}
+          <div className="overflow-y-auto max-h-72 py-1.5 space-y-0.5 px-1.5">
+
+            {filtrades3d.length > 0 && (
+              <>
+                {vistes2d.length > 0 && (
+                  <p className="px-2 pt-1 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+                    3D
+                  </p>
+                )}
+                {filtrades3d.map((v) => (
+                  <button
+                    key={v.index}
+                    onClick={() => { onSeleccionar(v.index); setObert(false); setFiltre(""); }}
+                    disabled={canviantVista}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all",
+                      vistaActual === v.index
+                        ? "text-white"
+                        : "text-slate-300 hover:bg-slate-800 hover:text-white",
+                      canviantVista && "opacity-50 cursor-wait"
+                    )}
+                    style={vistaActual === v.index ? { background: `${sistemaColor}20` } : undefined}
+                  >
+                    <div
+                      className="h-5 w-5 rounded flex items-center justify-center shrink-0"
+                      style={vistaActual === v.index
+                        ? { background: `${sistemaColor}30`, color: sistemaColor }
+                        : { background: "#1e293b", color: "#64748b" }}
+                    >
+                      <Box className="h-2.5 w-2.5" />
+                    </div>
+                    <span className="text-[11px] font-medium truncate flex-1">{v.nom}</span>
+                    {vistaActual === v.index && (
+                      <Check className="h-3 w-3 shrink-0" style={{ color: sistemaColor }} />
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+
+            {filtrades2d.length > 0 && (
+              <>
+                <p className="px-2 pt-2 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
+                  2D — Plantes i seccions
+                </p>
+                {filtrades2d.map((v) => (
+                  <button
+                    key={v.index}
+                    onClick={() => { onSeleccionar(v.index); setObert(false); setFiltre(""); }}
+                    disabled={canviantVista}
+                    className={cn(
+                      "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all",
+                      vistaActual === v.index
+                        ? "text-white"
+                        : "text-slate-300 hover:bg-slate-800 hover:text-white",
+                      canviantVista && "opacity-50 cursor-wait"
+                    )}
+                    style={vistaActual === v.index ? { background: "#94a3b820" } : undefined}
+                  >
+                    <div
+                      className="h-5 w-5 rounded flex items-center justify-center shrink-0"
+                      style={vistaActual === v.index
+                        ? { background: "#94a3b820", color: "#94a3b8" }
+                        : { background: "#1e293b", color: "#64748b" }}
+                    >
+                      <AlignLeft className="h-2.5 w-2.5" />
+                    </div>
+                    <span className="text-[11px] font-medium truncate flex-1">{v.nom}</span>
+                    {vistaActual === v.index && (
+                      <Check className="h-3 w-3 shrink-0 text-slate-400" />
+                    )}
+                  </button>
+                ))}
+              </>
+            )}
+
+            {filtrades3d.length === 0 && filtrades2d.length === 0 && (
+              <p className="px-3 py-4 text-center text-[11px] text-slate-500 italic">
+                Cap vista coincideix amb "{filtre}"
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Pop-up Visor 3D ──────────────────────────────────────────────────────────
@@ -424,13 +637,17 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
     } catch { return undefined; }
   })();
 
-  const { estat, error, reintentar } = useApsViewer(containerRef, urn, agentUrl);
+  const {
+    estat, error, reintentar,
+    vistes, vistaActual, carregaVista, canviantVista,
+  } = useApsViewer(containerRef, urn, agentUrl);
   const carregant = estat !== "ok" && estat !== "error";
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden" style={{ maxHeight: "90vh" }}>
 
+        {/* Capçalera */}
         <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 bg-white shrink-0">
           <div className="h-7 w-1 rounded-full shrink-0" style={{ background: sistema.color }} />
           <div className="flex-1 min-w-0">
@@ -452,6 +669,18 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
               <p className="text-xs text-slate-400 mt-0.5">{installacio.descripcio}</p>
             )}
           </div>
+
+          {/* Selector de vistes (visible quan el model ha carregat) */}
+          {estat === "ok" && (
+            <SelectorVistes
+              vistes={vistes}
+              vistaActual={vistaActual}
+              canviantVista={canviantVista}
+              onSeleccionar={carregaVista}
+              sistemaColor={sistema.color}
+            />
+          )}
+
           <button onClick={onClose}
             className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0">
             <X className="h-4 w-4" />
