@@ -190,10 +190,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
       .filter(p => {
         // Admins veuen tots els projectes
         if (isAdmin) return true;
-        // Si no hi ha llista blanca, accés obert
-        if (!p.allowedUsers) return true;
-        // Si hi ha llista blanca, cal estar-hi
-        return myProfile ? p.allowedUsers.includes(myProfile.id) : false;
+        // Usuaris amb rol viewer/editor: només veuen els projectes on estan assignats.
+        // Si allowedUsers és null (accés obert) o un array, cal estar-hi explícitament.
+        if (!myProfile) return false;
+        if (!p.allowedUsers) return false; // null = no assignat a ningú → viewer no el veu
+        return p.allowedUsers.includes(myProfile.id);
       })
       .sort((a, b) => b.createdAt - a.createdAt),
     [projectes, filtreStatus, isAdmin, myProfile]
@@ -826,6 +827,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     <span className="text-xs font-semibold text-[#006E7A]">
                       {selectedTagIds.size} tag{selectedTagIds.size !== 1 ? "s" : ""} seleccionat{selectedTagIds.size !== 1 ? "s" : ""}
                     </span>
+                    {canEdit && (
                     <Button
                       size="sm"
                       className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] text-white gap-1.5"
@@ -833,6 +835,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     >
                       <Pencil className="h-3 w-3" /> Editar camps dels seleccionats
                     </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="ghost"

@@ -16,9 +16,10 @@ interface Props {
   fieldMap: Map<string, FieldMeta>;
   fields: FieldMeta[];
   onEdit: () => void;
+  canEdit?: boolean;
 }
 
-export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, fieldMap, fields, onEdit }: Props) {
+export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, fieldMap, fields, onEdit, canEdit = false }: Props) {
   if (!equipment) return null;
 
   const node = nodeMap.get(equipment.gubimCode);
@@ -70,6 +71,7 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
               variant="outline"
               onClick={onEdit}
               className="mr-8 gap-1.5"
+              style={{ display: canEdit ? undefined : "none" }}
             >
               <Pencil className="h-3.5 w-3.5" /> Edita
             </Button>
