@@ -16,7 +16,7 @@ const AGENT_SECRET = process.env.AGENT_SECRET || "";
 
 // ─── APS OAuth ───────────────────────────────────────────────────────────────
 const APS_AUTH_BASE = "https://developer.api.autodesk.com/authentication/v2";
-const APS_SCOPE = "data:read";
+const APS_SCOPE = "data:read viewables:read account:read";
 
 // State temporal en memòria (valid mentre el servidor és viu)
 // Clau: state string  →  Valor: timestamp de creació (per expirar-los)
@@ -359,6 +359,131 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── APS Token 3-legged per al Viewer SDK ─────────────────────────────────
+  // GET /api/aps-token
+  // Retorna el token 3-legged desat a Supabase (aps_tokens).
+  // Si ha caducat o caduca en menys de 5 min, el refresca automàticament
+  // amb el refresh_token abans de retornar-lo.
+  // Requereix haver fet /auth/login prèviament per tenir el token a Supabase.
+  if (url.pathname === "/api/aps-token" && req.method === "GET") {
+    try {
+      const clientId     = process.env.APS_CLIENT_ID;
+      const clientSecret = process.env.APS_CLIENT_SECRET;
+      const supabaseUrl  = process.env.SUPABASE_URL;
+      const supabaseKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+      if (!clientId || !clientSecret || !supabaseUrl || !supabaseKey) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Variables d'entorn APS o Supabase no configurades" }));
+        return;
+      }
+
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        global: { headers: {} },
+        realtime: { transport: WebSocket as any },
+      });
+
+      // Llegeix el token desat a Supabase
+      const { data: tokenRow, error: dbError } = await supabase
+        .from("aps_tokens")
+        .select("access_token, refresh_token, expires_at")
+        .eq("id", 1)
+        .single();
+
+      if (dbError || !tokenRow) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "No hi ha token APS a Supabase. Cal fer /auth/login primer.",
+          auth_url: `${process.env.APS_CALLBACK_URL?.replace("/auth/callback", "") ?? ""}/auth/login`,
+        }));
+        return;
+      }
+
+      const row = tokenRow as {
+        access_token: string;
+        refresh_token: string;
+        expires_at: number;
+      };
+
+      const ara = Date.now();
+      const margeMs = 5 * 60 * 1000; // refresca si caduca en menys de 5 min
+      let accessToken  = row.access_token;
+      let expiresIn    = Math.max(0, Math.floor((row.expires_at - ara) / 1000));
+
+      // Si caduca aviat, refresca
+      if (row.expires_at - ara < margeMs) {
+        console.log("🔄 Token APS caducat o a punt de caducar — refrescant...");
+
+        const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+        const refreshBody = new URLSearchParams({
+          grant_type:    "refresh_token",
+          refresh_token: row.refresh_token,
+          scope:         "data:read viewables:read account:read",
+        });
+
+        const refreshResp = await fetch(`${APS_AUTH_BASE}/token`, {
+          method:  "POST",
+          headers: {
+            "Content-Type":  "application/x-www-form-urlencoded",
+            Authorization: `Basic ${credentials}`,
+          },
+          body: refreshBody.toString(),
+        });
+
+        if (!refreshResp.ok) {
+          const errText = await refreshResp.text();
+          console.error("❌ Error refrescant token APS:", errText);
+          // Si el refresh falla, retorna error i demana re-login
+          res.writeHead(401, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "Token APS caducat i no s'ha pogut refrascar. Cal fer /auth/login de nou.",
+            auth_url: `${process.env.APS_CALLBACK_URL?.replace("/auth/callback", "") ?? ""}/auth/login`,
+          }));
+          return;
+        }
+
+        const refreshData = await refreshResp.json() as {
+          access_token:  string;
+          refresh_token: string;
+          expires_in:    number;
+        };
+
+        const newExpiresAt = Date.now() + refreshData.expires_in * 1000;
+
+        // Guarda els nous tokens a Supabase
+        await supabase.from("aps_tokens").upsert(
+          {
+            id:            1,
+            access_token:  refreshData.access_token,
+            refresh_token: refreshData.refresh_token,
+            expires_at:    newExpiresAt,
+            updated_at:    new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+
+        accessToken = refreshData.access_token;
+        expiresIn   = refreshData.expires_in;
+        console.log("✅ Token APS refrestat correctament.");
+      }
+
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": `private, max-age=${Math.max(0, expiresIn - 60)}`,
+      });
+      res.end(JSON.stringify({
+        access_token: accessToken,
+        expires_in:   expiresIn,
+        token_type:   "Bearer",
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
   // ── Ruta no trobada ───────────────────────────────────────────────────────
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Ruta no trobada" }));
@@ -372,4 +497,5 @@ server.listen(PORT, () => {
   console.log(`   GET  /auth/login    → inicia flux OAuth Autodesk`);
   console.log(`   GET  /auth/callback → callback OAuth (configura a APS_CALLBACK_URL)`);
   console.log(`   POST /sync          → executa l'agent (requereix Authorization: Bearer <secret>)`);
+  console.log(`   GET  /api/aps-token → token 2-legged per al Viewer SDK (viewables:read)`);
 });

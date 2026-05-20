@@ -62,7 +62,9 @@ function parsejaNomFitxer(nomFitxer: string): { codi: string; nom: string } | nu
   return { codi, nom };
 }
 
-function construeixEmbedUrl(urn: string): string {
+function construeixEmbedUrlFallback(urn: string): string {
+  // URL de fallback basada en URN (viewer genèric d'Autodesk).
+  // Preferentment s'utilitza l'embed_url real de autodesk360.com.
   return `https://viewer.autodesk.com/id/${urn}`;
 }
 
@@ -152,6 +154,155 @@ async function obteToken3Legged(
 }
 
 // ─── APS Data Management API ──────────────────────────────────────────────────
+
+// Obté el versionId del "tip" (versió actual) d'un item de tipus dm.lineage
+async function obteTipVersionId(projectId: string, itemId: string, token: string): Promise<string | null> {
+  try {
+    const url = `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/tip`;
+    console.log(`  🔍 [DEBUG] Tip API URL: ${url}`);
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    console.log(`  🔍 [DEBUG] Tip API status: ${resp.status}`);
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.warn(`  ⚠️  [DEBUG] Tip API error body: ${errText.substring(0, 300)}`);
+      return null;
+    }
+
+    const data = await resp.json() as any;
+    const rawVersionId: string | null = data?.data?.id ?? null;
+    const versionType: string | null = data?.data?.type ?? null;
+
+    // Per a la Share API eliminem ?version=N (no l'accepta).
+    // Però per al Viewer SDK necessitem l'URN AMB ?version=N.
+    // Retornem el rawVersionId complet (amb versió) per usar-lo com a URN del Viewer.
+    const versionIdSenseVersio = rawVersionId ? rawVersionId.split("?")[0] : null;
+
+    console.log(`  🔍 [DEBUG] Tip versionId raw:    ${rawVersionId}`);
+    console.log(`  🔍 [DEBUG] Tip versionId net:    ${versionIdSenseVersio}`);
+    console.log(`  🔍 [DEBUG] Tip versionType:      ${versionType}`);
+    return rawVersionId; // retornem amb ?version=N per al Viewer
+  } catch (e) {
+    console.error(`  ❌ [DEBUG] Error obteTipVersionId: ${e}`);
+    return null;
+  }
+}
+
+// ─── FUNCIÓ CLAU: Share Embed URL ─────────────────────────────────────────────
+//
+// Reprodueix exactament el que fa Autodesk Fusion 360 quan l'usuari fa clic a
+// "Compartir" → "Incrustar" → copia el codi <iframe>.
+//
+// Flux correcte:
+//   1. Agafem el lineage item ID (dm.lineage) del fitxer .rvt
+//   2. Obtenim el tip versionId (dm.version) via /items/{id}/tip
+//   3. Cridem la Share API amb el versionId → ens retorna el share públic
+//   4. Construim la URL d'embed preservant el domini del hub:
+//      - Domini: besostordera.autodesk360.com (o el que retorni l'API)
+//      - Ruta: /g/shares/HASH?mode=embed
+//      - Resultat: https://besostordera.autodesk360.com/g/shares/SH512d4Q...?mode=embed
+//
+// IMPORTANT: Si el fitxer no té el toggle "Vincle compartit" activat a Fusion,
+//            la Share API retornarà 0 resultats i l'agent usarà l'URL de fallback.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function obteShareEmbedUrl(projectId: string, itemId: string, token: string): Promise<string | null> {
+  try {
+    // ── PAS 1: versionId del tip ──────────────────────────────────────────
+    const versionId = await obteTipVersionId(projectId, itemId, token);
+
+    if (!versionId) {
+      console.warn(`  ⚠️  [DEBUG] No s'ha pogut obtenir el tip versionId. Fem fallback al lineage ID.`);
+    }
+
+    // La Share API necessita l'URN sense ?version=N
+    const resourceId = (versionId ?? itemId).split("?")[0];
+    console.log(`  🔍 [DEBUG] resourceId enviat a Share API: ${resourceId}`);
+
+    // ── PAS 2: Share API ──────────────────────────────────────────────────
+    const shareApiUrl = `${APS_BASE}/sharing/v1/shares?resourceId=${encodeURIComponent(resourceId)}&resourceType=C360Item`;
+    console.log(`  🔍 [DEBUG] Share API URL completa: ${shareApiUrl}`);
+
+    const resp = await fetch(shareApiUrl, { headers: { Authorization: `Bearer ${token}` } });
+    console.log(`  🔍 [DEBUG] Share API status: ${resp.status}`);
+
+    const rawText = await resp.text();
+    console.log(`  🔍 [DEBUG] Share API response raw (500 chars): ${rawText.substring(0, 500)}`);
+
+    if (!resp.ok) {
+      console.warn(`  ⚠️  [DEBUG] Share API no OK (${resp.status})`);
+      return null;
+    }
+
+    const data = JSON.parse(rawText) as any;
+    const totalResults: number = data.results?.length ?? 0;
+    console.log(`  🔍 [DEBUG] Share API results count: ${totalResults}`);
+
+    if (totalResults === 0) {
+      console.warn(`  ⚠️  [DEBUG] Cap share trobat. Comprova que el toggle "Vincle compartit" de Fusion 360 estigui ACTIVAT per a aquest fitxer.`);
+      return null;
+    }
+
+    // Mostra tots els shares disponibles per diagnòstic
+    console.log(`  🔍 [DEBUG] Tots els shares disponibles:`);
+    for (const s of data.results) {
+      console.log(`    - type: ${s.shareType ?? "(sense type)"} | url: ${s.url ?? "(sense url)"} | status: ${s.status ?? "(sense status)"}`);
+    }
+
+    // Preferim share públic amb URL
+    const share = data.results?.find((s: any) => s.shareType === "public" && s.url);
+
+    if (!share) {
+      // Fallback: qualsevol share amb URL
+      const anyShare = data.results?.find((s: any) => s.url);
+      if (anyShare) {
+        console.warn(`  ⚠️  [DEBUG] No hi ha share de tipus "public". Usant share de tipus "${anyShare.shareType}".`);
+        return construeixUrlEmbed(anyShare.url);
+      }
+      console.warn(`  ⚠️  [DEBUG] Cap share té URL vàlida.`);
+      return null;
+    }
+
+    // ── PAS 3: Construeix URL d'embed preservant el domini del hub ────────
+    const embedUrl = construeixUrlEmbed(share.url);
+    console.log(`  🔍 [DEBUG] Share URL raw de l'API:   ${share.url}`);
+    console.log(`  🔍 [DEBUG] Share URL final (embed):  ${embedUrl}`);
+    console.log(`  ✅ [DEBUG] Format correcte: autodesk360.com/g/shares/...?mode=embed`);
+
+    return embedUrl;
+  } catch (e) {
+    console.error(`  ❌ [DEBUG] Error a obteShareEmbedUrl: ${e}`);
+    return null;
+  }
+}
+
+// ─── Helper: converteix la URL pública en URL d'embed ─────────────────────────
+//
+// La Share API pot retornar dos formats:
+//   A) https://besostordera.autodesk360.com/shares/public/HASH   (format antic)
+//   B) https://besostordera.autodesk360.com/g/shares/HASH        (format nou)
+//
+// L'iframe d'Autodesk necessita sempre el format B + ?mode=embed:
+//   https://besostordera.autodesk360.com/g/shares/SH512d4Q...?mode=embed
+// ─────────────────────────────────────────────────────────────────────────────
+
+function construeixUrlEmbed(rawUrl: string): string {
+  try {
+    const url = new URL(rawUrl);
+
+    // Format A → convertir a B
+    if (url.pathname.includes("/shares/public/")) {
+      url.pathname = url.pathname.replace("/shares/public/", "/g/shares/");
+    }
+    // Format B ja és correcte — només afegim mode=embed
+
+    url.searchParams.set("mode", "embed");
+    return url.toString();
+  } catch {
+    console.warn(`  ⚠️  [DEBUG] URL malformada, retornem l'original: ${rawUrl}`);
+    return rawUrl;
+  }
+}
 
 async function llistaContingutCarpeta(projectId: string, carpetaId: string, token: string): Promise<any[]> {
   const resp = await fetch(
@@ -244,10 +395,35 @@ async function extrauSistemes(
       }
 
       const itemId: string = fitxer.id ?? "";
-      const urn = Buffer.from(itemId).toString("base64url");
-      const embedUrl = construeixEmbedUrl(urn);
 
-      // lastModifiedTime = data de l'última versió pujada a Fusion
+      console.log(`\n  🔎 Processant fitxer: ${nomFitxer}`);
+      console.log(`     itemId (lineage): ${itemId}`);
+
+      // ── Obté el tip versionId (fs.file) per usar com a URN del Viewer ─────
+      // El Viewer SDK necessita un URN de tipus fs.file (vf.), no dm.lineage.
+      const tipVersionId = await obteTipVersionId(projectId, itemId, token);
+      // L'URN per al Viewer ha d'incloure ?version=N codificat.
+      // base64url de "urn:...fs.file:vf.XXXX?version=1" → el Viewer l'accepta.
+      // Si no tenim tipVersionId, fem fallback al lineage (menys fiable).
+      const urnBase = tipVersionId ?? itemId;
+      const urn = Buffer.from(urnBase).toString("base64url");
+
+      if (tipVersionId) {
+        console.log(`     tipVersionId (fs.file): ${tipVersionId}`);
+      } else {
+        console.warn(`  ⚠️  No s\'ha pogut obtenir el tipVersionId. Usant lineage com a URN (pot no funcionar al Viewer).`);
+      }
+
+      const shareEmbedUrl = await obteShareEmbedUrl(projectId, itemId, token);
+      const embedUrl = shareEmbedUrl ?? construeixEmbedUrlFallback(urn);
+
+      if (shareEmbedUrl) {
+        console.log(`  ✅ Share embed URL obtinguda: ${shareEmbedUrl}`);
+      } else {
+        console.warn(`  ⚠️  No s'ha trobat share públic per ${parsed.codi}. URL de fallback: ${embedUrl}`);
+        console.warn(`       → Activa el toggle "Vincle compartit" a Fusion 360 per a aquest fitxer i torna a sincronitzar.`);
+      }
+
       const lastModifiedTime: string =
         fitxer.attributes?.lastModifiedTime ??
         fitxer.attributes?.createTime ??
@@ -280,8 +456,6 @@ async function sincronitzaSupabase(
     errors: [],
   };
 
-  // ── 1. Carrega l'estat actual de Supabase ──────────────────────────────────
-
   const { data: sistemesSupabase, error: errSis } = await supabase
     .from("visor3d_sistemes")
     .select("id, nom, ordre");
@@ -289,21 +463,18 @@ async function sincronitzaSupabase(
 
   const { data: installacionsSupabase, error: errInst } = await supabase
     .from("visor3d_installacions")
-    .select("id, sistema_id, codi_installacio, nom, updated_at");
+    .select("id, sistema_id, codi_installacio, nom, updated_at, embed_url, urn");
   if (errInst) throw new Error(`Error llegint instal·lacions de Supabase: ${errInst.message}`);
 
-  // Maps per accés ràpid
   const sistemaPerNom = new Map<string, { id: string; ordre: number }>();
   for (const s of (sistemesSupabase ?? [])) {
     sistemaPerNom.set(s.nom.toUpperCase(), { id: s.id, ordre: s.ordre });
   }
 
-  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string }>();
+  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string; embed_url?: string; urn?: string }>();
   for (const i of (installacionsSupabase ?? [])) {
     if (i.codi_installacio) instPerCodi.set(i.codi_installacio, i);
   }
-
-  // ── 2. Conjunts per detectar eliminats ────────────────────────────────────
 
   const codisFusion = new Set<string>();
   const nomsSistemesFusion = new Set<string>();
@@ -312,8 +483,6 @@ async function sincronitzaSupabase(
     nomsSistemesFusion.add(s.nom.toUpperCase());
     for (const i of s.installacions) codisFusion.add(i.codi);
   }
-
-  // ── 3. Processa cada sistema de Fusion ────────────────────────────────────
 
   for (const [index, sistema] of sistemesFusion.entries()) {
     try {
@@ -339,14 +508,11 @@ async function sincronitzaSupabase(
         console.log(`  ✅ Sistema creat: ${sistema.nom}`);
       }
 
-      // ── 4. Processa cada instal·lació ────────────────────────────────────
-
       for (const [instIndex, inst] of sistema.installacions.entries()) {
         try {
           const existent = instPerCodi.get(inst.codi);
 
           if (!existent) {
-            // NOU
             await supabase.from("visor3d_installacions").insert({
               sistema_id: sistemaId,
               nom: inst.nom,
@@ -360,26 +526,27 @@ async function sincronitzaSupabase(
             console.log(`  ➕ Nova: ${inst.codi} - ${inst.nom}`);
 
           } else {
-            const dataFusion = new Date(inst.lastModifiedTime).getTime();
-            const dataSupabase = new Date(existent.updated_at).getTime();
+            // Fusion és la font de veritat: sempre sobreescrivim nom, urn i embed_url.
+            // Prioritat embed_url:
+            //   1. Share URL de Fusion (autodesk360.com/g/shares/) → millor opció
+            //   2. URL manual guardada a Supabase per l'usuari
+            //   3. URL fallback generada per l'agent
+            const esShareUrl = inst.embedUrl.includes("autodesk360.com/g/shares/");
+            const embedUrlFinal = esShareUrl
+              ? inst.embedUrl
+              : (existent.embed_url?.trim() || inst.embedUrl);
 
-            if (dataFusion > dataSupabase) {
-              // MODIFICAT
-              await supabase.from("visor3d_installacions")
-                .update({
-                  nom: inst.nom,
-                  embed_url: inst.embedUrl,
-                  urn: inst.urn,
-                  updated_at: inst.lastModifiedTime,
-                })
-                .eq("id", existent.id);
-              resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
-              console.log(`  ✏️  Modificat: ${inst.codi} - ${inst.nom}`);
-            } else {
-              // SENSE CANVIS
-              resultat.installacionsSenseCanvis.push(inst.codi);
-              console.log(`  ─  Sense canvis: ${inst.codi}`);
-            }
+            await supabase.from("visor3d_installacions")
+              .update({
+                nom: inst.nom,
+                embed_url: embedUrlFinal,
+                urn: inst.urn,
+                sistema_id: sistemaId,
+                updated_at: inst.lastModifiedTime,
+              })
+              .eq("id", existent.id);
+            resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
+            console.log(`  ✏️  Actualitzat: ${inst.codi} (urn: ${inst.urn?.substring(0, 30)}…)`);
           }
         } catch (err) {
           const msg = `Error amb instal·lació ${inst.codi}: ${err}`;
@@ -393,8 +560,6 @@ async function sincronitzaSupabase(
       console.error(`❌ ${msg}`);
     }
   }
-
-  // ── 5. Elimina instal·lacions que ja no existeixen a Fusion ──────────────
 
   console.log("\n🗑️  Comprovant eliminacions d'instal·lacions...");
   for (const [codi, inst] of instPerCodi.entries()) {
@@ -410,8 +575,6 @@ async function sincronitzaSupabase(
       }
     }
   }
-
-  // ── 6. Elimina sistemes que ja no existeixen a Fusion (si han quedat buits)
 
   console.log("🗑️  Comprovant eliminacions de sistemes...");
   for (const s of (sistemesSupabase ?? [])) {
@@ -464,6 +627,11 @@ export async function executaAgent(): Promise<ResultatSync> {
   if (!supabaseUrl || !supabaseKey) throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
   if (!apsClientId || !apsClientSecret) throw new Error("Falten APS_CLIENT_ID o APS_CLIENT_SECRET");
   if (!apsHubId || !apsProjectId) throw new Error("Falten APS_HUB_ID o APS_PROJECT_ID");
+
+  console.log(`\n📋 Configuració:`);
+  console.log(`   APS_HUB_ID:     ${apsHubId}`);
+  console.log(`   APS_PROJECT_ID: ${apsProjectId}`);
+  console.log(`   SUPABASE_URL:   ${supabaseUrl}`);
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
     global: { headers: {} },
