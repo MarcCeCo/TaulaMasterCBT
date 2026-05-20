@@ -152,25 +152,6 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [loadingUsers, setLoadingUsers]   = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
 
-  // PERF FIX: ref al contenidor de la taula de tags per fer scroll to top
-  // quan el projecte actiu canvia (equivalent al reset de EquipmentsTable)
-  const tagTableRef = useRef<HTMLDivElement>(null);
-
-  // Reset scroll i selecció quan canvia el projecte actiu
-  useEffect(() => {
-    setSelectedTagIds(new Set());
-    tagTableRef.current?.scrollTo(0, 0);
-  }, [projecteActiu]);
-
-  // ESC esborra el filtre de cerca d'equips (consistent amb EquipmentsTable)
-  useEffect(() => {
-    const handleKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape" && equipSearch) { setEquipSearch(""); ev.preventDefault(); }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [equipSearch]);
-
   // Filtre
   const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("tots");
 
@@ -202,6 +183,25 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [tagDescripcio, setTagDescripcio] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
   const [equipSearch, setEquipSearch] = useState("");
+
+  // PERF FIX: ref al contenidor de la taula de tags per fer scroll to top
+  // quan el projecte actiu canvia (equivalent al reset de EquipmentsTable)
+  const tagTableRef = useRef<HTMLDivElement>(null);
+
+  // Reset scroll i selecció quan canvia el projecte actiu
+  useEffect(() => {
+    setSelectedTagIds(new Set());
+    tagTableRef.current?.scrollTo(0, 0);
+  }, [projecteActiu]);
+
+  // ESC esborra el filtre de cerca d'equips (consistent amb EquipmentsTable)
+  useEffect(() => {
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" && equipSearch) { setEquipSearch(""); ev.preventDefault(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [equipSearch]);
 
   // Derived
   const projecteFiltrats = useMemo(() =>

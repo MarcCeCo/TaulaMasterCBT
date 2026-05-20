@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
 
 // PERF: xlsx (≈750 KB) es carrega lazily només quan l'usuari fa export/import
