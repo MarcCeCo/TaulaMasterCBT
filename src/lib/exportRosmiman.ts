@@ -8,9 +8,17 @@
 //   import { exportRosmiman } from "@/lib/exportRosmiman";
 //   exportRosmiman(equipments, fieldMap);
 
-import * as XLSX from "xlsx";
+// PERF: xlsx es carrega lazily — no s'inclou al chunk inicial
+import type * as XLSXType from "xlsx";
 import type { Equipment } from "@/hooks/useEquipments";
 import type { FieldMeta } from "@/lib/fields";
+
+// Referència lazy de XLSX per als helpers de tipus interns
+let _XLSX: typeof XLSXType | null = null;
+async function getXLSX(): Promise<typeof XLSXType> {
+  if (!_XLSX) _XLSX = await import("xlsx");
+  return _XLSX;
+}
 
 // ─── Tipus dada: mapatge numèric ──────────────────────────────────────────────
 // La taula Supabase guarda el tipus_dada com a string ("0","1","2","3"…).
@@ -118,7 +126,7 @@ function buildLlistat(equipments: Equipment[]): RowLlistat[] {
 
 // ─── Estil de capçalera ───────────────────────────────────────────────────────
 // Aplica fons gris fosc + lletra blanca + negreta a la fila de capçaleres
-function styleHeader(ws: XLSX.WorkSheet, numCols: number) {
+function styleHeader(XLSX: typeof XLSXType, ws: XLSXType.WorkSheet, numCols: number) {
   const headerStyle = {
     font:      { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
     fill:      { fgColor: { rgb: "375A7F" }, patternType: "solid" },
@@ -136,16 +144,17 @@ function styleHeader(ws: XLSX.WorkSheet, numCols: number) {
 }
 
 // ─── Amplades de columna per defecte ─────────────────────────────────────────
-function setColWidths(ws: XLSX.WorkSheet, widths: number[]) {
+function setColWidths(ws: XLSXType.WorkSheet, widths: number[]) {
   ws["!cols"] = widths.map((wch) => ({ wch }));
 }
 
 // ─── Exportació principal ─────────────────────────────────────────────────────
-export function exportRosmiman(
+export async function exportRosmiman(
   equipments: Equipment[],
   fieldMap: Map<string, FieldMeta>,
   filename = "rosmiman_export.xlsx",
-): void {
+): Promise<void> {
+  const XLSX = await getXLSX();
   const rowsCaract  = buildCaracteristiques(equipments, fieldMap);
   const rowsLlistat = buildLlistat(equipments);
 
@@ -162,7 +171,7 @@ export function exportRosmiman(
       "TAULA ASSOCIADA",
     ],
   });
-  styleHeader(wsCaract, 6);
+  styleHeader(XLSX, wsCaract, 6);
   setColWidths(wsCaract, [18, 14, 35, 14, 14, 18]);
   // Freeze primera fila
   wsCaract["!freeze"] = { xSplit: 0, ySplit: 1 };
@@ -172,7 +181,7 @@ export function exportRosmiman(
   const wsLlistat = XLSX.utils.json_to_sheet(rowsLlistat, {
     header: ["NÚM", "codi taula", "Nom taula"],
   });
-  styleHeader(wsLlistat, 3);
+  styleHeader(XLSX, wsLlistat, 3);
   setColWidths(wsLlistat, [8, 18, 50]);
   wsLlistat["!freeze"] = { xSplit: 0, ySplit: 1 };
   XLSX.utils.book_append_sheet(wb, wsLlistat, "LLISTAT TAULES");

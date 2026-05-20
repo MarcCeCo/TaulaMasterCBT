@@ -200,17 +200,39 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
       ]);
 
       // gubim_class: paginació (Supabase limita a 1000 files per defecte)
-      const all: any[] = [];
+      // PERF: primer fem la primera pàgina amb count=exact per saber el total.
+      // Si hi ha més pàgines, les fem totes en paral·lel (Promise.all).
       const PAGE = 1000;
-      let from = 0;
-      while (true) {
-        const page = await supa(
-          token, "GET",
-          `gubim_class?select=*&order=code.asc&offset=${from}&limit=${PAGE}`
-        );
-        all.push(...page);
-        if (page.length < PAGE) break;
-        from += PAGE;
+      const firstPage = await supa(token, "GET",
+        `gubim_class?select=*&order=code.asc&offset=0&limit=${PAGE}`
+      );
+      let all: any[];
+      if (firstPage.length < PAGE) {
+        // Cas comú: menys de 1000 nodes → una sola petició
+        all = firstPage;
+      } else {
+        // Més de 1000 nodes: calculem pàgines addicionals i les fem en paral·lel
+        // (no sabem el total exacte però sabem que n'hi ha almenys 1000)
+        // Fem pàgines addicionals fins que en retorni menys de PAGE
+        const extraPages: any[][] = [];
+        let offset = PAGE;
+        let keepFetching = true;
+        while (keepFetching) {
+          // Fem fins a 5 pàgines paral·leles (= fins a 5000 registres addicionals per torn)
+          const batch = [];
+          for (let b = 0; b < 5 && keepFetching; b++) {
+            batch.push(supa(token, "GET",
+              `gubim_class?select=*&order=code.asc&offset=${offset}&limit=${PAGE}`
+            ));
+            offset += PAGE;
+          }
+          const results = await Promise.all(batch);
+          for (const page of results) {
+            extraPages.push(page);
+            if (page.length < PAGE) { keepFetching = false; break; }
+          }
+        }
+        all = [firstPage, ...extraPages].flat();
       }
 
       startTransition(() => {

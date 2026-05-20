@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
+// PERF: xlsx (≈750 KB) es carrega lazily només quan l'usuari fa export/import
+// → no bloqueja el chunk inicial de la pàgina d'equips
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -296,7 +297,8 @@ export function EquipmentsTable() {
     return { countByCode, colorIdxByCode, firstInGroup };
   }, [filtered]);
 
-  const exportXlsx = useCallback(() => {
+  const exportXlsx = useCallback(async () => {
+    const XLSX = await import("xlsx");
     const allCols = Array.from(new Set(items.flatMap((e) => e.fieldCols)));
     const rows = items.map((e) => {
       const base: Record<string, any> = {
@@ -322,14 +324,15 @@ export function EquipmentsTable() {
     toast.success("Equips exportats");
   }, [items, fieldMap]);
 
-  const exportRosmimanXlsx = useCallback(() => {
-    exportRosmiman(items, fieldMap);
+  const exportRosmimanXlsx = useCallback(async () => {
+    await exportRosmiman(items, fieldMap);
     toast.success("Exportació Rosmiman generada");
   }, [items, fieldMap]);
 
   const importXlsx = useCallback(async (file: File) => {
     try {
       const buf = await file.arrayBuffer();
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
