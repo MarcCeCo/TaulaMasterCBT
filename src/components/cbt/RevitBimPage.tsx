@@ -7,16 +7,13 @@
 //
 // Permisos: view="revit" (igual que les dues pàgines originals)
 
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { useDataStore } from "@/lib/dataStore";
 import { useAuth } from "@/lib/auth";
+import { useDebounce } from "@/hooks/useDebounce";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table, TableBody, TableCell, TableHead,
-  TableHeader, TableRow,
-} from "@/components/ui/table";
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
@@ -29,6 +26,7 @@ import {
 import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
 
 // ─── CATEGORY_CONFIG (únic, compartit) ───────────────────────────────────────
+// PERF: icones instanciades UNA sola vegada fora del component → no es recreen en cada render
 export const CATEGORY_CONFIG: Record<
   string,
   { label: string; template: string; color: string; icon: React.ReactNode; group: string }
@@ -126,19 +124,241 @@ async function buildZip(entries: { name: string; data: Uint8Array }[]): Promise<
   return new Blob([buf], { type: "application/zip" });
 }
 
+// ─── Fila de la taula memoritzada ─────────────────────────────────────────────
+// PERF FIX: memo() evita re-renderitzar cada fila quan canvia el scroll o
+// qualsevol altre estat del pare que no afecta la fila concreta
+type EquipRow = {
+  eq: { id: string; equipCode: string; equipName: string; parentEquipCode?: string; revitCategory?: string };
+  parentName: string | null;
+  cat: string;
+  hasValidCat: boolean;
+  rfaName: string | null;
+};
+
+const RfaTableRow = memo(function RfaTableRow({
+  row, onDownload,
+}: {
+  row: EquipRow;
+  onDownload: (rfaName: string) => void;
+}) {
+  const { eq, parentName, cat, hasValidCat, rfaName } = row;
+  const fullName = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
+  return (
+    <tr className="border-t border-slate-100 hover:bg-slate-50/50">
+      <td className="py-2.5 px-3 font-mono text-xs text-slate-600">{eq.equipCode}</td>
+      <td className="py-2.5 px-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-medium text-slate-800">{fullName}</span>
+          {cat && <span className="text-[11px] text-slate-400">{cat}</span>}
+        </div>
+      </td>
+      <td className="py-2.5 px-3">
+        {rfaName ? (
+          <span className="font-mono text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{rfaName}</span>
+        ) : (
+          <span className="text-[11px] text-amber-500 italic">Sense categoria Revit</span>
+        )}
+      </td>
+      <td className="py-2.5 px-3 text-right">
+        {hasValidCat && rfaName ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => onDownload(rfaName)}>
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Descarregar {rfaName}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span><Button size="icon" variant="ghost" className="h-7 w-7 text-slate-300" disabled><Download className="h-3.5 w-3.5" /></Button></span>
+            </TooltipTrigger>
+            <TooltipContent>Assigna una categoria Revit per habilitar la descàrrega</TooltipContent>
+          </Tooltip>
+        )}
+      </td>
+    </tr>
+  );
+});
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
+// PERF: les targetes de documentació son estàtiques — memo() evita que es
+// re-renderitzin quan canvia la cerca o el scroll de la taula de famílies
+const DocumentacioCards = memo(function DocumentacioCards({
+  kitDownloaded, onKitDownload,
+}: {
+  kitDownloaded: boolean;
+  onKitDownload: () => void;
+}) {
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Columna esquerra */}
+      <div className="space-y-4">
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-2 border-b border-slate-100">
+            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-[#0099A8]" />
+              Manual BIM
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                <FileText className="h-5 w-5 text-red-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800">Manual BIM CBT v2.x</p>
+                <p className="text-xs text-slate-500 mt-0.5">Protocol, estàndards i requisits de lliurament</p>
+              </div>
+              <a href="/docs/CBT_MANUAL-BIM.pdf" download>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                  <Download className="h-3.5 w-3.5" /> PDF
+                </Button>
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-2 border-b border-slate-100">
+            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+              <FileSpreadsheet className="h-4 w-4 text-[#0099A8]" />
+              PEB — Pla d'Execució BIM
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800">PEB_CBT.xlsm</p>
+                <p className="text-xs text-slate-500 mt-0.5">Pla d'Execució BIM del Consorci Besòs Tordera</p>
+              </div>
+              <a href="/docs/CBT_PEB.xlsm" download>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                  <Download className="h-3.5 w-3.5" /> Excel
+                </Button>
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-2 border-b border-slate-100">
+            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+              <Package className="h-4 w-4 text-[#0099A8]" />
+              Plantilla de projecte
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
+                <Package className="h-5 w-5 text-violet-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-800">CBT_PLANTILLA.rte</p>
+                <p className="text-xs text-slate-500 mt-0.5">Vistes, fulls i paràmetres CBT preconfigurats</p>
+              </div>
+              <a href="/templates/CBT_PLANTILLA.rte" download>
+                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                  <Download className="h-3.5 w-3.5" /> .rte
+                </Button>
+              </a>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Columna dreta */}
+      <div className="space-y-4">
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-2 border-b border-slate-100">
+            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+              <Package className="h-4 w-4 text-[#0099A8]" />
+              Paquet de creació de famílies
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">CBT_FamiliesKit</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Script FULL + Script TEST + configuració JSON (generada ara)
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-[#006E7A] hover:bg-[#005a64] text-white gap-1.5 text-xs shrink-0"
+                  onClick={onKitDownload}
+                >
+                  {kitDownloaded ? (
+                    <><CheckCircle2 className="h-3.5 w-3.5" /> Descarregat!</>
+                  ) : (
+                    <><Download className="h-3.5 w-3.5" /> Descarregar</>
+                  )}
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {["FULL_script.py", "TEST_script.py", "CBT_Revit_Config.json", "README.txt"].map((f) => (
+                  <span key={f} className="font-mono text-[11px] bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-600">{f}</span>
+                ))}
+              </div>
+              <div className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
+                <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <span>El JSON es genera en el moment de la descàrrega i reflecteix l'estat actual de la Taula Master.</span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
+              <p className="text-xs font-semibold text-blue-700 mb-2">Flux d'ús recomanat</p>
+              <ol className="text-xs text-blue-700 space-y-1 list-none">
+                {[
+                  ["1", "Llegeix el Manual BIM i el PEB del teu projecte"],
+                  ["2", "Descarrega la plantilla .rte i configura Revit"],
+                  ["3", "Descarrega el paquet CBT_FamiliesKit"],
+                  ["4", "Executa TEST_script per validar l'ecosistema"],
+                  ["5", "Si el TEST va bé, executa FULL_script"],
+                ].map(([n, text]) => (
+                  <li key={n} className="flex items-start gap-2">
+                    <span className="h-4 w-4 rounded-full bg-[#0099A8] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-semibold">{n}</span>
+                    {text}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+});
 
 export function RevitBimPage() {
+  // PERF FIX: desacoblament loading/error del contingut estàtic.
+  // Les targetes de documentació (Manual, PEB, Plantilla, FamiliesKit) no
+  // depenen dels equips — es mostren immediatament sense esperar el DataStore.
+  // Només la taula de famílies .rfa espera que els equips estiguin carregats.
   const { equipments, loading, error, retry } = useDataStore();
   const { canSeeView } = useAuth();
-
   const canSee = canSeeView("revit");
 
   const [search, setSearch] = useState("");
   const [kitDownloaded, setKitDownloaded] = useState(false);
 
-  // ── Mapa equipCode → nom ──
+  // PERF: virtualització de la taula .rfa
+  const ROW_H = 53;
+  const OVERSCAN = 8;
+  const TABLE_MAX_H = 520;
+  const [scrollTop, setScrollTop] = useState(0);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
+  // PERF FIX: debounce de 200ms — la cerca no recalcula equipRows a cada tecla
+  const debouncedSearch = useDebounce(search, 200);
+
+  // ── Mapa equipCode → nom (estable entre renders) ──
   const equipByCode = useMemo(() => {
     const m = new Map<string, string>();
     for (const eq of equipments) {
@@ -147,9 +367,9 @@ export function RevitBimPage() {
     return m;
   }, [equipments]);
 
-  // ── Files Portal BIM (totes les famílies, amb cerca) ──
-  const equipRows = useMemo(() => {
-    const q = search.trim().toLowerCase();
+  // ── Files Portal BIM ──
+  const equipRows = useMemo<EquipRow[]>(() => {
+    const q = debouncedSearch.trim().toLowerCase();
     return equipments
       .filter((eq) => {
         if (!q) return true;
@@ -162,20 +382,21 @@ export function RevitBimPage() {
         const hasValidCat = !!cat && VALID_CATEGORIES.has(cat);
         const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) ?? null : null;
         const rfaName = hasValidCat && eq.equipCode ? buildRfaName(eq.equipName, parentName, eq.equipCode) : null;
-        return { eq, cat, hasValidCat, rfaName };
+        return { eq, parentName, cat, hasValidCat, rfaName };
       });
-  }, [equipments, equipByCode, search]);
+  }, [equipments, equipByCode, debouncedSearch]);
 
   const totalAmbFamilia = useMemo(() => equipRows.filter((r) => r.rfaName).length, [equipRows]);
 
-  // ─── Handlers Portal BIM ─────────────────────────────────────────────────────
+  // ─── Handlers ─────────────────────────────────────────────────────────────
 
-  const handleRfaDownload = (rfaName: string) => {
+  // PERF FIX: useCallback → referència estable → RfaTableRow (memo) no es re-renderitza
+  const handleRfaDownload = useCallback((rfaName: string) => {
     const a = document.createElement("a");
     a.href = `/families/${rfaName}`;
     a.download = rfaName;
     a.click();
-  };
+  }, []);
 
   const README_TEXT = `CBT FamiliesKit — Instruccions
 ================================
@@ -196,14 +417,9 @@ COM INSTAL·LAR:
 
 Compatible amb Revit 2020-2030.`;
 
-  const handleKitDownload = async () => {
+  // PERF FIX: useCallback + reutilitza equipByCode ja calculat
+  const handleKitDownload = useCallback(async () => {
     const enc = new TextEncoder();
-
-    // Calcula l'exportable inline per generar el JSON de configuració
-    const equipByCodeLocal = new Map<string, string>();
-    for (const eq of equipments) {
-      if (eq.equipCode) equipByCodeLocal.set(eq.equipCode, eq.equipName);
-    }
     const exportableItems = equipments
       .filter((eq) => {
         if (!eq.needsTable) return false;
@@ -212,7 +428,7 @@ Compatible amb Revit 2020-2030.`;
       })
       .map((eq) => {
         const cat = eq.revitCategory!.trim();
-        const parentName = eq.parentEquipCode ? equipByCodeLocal.get(eq.parentEquipCode) ?? null : null;
+        const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) ?? null : null;
         const nomComplet = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
         return {
           nom: toFileName(nomComplet),
@@ -260,7 +476,7 @@ Compatible amb Revit 2020-2030.`;
     URL.revokeObjectURL(url);
     setKitDownloaded(true);
     setTimeout(() => setKitDownloaded(false), 3000);
-  };
+  }, [equipments, equipByCode, README_TEXT]);
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -273,30 +489,11 @@ Compatible amb Revit 2020-2030.`;
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="h-6 w-6 animate-spin text-[#0099A8]" />
-        <span className="ml-3 text-sm text-slate-500">Carregant dades...</span>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-3">
-        <AlertCircle className="h-8 w-8 text-red-400" />
-        <p className="text-sm text-slate-600">Error carregant les dades</p>
-        <Button variant="outline" size="sm" onClick={retry}>Reintentar</Button>
-      </div>
-    );
-  }
-
   return (
     <TooltipProvider>
       <div className="space-y-6">
 
-        {/* ── Capçalera Portal BIM ─────────────────────────────────────────── */}
+        {/* ── Capçalera ────────────────────────────────────────────────────── */}
         <div>
           <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
             <Building2 className="h-6 w-6 text-[#0099A8]" />
@@ -307,232 +504,97 @@ Compatible amb Revit 2020-2030.`;
           </p>
         </div>
 
-        {/* ── Documentació i Recursos ──────────────────────────────────────── */}
-        <div className="space-y-6">
+        {/* ── Targetes de documentació (estàtiques, no esperen loading) ────── */}
+        <DocumentacioCards kitDownloaded={kitDownloaded} onKitDownload={handleKitDownload} />
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-              {/* Columna esquerra */}
-              <div className="space-y-4">
-
-                {/* Manual BIM */}
-                <Card className="border-0 shadow-sm bg-white">
-                  <CardHeader className="pb-2 border-b border-slate-100">
-                    <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-                      <BookOpen className="h-4 w-4 text-[#0099A8]" />
-                      Manual BIM
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                        <FileText className="h-5 w-5 text-red-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800">Manual BIM CBT v2.x</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Protocol, estàndards i requisits de lliurament</p>
-                      </div>
-                      <a href="/docs/CBT_MANUAL-BIM.pdf" download>
-                        <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                          <Download className="h-3.5 w-3.5" /> PDF
-                        </Button>
-                      </a>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* PEB */}
-                <Card className="border-0 shadow-sm bg-white">
-                  <CardHeader className="pb-2 border-b border-slate-100">
-                    <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-                      <FileSpreadsheet className="h-4 w-4 text-[#0099A8]" />
-                      PEB — Pla d'Execució BIM
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                        <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800">PEB_CBT.xlsm</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Pla d'Execució BIM del Consorci Besòs Tordera</p>
-                      </div>
-                      <a href="/docs/CBT_PEB.xlsm" download>
-                        <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                          <Download className="h-3.5 w-3.5" /> Excel
-                        </Button>
-                      </a>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Plantilla */}
-                <Card className="border-0 shadow-sm bg-white">
-                  <CardHeader className="pb-2 border-b border-slate-100">
-                    <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-                      <Package className="h-4 w-4 text-[#0099A8]" />
-                      Plantilla de projecte
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
-                        <Package className="h-5 w-5 text-violet-500" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-800">CBT_PLANTILLA.rte</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Vistes, fulls i paràmetres CBT preconfigurats</p>
-                      </div>
-                      <a href="/templates/CBT_PLANTILLA.rte" download>
-                        <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                          <Download className="h-3.5 w-3.5" /> .rte
-                        </Button>
-                      </a>
-                    </div>
-                  </CardContent>
-                </Card>
-
-              </div>
-
-              {/* Columna dreta */}
-              <div className="space-y-4">
-                <Card className="border-0 shadow-sm bg-white">
-                  <CardHeader className="pb-2 border-b border-slate-100">
-                    <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-                      <Package className="h-4 w-4 text-[#0099A8]" />
-                      Paquet de creació de famílies
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 space-y-4">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">CBT_FamiliesKit</p>
-                          <p className="text-xs text-slate-500 mt-0.5">
-                            Script FULL + Script TEST + configuració JSON (generada ara)
-                          </p>
-                        </div>
-                        <Button
-                          size="sm"
-                          className="bg-[#006E7A] hover:bg-[#005a64] text-white gap-1.5 text-xs shrink-0"
-                          onClick={handleKitDownload}
-                        >
-                          {kitDownloaded ? (
-                            <><CheckCircle2 className="h-3.5 w-3.5" /> Descarregat!</>
-                          ) : (
-                            <><Download className="h-3.5 w-3.5" /> Descarregar</>
-                          )}
-                        </Button>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {["FULL_script.py", "TEST_script.py", "CBT_Revit_Config.json", "README.txt"].map((f) => (
-                          <span key={f} className="font-mono text-[11px] bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-600">{f}</span>
-                        ))}
-                      </div>
-                      <div className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
-                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        <span>El JSON es genera en el moment de la descàrrega i reflecteix l'estat actual de la Taula Master.</span>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-                      <p className="text-xs font-semibold text-blue-700 mb-2">Flux d'ús recomanat</p>
-                      <ol className="text-xs text-blue-700 space-y-1 list-none">
-                        {[
-                          ["1", "Llegeix el Manual BIM i el PEB del teu projecte"],
-                          ["2", "Descarrega la plantilla .rte i configura Revit"],
-                          ["3", "Descarrega el paquet CBT_FamiliesKit"],
-                          ["4", "Executa TEST_script per validar l'ecosistema"],
-                          ["5", "Si el TEST va bé, executa FULL_script"],
-                        ].map(([n, text]) => (
-                          <li key={n} className="flex items-start gap-2">
-                            <span className="h-4 w-4 rounded-full bg-[#0099A8] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-semibold">{n}</span>
-                            {text}
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+        {/* ── Taula famílies .rfa ───────────────────────────────────────────── */}
+        <Card className="border-0 shadow-sm bg-white">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <div className="flex items-center justify-between gap-4">
+              <CardTitle className="text-base font-semibold text-slate-700 flex items-center gap-2">
+                <Box className="h-4 w-4 text-[#0099A8]" />
+                Famílies .rfa per equip
+                {!loading && (
+                  <Badge className="ml-1 bg-[#0099A8]/10 text-[#006E7A] border-0 text-xs">{totalAmbFamilia} disponibles</Badge>
+                )}
+              </CardTitle>
+              <input
+                type="text" placeholder="Cerca per nom o codi…"
+                value={search} onChange={(e) => setSearch(e.target.value)}
+                className="text-sm border border-slate-200 rounded-md px-3 py-1.5 w-56 focus:outline-none focus:ring-1 focus:ring-[#0099A8] bg-white"
+              />
             </div>
-
-            {/* Taula famílies .rfa */}
-            <Card className="border-0 shadow-sm bg-white">
-              <CardHeader className="pb-3 border-b border-slate-100">
-                <div className="flex items-center justify-between gap-4">
-                  <CardTitle className="text-base font-semibold text-slate-700 flex items-center gap-2">
-                    <Box className="h-4 w-4 text-[#0099A8]" />
-                    Famílies .rfa per equip
-                    <Badge className="ml-1 bg-[#0099A8]/10 text-[#006E7A] border-0 text-xs">{totalAmbFamilia} disponibles</Badge>
-                  </CardTitle>
-                  <input
-                    type="text" placeholder="Cerca per nom o codi…"
-                    value={search} onChange={(e) => setSearch(e.target.value)}
-                    className="text-sm border border-slate-200 rounded-md px-3 py-1.5 w-56 focus:outline-none focus:ring-1 focus:ring-[#0099A8] bg-white"
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-auto max-h-[520px]">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-slate-50 hover:bg-slate-50">
-                        <TableHead className="text-xs font-semibold text-slate-500 w-28">Codi</TableHead>
-                        <TableHead className="text-xs font-semibold text-slate-500">Equip</TableHead>
-                        <TableHead className="text-xs font-semibold text-slate-500 w-48">Fitxer .rfa</TableHead>
-                        <TableHead className="text-xs font-semibold text-slate-500 w-20 text-right">Família</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {equipRows.length === 0 && (
-                        <TableRow><TableCell colSpan={4} className="text-center py-12 text-sm text-slate-400">Cap equip trobat</TableCell></TableRow>
-                      )}
-                      {equipRows.map(({ eq, cat, hasValidCat, rfaName }) => (
-                        <TableRow key={eq.id} className="hover:bg-slate-50/50">
-                          <TableCell className="py-2.5 font-mono text-xs text-slate-600">{eq.equipCode}</TableCell>
-                          <TableCell className="py-2.5">
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-sm font-medium text-slate-800">
-                                {eq.parentEquipCode ? `${equipByCode.get(eq.parentEquipCode) ?? ""} ${eq.equipName}` : eq.equipName}
-                              </span>
-                              {cat && <span className="text-[11px] text-slate-400">{cat}</span>}
-                            </div>
-                          </TableCell>
-                          <TableCell className="py-2.5">
-                            {rfaName ? (
-                              <span className="font-mono text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">{rfaName}</span>
-                            ) : (
-                              <span className="text-[11px] text-amber-500 italic">Sense categoria Revit</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="py-2.5 text-right">
-                            {hasValidCat && rfaName ? (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => handleRfaDownload(rfaName)}>
-                                    <Download className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Descarregar {rfaName}</TooltipContent>
-                              </Tooltip>
-                            ) : (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span><Button size="icon" variant="ghost" className="h-7 w-7 text-slate-300" disabled><Download className="h-3.5 w-3.5" /></Button></span>
-                                </TooltipTrigger>
-                                <TooltipContent>Assigna una categoria Revit per habilitar la descàrrega</TooltipContent>
-                              </Tooltip>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              // PERF: skeleton de files mentre carreguen els equips —
+              // la resta de la pàgina ja és visible i interactuable
+              <div className="divide-y divide-slate-100">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-4 px-3 py-3 animate-pulse">
+                    <div className="h-3 w-16 bg-slate-100 rounded" />
+                    <div className="h-3 flex-1 bg-slate-100 rounded" />
+                    <div className="h-3 w-40 bg-slate-100 rounded" />
+                    <div className="h-7 w-7 bg-slate-100 rounded ml-auto" />
+                  </div>
+                ))}
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <AlertCircle className="h-8 w-8 text-red-400" />
+                <p className="text-sm text-slate-600">Error carregant les famílies</p>
+                <Button variant="outline" size="sm" onClick={retry}>
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />Reintentar
+                </Button>
+              </div>
+            ) : (
+              // PERF: virtualització — renderitzem només les files visibles
+              <div
+                ref={tableContainerRef}
+                className="overflow-auto"
+                style={{ maxHeight: TABLE_MAX_H }}
+                onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+              >
+                <table className="w-full text-sm">
+                  <colgroup>
+                    <col style={{ width: 100 }} />
+                    <col />
+                    <col style={{ width: 200 }} />
+                    <col style={{ width: 60 }} />
+                  </colgroup>
+                  <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="text-xs font-semibold text-slate-500 px-3 py-2 text-left">Codi</th>
+                      <th className="text-xs font-semibold text-slate-500 px-3 py-2 text-left">Equip</th>
+                      <th className="text-xs font-semibold text-slate-500 px-3 py-2 text-left">Fitxer .rfa</th>
+                      <th className="text-xs font-semibold text-slate-500 px-3 py-2 text-right">Família</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {equipRows.length === 0 ? (
+                      <tr><td colSpan={4} className="text-center py-12 text-sm text-slate-400">Cap equip trobat</td></tr>
+                    ) : (() => {
+                      const containerH = tableContainerRef.current?.clientHeight ?? TABLE_MAX_H;
+                      const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+                      const endIdx   = Math.min(equipRows.length - 1, Math.ceil((scrollTop + containerH) / ROW_H) + OVERSCAN);
+                      const padTop   = startIdx * ROW_H;
+                      const padBot   = Math.max(0, (equipRows.length - endIdx - 1) * ROW_H);
+                      return (
+                        <>
+                          {padTop > 0 && <tr><td colSpan={4} style={{ height: padTop, padding: 0 }} /></tr>}
+                          {equipRows.slice(startIdx, endIdx + 1).map((row) => (
+                            <RfaTableRow key={row.eq.id} row={row} onDownload={handleRfaDownload} />
+                          ))}
+                          {padBot > 0 && <tr><td colSpan={4} style={{ height: padBot, padding: 0 }} /></tr>}
+                        </>
+                      );
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
       </div>
     </TooltipProvider>

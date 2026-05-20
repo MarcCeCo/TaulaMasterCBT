@@ -7,15 +7,30 @@ import { Button } from "@/components/ui/button";
 import { ShieldOff, ChevronRight, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
-import { EquipmentsTable } from "./EquipmentsTable";
-import { RevitBimPage } from "./RevitBimPage";
-import { Visualitzador3DPage } from "./Visualitzador3DPage";
-import { ProjectesEquipsPage } from "./ProjectesEquipsPage";
-import { UserManagerPage } from "@/components/auth/UserManagerPage";
-import { ChangePasswordPage } from "@/components/auth/ChangePasswordPage";
-import { ControlAgentsPage } from "./ControlAgentsPage";
 import { useAuth } from "@/lib/auth";
 
+// Pàgines pesants carregades lazy — cada una tindrà el seu propi chunk JS
+const EquipmentsTable = lazy(() =>
+  import("./EquipmentsTable").then((m) => ({ default: m.EquipmentsTable }))
+);
+const RevitBimPage = lazy(() =>
+  import("./RevitBimPage").then((m) => ({ default: m.RevitBimPage }))
+);
+const Visualitzador3DPage = lazy(() =>
+  import("./Visualitzador3DPage").then((m) => ({ default: m.Visualitzador3DPage }))
+);
+const ProjectesEquipsPage = lazy(() =>
+  import("./ProjectesEquipsPage").then((m) => ({ default: m.ProjectesEquipsPage }))
+);
+const UserManagerPage = lazy(() =>
+  import("@/components/auth/UserManagerPage").then((m) => ({ default: m.UserManagerPage }))
+);
+const ChangePasswordPage = lazy(() =>
+  import("@/components/auth/ChangePasswordPage").then((m) => ({ default: m.ChangePasswordPage }))
+);
+const ControlAgentsPage = lazy(() =>
+  import("./ControlAgentsPage").then((m) => ({ default: m.ControlAgentsPage }))
+);
 const GubimClassManager = lazy(() =>
   import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager }))
 );

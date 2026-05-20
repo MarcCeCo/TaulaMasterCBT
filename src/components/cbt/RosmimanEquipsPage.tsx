@@ -4,7 +4,14 @@
 // i consultar-los per evitar duplicitats de TAG en crear projectes.
 
 import { useRef, useState, useMemo } from "react";
-import * as XLSX from "xlsx";
+import { useDebounce } from "@/hooks/useDebounce";
+
+// PERF: xlsx (≈750 KB) carregat lazily — només quan l'usuari importa un fitxer
+async function getXLSX() {
+  const mod = await import("xlsx");
+  return mod.default ?? mod;
+}
+
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,16 +65,26 @@ export function RosmimanEquipsPage() {
   const [importPreview, setImportPreview] = useState<{ valid: RosmimanEquip[]; invalids: string[] } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
 
+  // PERF: virtualització — constants
+  const ROW_H = 41;       // altura aprox. de cada fila d'equip (px)
+  const HEADER_H = 34;    // altura de la capçalera de grup (px)
+  const OVERSCAN = 6;
+  const CONTAINER_H = 520;
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // ── Filtrat i agrupació per codi d'instal·lació ───────────────────────────
+  const debouncedCerca = useDebounce(cerca, 200);
+
   const equipsFiltered = useMemo(() => {
-    const q = cerca.trim().toLowerCase();
+    const q = debouncedCerca.trim().toLowerCase();
     if (!q) return rosmimanEquips;
     return rosmimanEquips.filter(e =>
       e.tag.toLowerCase().includes(q) ||
       e.descripcio.toLowerCase().includes(q) ||
       e.codiInstallacio.toLowerCase().includes(q)
     );
-  }, [rosmimanEquips, cerca]);
+  }, [rosmimanEquips, debouncedCerca]);
 
   const grups = useMemo(() => {
     const map = new Map<string, RosmimanEquip[]>();
@@ -79,19 +96,35 @@ export function RosmimanEquipsPage() {
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [equipsFiltered]);
 
+  // PERF: llista aplanada per a la virtualització
+  // Cada element pot ser: { type: "header", codi, total } | { type: "row", equip, lastInGroup }
+  type VirtualItem =
+    | { type: "header"; codi: string; total: number; h: number }
+    | { type: "row"; equip: RosmimanEquip; lastInGroup: boolean; h: number };
+
+  const virtualItems = useMemo<VirtualItem[]>(() => {
+    const items: VirtualItem[] = [];
+    for (const [codi, equips] of grups) {
+      items.push({ type: "header", codi, total: equips.length, h: HEADER_H });
+      equips.forEach((equip, i) =>
+        items.push({ type: "row", equip, lastInGroup: i === equips.length - 1, h: ROW_H })
+      );
+    }
+    return items;
+  }, [grups]);
+
   // ── Importació Excel ──────────────────────────────────────────────────────
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = new Uint8Array(ev.target!.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+    try {
+      const data = new Uint8Array(await file.arrayBuffer());
+      const XLSX = await getXLSX();
+      const wb = XLSX.read(data, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
         const valid: RosmimanEquip[] = [];
         const invalids: string[] = [];
@@ -115,11 +148,9 @@ export function RosmimanEquipsPage() {
         }
 
         setImportPreview({ valid, invalids });
-      } catch {
-        toast.error("Error llegint el fitxer Excel.");
-      }
-    };
-    reader.readAsArrayBuffer(file);
+    } catch {
+      toast.error("Error llegint el fitxer Excel.");
+    }
   }
 
   async function confirmarImport() {
@@ -307,56 +338,91 @@ export function RosmimanEquipsPage() {
           Cap equip coincideix amb la cerca.
         </p>
       ) : (
+        // PERF: virtualització — renderitzem només els elements visibles de la llista aplanada
+        // Cada vegada que l'usuari fa scroll, recalculem el rang visible amb O(n) mínim
         <Card className="border-0 shadow-sm bg-white overflow-hidden">
-          {grups.map(([codi, equips], gi) => (
-            <div key={codi}>
-              {/* Capçalera de grup */}
-              <div className={cn(
-                "flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100",
-                gi > 0 && "border-t border-slate-200"
-              )}>
-                <Badge className="bg-[#0099A8]/15 text-[#006E7A] border-0 font-mono text-xs">
-                  {codi}
-                </Badge>
-                <span className="text-xs text-slate-500 font-medium">
-                  {equips.length} equip{equips.length !== 1 ? "s" : ""}
-                </span>
-              </div>
+          <div
+            ref={containerRef}
+            className="overflow-y-auto"
+            style={{ maxHeight: CONTAINER_H }}
+            onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+          >
+            {(() => {
+              // Calculem offset acumulat per trobar el rang visible
+              let offset = 0;
+              const offsets: number[] = virtualItems.map((item) => {
+                const cur = offset;
+                offset += item.h;
+                return cur;
+              });
+              const totalH = offset;
 
-              {/* Files d'equips */}
-              <table className="w-full text-sm">
-                <tbody>
-                  {equips.map((equip, i) => (
-                    <tr
-                      key={equip.id}
-                      className={cn(
-                        "border-b border-slate-50 hover:bg-slate-50/70 transition-colors",
-                        i === equips.length - 1 && "border-b-0"
-                      )}
-                    >
-                      <td className="px-4 py-2.5 font-mono text-xs text-slate-700 w-56 shrink-0">
-                        {equip.tag}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-600 flex-1">
-                        {equip.descripcio || <span className="text-slate-300 italic">sense descripció</span>}
-                      </td>
-                      {canEdit && (
-                        <td className="px-3 py-2.5 text-right w-10">
-                          <button
-                            className="h-7 w-7 rounded flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors ml-auto"
-                            onClick={() => setDialogEsborrarUn(equip)}
-                            title="Eliminar"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))}
+              const startIdx = Math.max(0, offsets.findLastIndex((o) => o <= scrollTop - OVERSCAN * ROW_H));
+              const endIdx   = Math.min(
+                virtualItems.length - 1,
+                offsets.findIndex((o) => o >= scrollTop + CONTAINER_H + OVERSCAN * ROW_H) !== -1
+                  ? offsets.findIndex((o) => o >= scrollTop + CONTAINER_H + OVERSCAN * ROW_H)
+                  : virtualItems.length - 1
+              );
+
+              const padTop = offsets[startIdx] ?? 0;
+              const padBot = Math.max(0, totalH - (offsets[endIdx] ?? 0) - (virtualItems[endIdx]?.h ?? 0));
+              const visible = virtualItems.slice(startIdx, endIdx + 1);
+
+              return (
+                <div style={{ paddingTop: padTop, paddingBottom: padBot }}>
+                  {visible.map((item, i) => {
+                    const key = item.type === "header" ? `h-${item.codi}` : `r-${item.equip.id}`;
+                    if (item.type === "header") {
+                      const isFirst = startIdx + i === 0 || virtualItems[startIdx + i - 1]?.type === "row";
+                      return (
+                        <div key={key} className={cn(
+                          "flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100",
+                          isFirst ? "border-t-0" : "border-t border-slate-200"
+                        )}>
+                          <Badge className="bg-[#0099A8]/15 text-[#006E7A] border-0 font-mono text-xs">
+                            {item.codi}
+                          </Badge>
+                          <span className="text-xs text-slate-500 font-medium">
+                            {item.total} equip{item.total !== 1 ? "s" : ""}
+                          </span>
+                        </div>
+                      );
+                    }
+                    const { equip, lastInGroup } = item;
+                    return (
+                      <div
+                        key={key}
+                        className={cn(
+                          "flex items-center border-b border-slate-50 hover:bg-slate-50/70 transition-colors",
+                          lastInGroup && "border-b-0"
+                        )}
+                        style={{ height: ROW_H }}
+                      >
+                        <span className="px-4 font-mono text-xs text-slate-700 w-56 shrink-0 truncate">
+                          {equip.tag}
+                        </span>
+                        <span className="px-4 text-slate-600 flex-1 text-sm truncate">
+                          {equip.descripcio || <span className="text-slate-300 italic">sense descripció</span>}
+                        </span>
+                        {canEdit && (
+                          <div className="px-3 shrink-0">
+                            <button
+                              className="h-7 w-7 rounded flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors"
+                              onClick={() => setDialogEsborrarUn(equip)}
+                              title="Eliminar"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
         </Card>
       )}
 

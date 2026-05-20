@@ -1,5 +1,5 @@
 // src/components/cbt/ProjectesEquipsPage.tsx
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import type { UserProfile } from "@/lib/auth";
+import { useDebounce } from "@/hooks/useDebounce";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -182,6 +183,25 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [tagDescripcio, setTagDescripcio] = useState("");
   const [tagError, setTagError] = useState<string | null>(null);
   const [equipSearch, setEquipSearch] = useState("");
+
+  // PERF FIX: ref al contenidor de la taula de tags per fer scroll to top
+  // quan el projecte actiu canvia (equivalent al reset de EquipmentsTable)
+  const tagTableRef = useRef<HTMLDivElement>(null);
+
+  // Reset scroll i selecció quan canvia el projecte actiu
+  useEffect(() => {
+    setSelectedTagIds(new Set());
+    tagTableRef.current?.scrollTo(0, 0);
+  }, [projecteActiu]);
+
+  // ESC esborra el filtre de cerca d'equips (consistent amb EquipmentsTable)
+  useEffect(() => {
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" && equipSearch) { setEquipSearch(""); ev.preventDefault(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [equipSearch]);
 
   // Derived
   const projecteFiltrats = useMemo(() =>
@@ -603,9 +623,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     return { usades, propera };
   }, [projectes, projecteActiu, previewEquip, tagCodiInstallacio, tagCcm, tagFuncio, dialogEditTag]);
 
+  // PERF: debounce de la cerca d'equips — evita recalcular el filtre a cada tecla
+  const debouncedEquipSearch = useDebounce(equipSearch, 180);
+
   // Equips filtrats per cerca
   const equipsFiltrats = useMemo(() => {
-    const q = equipSearch.toLowerCase().trim();
+    const q = debouncedEquipSearch.toLowerCase().trim();
     if (!q) return equipmentsAmbCodi;
     const filtrats = equipmentsAmbCodi.filter(e =>
       e.equipCode.toLowerCase().includes(q) || e.equipName.toLowerCase().includes(q) || (e.tableName && e.tableName.toLowerCase().includes(q))
@@ -620,7 +643,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
       return a.equipCode.localeCompare(b.equipCode);
     });
     return filtrats;
-  }, [equipmentsAmbCodi, equipSearch]);
+  }, [equipmentsAmbCodi, debouncedEquipSearch]);
 
   // ─── render ─────────────────────────────────────────────────────────────────
   // Pestanya Rosmiman — ara s'obre com a pop-up (igual que GuBIMClass i Diccionari de camps)
@@ -846,7 +869,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     </Button>
                   </div>
                 )}
-                <div className="overflow-auto" style={{ maxHeight: `calc(100vh - ${selectedTagIds.size > 0 ? "360px" : "320px"})` }}>
+                <div ref={tagTableRef} className="overflow-auto" style={{ maxHeight: `calc(100vh - ${selectedTagIds.size > 0 ? "360px" : "320px"})` }}>
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                       <tr>

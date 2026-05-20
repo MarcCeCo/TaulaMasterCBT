@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
+import { useDebounce } from "@/hooks/useDebounce";
 
-function useDebounce<T>(value: T, ms = 180): T {
-  const [dv, setDv] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
-  return dv;
+// PERF: xlsx (≈750 KB) es carrega lazily només quan l'usuari fa export/import
+// → no bloqueja el chunk inicial quan s'obre el pop-up GuBIMClass
+async function getXLSX() {
+  const mod = await import("xlsx");
+  return mod.default ?? mod;
 }
+
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -36,12 +38,6 @@ export function GubimClassManager(_props: Props = {}) {
   const [nameError, setNameError] = useState("");
 
   const reset = () => { setCode(""); setName(""); setEditing(null); setCodeError(""); setNameError(""); };
-
-  // Reset filtre quan es tanca el diàleg
-  const handleOpenChange = (val: boolean) => {
-    if (!val) { setQ(""); setScrollTop(0); containerRef.current?.scrollTo(0, 0); }
-    onOpenChange(val);
-  };
 
   const validateName = (val: string) => {
     if (!val) { setNameError(""); return; }
@@ -91,7 +87,8 @@ export function GubimClassManager(_props: Props = {}) {
     }
   };
 
-  const exportXlsx = () => {
+  const exportXlsx = async () => {
+    const XLSX = await getXLSX();
     const rows = [...nodes].sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" })).map((n) => ({
       Codi: n.code, Nom: n.name, Nivell: codeLevel(n.code), Pare: parentCode(n.code) ?? "",
     }));
@@ -105,6 +102,7 @@ export function GubimClassManager(_props: Props = {}) {
   const importXlsx = async (file: File) => {
     try {
       const buf = await file.arrayBuffer();
+      const XLSX = await getXLSX();
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
@@ -127,7 +125,7 @@ export function GubimClassManager(_props: Props = {}) {
 
   const debouncedQ = useDebounce(q, 180);
 
-  // PERF: virtualització de la llista — igual que FieldsDictionaryDialog
+  // PERF: virtualització de la llista
   const ROW_H = 41; // altura real de cada fila en px
   const OVERSCAN = 8;
   const CONTAINER_H = 480;
@@ -356,5 +354,3 @@ export function GubimClassManager(_props: Props = {}) {
 }
 
 export const _newId = () => uid();
-
-

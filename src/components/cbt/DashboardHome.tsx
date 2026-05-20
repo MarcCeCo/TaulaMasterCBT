@@ -107,10 +107,23 @@ export function DashboardHome() {
     const nonClassifiers = fields.filter((f) => !isClassifier(f));
     const total = nonClassifiers.length;
     const totalEquips = items.length;
-    const equipWithTable = items.filter((e) => e.needsTable).length;
-    const usedCols = new Set(items.flatMap((e) => e.fieldCols));
-    const usedCount = [...usedCols].filter((c) => fieldMap.has(c)).length;
-    const orphanCount = [...usedCols].filter((c) => !fieldMap.has(c)).length;
+
+    // PERF FIX: un sol pass sobre items en lloc de flatMap + filter + filter
+    // Abans: 3 iteracions O(n) separades. Ara: 1 iteració.
+    let equipWithTable = 0;
+    const usedCols = new Set<string>();
+    for (const e of items) {
+      if (e.needsTable) equipWithTable++;
+      for (const c of e.fieldCols) usedCols.add(c);
+    }
+
+    let usedCount = 0;
+    let orphanCount = 0;
+    for (const c of usedCols) {
+      if (fieldMap.has(c)) usedCount++;
+      else orphanCount++;
+    }
+
     const usagePercent = total > 0 ? Math.round((usedCount / total) * 100) : 0;
     return { total, totalEquips, equipWithTable, usedCount, usagePercent, orphanCount, fieldGroups: fieldGroups.length };
   }, [fields, items, fieldMap, fieldGroups]);

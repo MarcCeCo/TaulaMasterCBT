@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
+// PERF: xlsx (≈750 KB) es carrega lazily només quan l'usuari fa export/import
+// → no bloqueja el chunk inicial de la pàgina d'equips
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -208,13 +209,25 @@ export function EquipmentsTable() {
     const result: { equip: Equipment; depth: number }[] = [];
     const added = new Set<string>();
 
+    // PERF FIX: precomputem un Map de parentEquipCode+gubimCode → fills
+    // Abans: .filter() dins insertWithChildren → O(n) per node → O(n²) total
+    // Ara: lookup O(1) per node → O(n) total
+    const childrenByKey = new Map<string, Equipment[]>();
+    base.forEach((e) => {
+      if (e.parentEquipCode && e.equipCode) {
+        const key = `${e.gubimCode}::${e.parentEquipCode}`;
+        const list = childrenByKey.get(key) ?? [];
+        list.push(e);
+        childrenByKey.set(key, list);
+      }
+    });
+
     function insertWithChildren(e: Equipment, depth: number) {
       if (added.has(e.id)) return;
       added.add(e.id);
       result.push({ equip: e, depth });
-      const children = e.equipCode
-        ? base.filter((c) => c.parentEquipCode === e.equipCode && c.gubimCode === e.gubimCode && !added.has(c.id))
-        : [];
+      const key = `${e.gubimCode}::${e.equipCode}`;
+      const children = (e.equipCode ? childrenByKey.get(key) ?? [] : []).filter((c) => !added.has(c.id));
       children.forEach((c) => insertWithChildren(c, depth + 1));
     }
 
@@ -256,6 +269,13 @@ export function EquipmentsTable() {
 
   const debouncedQ = useDebounce(q, 200);
 
+  // PERF: virtualització de files — evita renderitzar centenars de <tr> al DOM
+  const ROW_H = 45;      // altura aproximada de cada fila en px
+  const OVERSCAN = 8;
+  const TABLE_MAX_H = "calc(100vh - 300px)";
+  const [scrollTop, setScrollTop] = useState(0);
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
   const filtered = useMemo(() => {
     const t = debouncedQ.trim().toLowerCase();
     if (!t) return sorted;
@@ -296,7 +316,8 @@ export function EquipmentsTable() {
     return { countByCode, colorIdxByCode, firstInGroup };
   }, [filtered]);
 
-  const exportXlsx = useCallback(() => {
+  const exportXlsx = useCallback(async () => {
+    const XLSX = await import("xlsx");
     const allCols = Array.from(new Set(items.flatMap((e) => e.fieldCols)));
     const rows = items.map((e) => {
       const base: Record<string, any> = {
@@ -322,14 +343,15 @@ export function EquipmentsTable() {
     toast.success("Equips exportats");
   }, [items, fieldMap]);
 
-  const exportRosmimanXlsx = useCallback(() => {
-    exportRosmiman(items, fieldMap);
+  const exportRosmimanXlsx = useCallback(async () => {
+    await exportRosmiman(items, fieldMap);
     toast.success("Exportació Rosmiman generada");
   }, [items, fieldMap]);
 
   const importXlsx = useCallback(async (file: File) => {
     try {
       const buf = await file.arrayBuffer();
+      const XLSX = await import("xlsx");
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
@@ -535,7 +557,12 @@ export function EquipmentsTable() {
         )}
 
         {/* Taula */}
-        <div className="border border-slate-200 rounded-lg overflow-auto bg-white" style={{ maxHeight: "calc(100vh - 300px)" }}>
+        <div
+          ref={tableContainerRef}
+          className="border border-slate-200 rounded-lg overflow-auto bg-white"
+          style={{ maxHeight: TABLE_MAX_H }}
+          onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+        >
           <table className="w-full text-sm" style={{ minWidth: 900 }}>
             <colgroup>
               <col style={{ width: 260 }} />
@@ -575,36 +602,51 @@ export function EquipmentsTable() {
                 ))
               ) : (
                 <>
-                  {filtered.map(({ equip: e, depth }) => {
-                    const node = nodeMap.get(e.gubimCode);
-                    const lvl = (node ? codeLevel(node.code) : 1) as 1|2|3|4;
-                    const pc = node ? parentCode(node.code) : null;
-                    const parent = pc ? nodeMap.get(pc) : null;
-                    const orphanCols = e.fieldCols.filter((c) => !fieldMap.has(c));
-                    const isChild = !!e.parentEquipCode;
-                    const groupSize = sharedCodeInfo.countByCode.get(e.gubimCode) ?? 1;
-                    const isSharedCode = groupSize > 1;
-                    const groupColorIdx = sharedCodeInfo.colorIdxByCode.get(e.gubimCode) ?? 0;
-                    const isFirstInGroup = sharedCodeInfo.firstInGroup.has(e.id);
+                  {(() => {
+                    // PERF: virtualització — renderitzem només les files visibles + overscan
+                    const containerH = tableContainerRef.current?.clientHeight ?? 500;
+                    const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
+                    const endIdx   = Math.min(filtered.length - 1, Math.ceil((scrollTop + containerH) / ROW_H) + OVERSCAN);
+                    const visibleRows = filtered.slice(startIdx, endIdx + 1);
+                    const padTop = startIdx * ROW_H;
+                    const padBot = Math.max(0, (filtered.length - endIdx - 1) * ROW_H);
                     return (
-                      <EquipmentRow
-                        key={e.id} e={e}
-                        gubimName={node?.name ?? ""}
-                        parentName={parent ? `${parent.code} · ${parent.name}` : ""}
-                        level={lvl} fieldCount={e.fieldCols.length}
-                        orphanCols={orphanCols} isChild={isChild}
-                        isSharedCode={isSharedCode}
-                        groupColorIdx={groupColorIdx}
-                        isFirstInGroup={isFirstInGroup}
-                        groupSize={groupSize}
-                        childDepth={depth}
-                        onView={handleView}
-                        onEdit={handleEdit}
-                        onDelete={handleDelete}
-                        canEdit={canEdit}
-                      />
+                      <>
+                        {padTop > 0 && <tr><td colSpan={8} style={{ height: padTop, padding: 0 }} /></tr>}
+                        {visibleRows.map(({ equip: e, depth }) => {
+                          const node = nodeMap.get(e.gubimCode);
+                          const lvl = (node ? codeLevel(node.code) : 1) as 1|2|3|4;
+                          const pc = node ? parentCode(node.code) : null;
+                          const parent = pc ? nodeMap.get(pc) : null;
+                          const orphanCols = e.fieldCols.filter((c) => !fieldMap.has(c));
+                          const isChild = !!e.parentEquipCode;
+                          const groupSize = sharedCodeInfo.countByCode.get(e.gubimCode) ?? 1;
+                          const isSharedCode = groupSize > 1;
+                          const groupColorIdx = sharedCodeInfo.colorIdxByCode.get(e.gubimCode) ?? 0;
+                          const isFirstInGroup = sharedCodeInfo.firstInGroup.has(e.id);
+                          return (
+                            <EquipmentRow
+                              key={e.id} e={e}
+                              gubimName={node?.name ?? ""}
+                              parentName={parent ? `${parent.code} · ${parent.name}` : ""}
+                              level={lvl} fieldCount={e.fieldCols.length}
+                              orphanCols={orphanCols} isChild={isChild}
+                              isSharedCode={isSharedCode}
+                              groupColorIdx={groupColorIdx}
+                              isFirstInGroup={isFirstInGroup}
+                              groupSize={groupSize}
+                              childDepth={depth}
+                              onView={handleView}
+                              onEdit={handleEdit}
+                              onDelete={handleDelete}
+                              canEdit={canEdit}
+                            />
+                          );
+                        })}
+                        {padBot > 0 && <tr><td colSpan={8} style={{ height: padBot, padding: 0 }} /></tr>}
+                      </>
                     );
-                  })}
+                  })()}
                   {filtered.length === 0 && (
                     <tr><td colSpan={8} className="px-3 py-12 text-center text-[13px] text-slate-400">Cap equip trobat</td></tr>
                   )}

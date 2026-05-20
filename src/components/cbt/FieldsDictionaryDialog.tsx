@@ -1,5 +1,12 @@
 import { useMemo, useRef, useState, useEffect } from "react";
-import * as XLSX from "xlsx";
+import { useDebounce } from "@/hooks/useDebounce";
+
+// PERF: xlsx (≈750 KB) es carrega lazily només quan l'usuari fa export/import
+// → no bloqueja el chunk inicial quan s'obre el pop-up Diccionari de camps
+async function getXLSX() {
+  const mod = await import("xlsx");
+  return mod.default ?? mod;
+}
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Download, Plus, Trash2, Upload, Pencil } from "lucide-react";
 import { FieldMeta, isClassifier, autoClassifierForCodi } from "@/lib/fields";
 import { useFields } from "@/hooks/useFields";
-import { useEquipments } from "@/hooks/useEquipments";
+import { useDataStore } from "@/lib/dataStore";
 import { AddFieldDialog } from "./AddFieldDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -20,12 +27,6 @@ interface Props {}
 const ROW_H = 38;
 const OVERSCAN = 8;
 const CONTAINER_H = 560;
-
-function useDebounce<T>(value: T, ms = 180): T {
-  const [dv, setDv] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
-  return dv;
-}
 
 function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls: string): FieldMeta[] {
   const t = q.trim().toLowerCase();
@@ -53,7 +54,9 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
 
 export function FieldsDictionaryDialog(_props: Props = {}) {
   const { fields, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines } = useFields();
-  const { removeFieldColFromAll } = useEquipments();
+  // PERF FIX: llegim removeFieldColFromAll del DataStore centralitzat en lloc de
+  // subscriure un useEquipments() addicional — evita un re-render extra per cada mutació
+  const { removeFieldColFromAll } = useDataStore();
   const { canEditView } = useAuth();
   const canEdit = canEditView("fields");
   const [q, setQ]             = useState("");
@@ -65,11 +68,10 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // Reset filtres quan es tanca el diàleg
-  const handleOpenChange = (val: boolean) => {
-    if (!val) { setQ(""); setGrp("__all__"); setCls("__all__"); setScrollTop(0); containerRef.current?.scrollTo(0, 0); }
-    onOpenChange(val);
-  };
+  // Reset filtres quan es desmunta el component (al tancar el Dialog pare)
+  useEffect(() => {
+    return () => { setQ(""); setGrp("__all__"); setCls("__all__"); };
+  }, []);
 
   const debouncedQ = useDebounce(q, 180);
 
@@ -87,7 +89,8 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
   const padTop     = startIdx * ROW_H;
   const padBot     = Math.max(0, (filtered.length - endIdx - 1) * ROW_H);
 
-  const exportXlsx = () => {
+  const exportXlsx = async () => {
+    const XLSX = await getXLSX();
     const rows = fields.filter((f) => !isClassifier(f)).map((f) => ({
       "Nom": f.col, "Codi": f.codi ?? "", "Taula associada": f.taula_assoc ?? "", "Classificador": f.classificador ?? "",
       "Tipus dada": f.tipus_dada ?? "", "CBT": f.cbt ?? "",
@@ -105,6 +108,7 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
   const importXlsx = async (file: File) => {
     try {
       const buf  = await file.arrayBuffer();
+      const XLSX = await getXLSX();
       const wb   = XLSX.read(buf);
       const ws   = wb.Sheets[wb.SheetNames[0]];
       const rows = XLSX.utils.sheet_to_json<any>(ws);
