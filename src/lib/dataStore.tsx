@@ -604,10 +604,21 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
     setGubimRaw([]);
   }, [getToken]);
 
+  // PERF FIX: precomputem el Set de codis que tenen fills → O(1) per consulta
+  // Abans: .some() recorria tot el array cada cop que es cridava hasChildren → O(n)
+  const gubimParentCodes = useMemo(() => {
+    const s = new Set<string>();
+    gubimNodes.forEach((n) => {
+      const parts = n.code.split(".");
+      if (parts.length > 1) s.add(parts.slice(0, -1).join("."));
+    });
+    return s;
+  }, [gubimNodes]);
+
   const gubimExists      = useCallback((code: string) => gubimNodeMap.has(code), [gubimNodeMap]);
   const gubimHasChildren = useCallback(
-    (code: string) => gubimNodes.some((n) => n.code !== code && n.code.startsWith(code + ".")),
-    [gubimNodes],
+    (code: string) => gubimParentCodes.has(code),
+    [gubimParentCodes],
   );
   const fieldExists   = useCallback((col: string) => fieldMap.has(col.toUpperCase()), [fieldMap]);
   // isCustomField: tots els camps es consideren personalitzables per ara.
