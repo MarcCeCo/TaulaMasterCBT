@@ -118,21 +118,23 @@ const EquipmentRow = memo(function EquipmentRow({
         <div className="flex gap-0.5">
           <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => onView(e)}><Eye className="h-3.5 w-3.5" /></Button>
           {canEdit && <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-slate-100" onClick={() => onEdit(e)}><Pencil className="h-3.5 w-3.5" /></Button>}
-          {canEdit && <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Esborrar equip {e.equipName}?</AlertDialogTitle>
-                <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={() => onDelete(e)}>Esborra</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {canEdit && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Esborrar equip {e.equipName}?</AlertDialogTitle>
+                  <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => onDelete(e)}>Esborra</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
       </td>
     </tr>
