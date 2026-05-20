@@ -339,9 +339,15 @@ function useApsViewer(
       // En tots els casos, el Viewer espera `urn:<base64url>` on la part
       // decodificada ha de ser un URN de tipus fs.file o vf., mai dm.lineage.
       // Si és dm.lineage, intentem igualment — el Viewer intentarà resoldre'l.
-      const urnB64 = urn.startsWith("urn:")
+      // L'URN a Supabase és base64url de "urn:adsk.wipprod:fs.file:vf.XXXX" (sense ?version).
+      // El Viewer necessita l'URN amb ?version=1 codificat al final: "_dmVyc2lvbj0x"
+      let urnB64 = urn.startsWith("urn:")
         ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
         : urn;
+      // Afegeix ?version=1 si és un fs.file sense versió
+      if (urnB64.includes("ZnMuZmlsZQ") && !urnB64.includes("_dmVyc2lvbj")) {
+        urnB64 = urnB64 + "_dmVyc2lvbj0x";
+      }
 
       await new Promise<void>((res) => {
         AV.Initializer(
