@@ -282,9 +282,8 @@ function useApsViewer(
 ) {
   const [estat, setEstat] = useState<ViewerEstat>("idle");
   const [error, setError] = useState<string | null>(null);
-  const viewerRef  = useRef<any>(null);
-  const mountedRef = useRef(true);
-
+  const viewerRef      = useRef<any>(null);
+  const mountedRef     = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -297,6 +296,22 @@ function useApsViewer(
   }, []);
 
   const inicialitza = useCallback(async () => {
+    // Si el container del DOM encara no s'ha muntat (condició de carrera
+    // entre el Dialog de Radix UI i el primer render), esperem fins a 2 s
+    // que el ref estigui disponible abans de decidir si hi ha URN o no.
+    if (!containerRef.current) {
+      let waited = 0;
+      await new Promise<void>((resolve) => {
+        const poll = setInterval(() => {
+          waited += 50;
+          if (containerRef.current || waited >= 2000) {
+            clearInterval(poll);
+            resolve();
+          }
+        }, 50);
+      });
+    }
+
     if (!containerRef.current || !urn) {
       setEstat("error");
       setError("No hi ha URN assignat a aquesta instal·lació. Executa l'agent APS per sincronitzar.");
