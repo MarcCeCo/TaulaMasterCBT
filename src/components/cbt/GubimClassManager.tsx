@@ -168,7 +168,8 @@ export function GubimClassManager(_props: Props = {}) {
         </div>
       </div>
 
-        {/* Formulari inline */}
+        {/* Formulari inline — només visible per a editors */}
+        {canEdit && (
         <div className="flex flex-wrap items-start gap-2 p-3 border border-slate-200 rounded-lg bg-slate-50/60">
           <div className="space-y-1">
             <label className="text-xs font-medium">Codi</label>
@@ -192,12 +193,13 @@ export function GubimClassManager(_props: Props = {}) {
             {nameError && <p className="text-xs text-destructive">{nameError}</p>}
           </div>
           <div className="flex gap-2 pt-6">
-            <Button onClick={save} disabled={!!codeError || !!nameError || !canEdit || saving} className="bg-[#0099A8] hover:bg-[#006E7A]">
+            <Button onClick={save} disabled={!!codeError || !!nameError || saving} className="bg-[#0099A8] hover:bg-[#006E7A]">
               {saving ? "Desant…" : (editing ? "Desa" : "Afegeix")}
             </Button>
             {editing && <Button variant="outline" onClick={reset}>Cancel·la</Button>}
           </div>
         </div>
+        )}
 
         {/* Toolbar */}
         <div className="flex flex-wrap gap-2 items-center">
@@ -209,21 +211,23 @@ export function GubimClassManager(_props: Props = {}) {
           <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={exportXlsx}><Download className="h-4 w-4" /> Exporta</Button>
           {canEdit && <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4" /> Esborra tot</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Esborrar tota la classificació?</AlertDialogTitle>
-                <AlertDialogDescription>Els equips que referencien nodes quedaran amb referències invàlides.</AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("GuBIMClass esborrat"); } catch { toast.error("Error esborrant"); } }}>Esborra</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {canEdit && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4" /> Esborra tot</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Esborrar tota la classificació?</AlertDialogTitle>
+                  <AlertDialogDescription>Els equips que referencien nodes quedaran amb referències invàlides.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                  <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("GuBIMClass esborrat"); } catch { toast.error("Error esborrant"); } }}>Esborra</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
         </div>
 
         <div
@@ -295,20 +299,22 @@ export function GubimClassManager(_props: Props = {}) {
                           <td className="p-2 text-xs text-muted-foreground">{parent ? `${parent.code} · ${parent.name}` : "—"}</td>
                           <td className="p-2">
                             <div className="flex gap-1">
+                              {canEdit && (
                               <Button
                                 size="icon" variant={isEditing ? "secondary" : "ghost"} className="h-7 w-7"
-                                disabled={!canEdit}
                                 onClick={() => { if (isEditing) { reset(); } else { setEditing(n); setCode(n.code); setName(n.name); setCodeError(""); } }}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
+                              )}
                               {/* PERF: Tooltip sense TooltipProvider (ja viu al pare) */}
+                              {canEdit && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span>
                                     <AlertDialog>
                                       <AlertDialogTrigger asChild>
-                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={hasC || !canEdit}>
+                                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" disabled={hasC}>
                                           <Trash2 className="h-3.5 w-3.5" />
                                         </Button>
                                       </AlertDialogTrigger>
@@ -330,6 +336,7 @@ export function GubimClassManager(_props: Props = {}) {
                                 </TooltipTrigger>
                                 {hasC && <TooltipContent>No es pot esborrar: té fills</TooltipContent>}
                               </Tooltip>
+                              )}
                             </div>
                           </td>
                         </tr>

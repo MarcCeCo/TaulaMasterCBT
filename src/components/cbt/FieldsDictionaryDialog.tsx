@@ -194,18 +194,20 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
           {canEdit && <Button variant="outline" size="sm" className="gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800" onClick={() => fileRef.current?.click()}><Upload className="h-4 w-4" /> Importa Excel</Button>}
           <input ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }} />
           {canEdit && <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setEditing(null); setAddOpen(true); }}><Plus className="h-4 w-4" /> Nou camp</Button>}
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button size="sm" variant="destructive" disabled={!canEdit}><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader><AlertDialogTitle>Esborrar tots els camps?</AlertDialogTitle><AlertDialogDescription>S'eliminaran tots els camps del diccionari.</AlertDialogDescription></AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("Tots els camps eliminats"); } catch { toast.error("Error esborrant camps"); } }}>Esborra</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          {canEdit && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button size="sm" variant="destructive"><Trash2 className="h-4 w-4 mr-1" /> Esborra tots</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader><AlertDialogTitle>Esborrar tots els camps?</AlertDialogTitle><AlertDialogDescription>S'eliminaran tots els camps del diccionari.</AlertDialogDescription></AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                  <AlertDialogAction onClick={async () => { try { await clearAll(); toast.success("Tots els camps eliminats"); } catch { toast.error("Error esborrant camps"); } }}>Esborra</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <div className="ml-auto text-xs text-muted-foreground self-center">{filtered.length} camps</div>
         </div>
 
@@ -270,7 +272,7 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
                           <td className="p-2 text-xs font-mono break-words">{c ? "—" : (f.instancia_revit ?? "—")}</td>
                           <td className="p-2 text-xs break-words">{f.disciplina ?? "—"}</td>
                           <td className="p-2">
-                            {isCustom(f.col) && (
+                            {isCustom(f.col) && canEdit && (
                               <div className="flex gap-1">
                                 <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditing(f); setAddOpen(true); }}><Pencil className="h-3.5 w-3.5" /></Button>
                                 <AlertDialog>
