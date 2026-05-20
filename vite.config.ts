@@ -23,19 +23,13 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Vendors pesants — sempre separats
+          // Només separem vendors externs — deixem que Rollup gestioni els chunks de l'app
+          // per evitar problemes de circular dependency en el codi propi.
           if (id.includes("node_modules/xlsx")) return "vendor-xlsx";
           if (id.includes("node_modules/@supabase")) return "vendor-supabase";
           if (id.includes("node_modules/@radix-ui")) return "vendor-ui";
           if (id.includes("node_modules/lucide-react")) return "vendor-ui";
-
-          // Pàgines pesants de l'app — chunks propis per lazy loading efectiu
-          if (id.includes("ProjectesEquipsPage")) return "page-projectes";
-          if (id.includes("EquipmentsTable") || id.includes("EquipmentDetailDialog") || id.includes("EquipmentFormDialog")) return "page-equips";
-          if (id.includes("Visualitzador3DPage")) return "page-visor3d";
-          if (id.includes("RevitBimPage")) return "page-revit";
-          if (id.includes("GubimClassManager")) return "page-gubim";
-          if (id.includes("FieldsDictionaryDialog") || id.includes("AddFieldDialog") || id.includes("FieldPickerDialog")) return "page-fields";
+          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) return "vendor-react";
         },
       },
     },
