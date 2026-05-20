@@ -2,6 +2,7 @@
 import { useState } from "react";
 import {
   BookOpen,
+  Bot,
   Box,
   Building2,
   FolderOpen,
@@ -92,6 +93,7 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       icon: <Shield className="h-3.5 w-3.5" />,
       items: [
         { id: "usuaris", label: "Gestió d'usuaris", icon: <Users className="h-[15px] w-[15px]" />, section: "usuaris", adminOnly: true },
+        { id: "control-agents", label: "Control d'agents", icon: <Bot className="h-[15px] w-[15px]" />, section: "control-agents", adminOnly: true },
         { id: "canviapwd", label: "Canvia contrasenya", icon: <KeyRound className="h-[15px] w-[15px]" />, section: "canviapwd" },
       ],
     },
