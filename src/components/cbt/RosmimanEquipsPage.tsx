@@ -3,8 +3,20 @@
 // Permet importar des d'Excel (col A = TAG, col B = descripció)
 // i consultar-los per evitar duplicitats de TAG en crear projectes.
 
-import { useRef, useState, useMemo } from "react";
-import * as XLSX from "xlsx";
+import { useRef, useState, useMemo, useEffect } from "react";
+
+// PERF: xlsx (≈750 KB) carregat lazily — només quan l'usuari importa un fitxer
+async function getXLSX() {
+  const mod = await import("xlsx");
+  return mod.default ?? mod;
+}
+
+// PERF: debounce local per a la cerca (evita recalcular el filtre a cada tecla)
+function useDebounce<T>(value: T, ms = 200): T {
+  const [dv, setDv] = useState(value);
+  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
+  return dv;
+}
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,15 +71,17 @@ export function RosmimanEquipsPage() {
   const [importLoading, setImportLoading] = useState(false);
 
   // ── Filtrat i agrupació per codi d'instal·lació ───────────────────────────
+  const debouncedCerca = useDebounce(cerca, 200);
+
   const equipsFiltered = useMemo(() => {
-    const q = cerca.trim().toLowerCase();
+    const q = debouncedCerca.trim().toLowerCase();
     if (!q) return rosmimanEquips;
     return rosmimanEquips.filter(e =>
       e.tag.toLowerCase().includes(q) ||
       e.descripcio.toLowerCase().includes(q) ||
       e.codiInstallacio.toLowerCase().includes(q)
     );
-  }, [rosmimanEquips, cerca]);
+  }, [rosmimanEquips, debouncedCerca]);
 
   const grups = useMemo(() => {
     const map = new Map<string, RosmimanEquip[]>();
@@ -80,18 +94,17 @@ export function RosmimanEquipsPage() {
   }, [equipsFiltered]);
 
   // ── Importació Excel ──────────────────────────────────────────────────────
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = new Uint8Array(ev.target!.result as ArrayBuffer);
-        const wb = XLSX.read(data, { type: "array" });
-        const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+    try {
+      const data = new Uint8Array(await file.arrayBuffer());
+      const XLSX = await getXLSX();
+      const wb = XLSX.read(data, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
         const valid: RosmimanEquip[] = [];
         const invalids: string[] = [];
@@ -115,11 +128,9 @@ export function RosmimanEquipsPage() {
         }
 
         setImportPreview({ valid, invalids });
-      } catch {
-        toast.error("Error llegint el fitxer Excel.");
-      }
-    };
-    reader.readAsArrayBuffer(file);
+    } catch {
+      toast.error("Error llegint el fitxer Excel.");
+    }
   }
 
   async function confirmarImport() {

@@ -1,5 +1,5 @@
 // src/components/auth/AuthProvider.tsx
-import { useEffect, useState, useRef, useCallback, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import {
@@ -291,21 +291,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   }
 
+  // PERF FIX: useMemo evita que tots els consumidors d'AuthContext es re-renderitzin
+  // quan canvia qualsevol estat intern no relacionat (ex: refs internes).
+  // Abans: nou objecte literal a cada render → tots els useAuth() re-renderitzaven sempre.
+  const contextValue = useMemo(() => ({
+    user,
+    profile,
+    loading,
+    isAdmin:        isAdminRole(profile?.role ?? "user"),
+    getSectionRole: getSectionRoleFn(profile),
+    canSeeView:     canSeeViewFn(profile, user),
+    canEditView:    canEditViewFn(profile),
+    getToken,
+    signIn,
+    signOut,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [user, profile, loading, getToken]);
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        profile,
-        loading,
-        isAdmin:        isAdminRole(profile?.role ?? "user"),
-        getSectionRole: getSectionRoleFn(profile),
-        canSeeView:     canSeeViewFn(profile, user),
-        canEditView:    canEditViewFn(profile),
-        getToken,
-        signIn,
-        signOut,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

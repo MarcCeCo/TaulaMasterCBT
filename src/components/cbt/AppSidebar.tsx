@@ -1,5 +1,5 @@
 // src/components/cbt/AppSidebar.tsx  — CBT redesign v2
-import { useState } from "react";
+import { memo, useCallback, useState } from "react";
 import {
   BookOpen,
   Bot,
@@ -99,10 +99,10 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
     },
   ];
 
-  const handleItemClick = (item: NavItem) => {
+  const handleItemClick = useCallback((item: NavItem) => {
     onSectionChange(item.section);
     setMobileOpen(false);
-  };
+  }, [onSectionChange]);
 
   const initials = ((profile?.full_name ?? profile?.email ?? "?")[0] ?? "?").toUpperCase();
 

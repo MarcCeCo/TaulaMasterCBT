@@ -59,6 +59,8 @@ async function _doFetch(
       "apikey": SUPA_KEY,
       "Content-Type": "application/json",
       "Prefer": "return=representation",
+      // PERF: sol·licitem compressió HTTP sempre que sigui possible
+      "Accept-Encoding": "gzip, deflate, br",
       ...extraHeaders,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
