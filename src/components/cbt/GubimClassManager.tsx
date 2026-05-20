@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 
 // PERF: xlsx (≈750 KB) es carrega lazily només quan l'usuari fa export/import
 // → no bloqueja el chunk inicial quan s'obre el pop-up GuBIMClass
@@ -7,11 +8,6 @@ async function getXLSX() {
   return mod.default ?? mod;
 }
 
-function useDebounce<T>(value: T, ms = 180): T {
-  const [dv, setDv] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
-  return dv;
-}
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, useEffect } from "react";
+import { useDebounce } from "@/hooks/useDebounce";
 
 // PERF: xlsx (≈750 KB) es carrega lazily només quan l'usuari fa export/import
 // → no bloqueja el chunk inicial quan s'obre el pop-up Diccionari de camps
@@ -14,7 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Download, Plus, Trash2, Upload, Pencil } from "lucide-react";
 import { FieldMeta, isClassifier, autoClassifierForCodi } from "@/lib/fields";
 import { useFields } from "@/hooks/useFields";
-import { useEquipments } from "@/hooks/useEquipments";
+import { useDataStore } from "@/lib/dataStore";
 import { AddFieldDialog } from "./AddFieldDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -26,12 +27,6 @@ interface Props {}
 const ROW_H = 38;
 const OVERSCAN = 8;
 const CONTAINER_H = 560;
-
-function useDebounce<T>(value: T, ms = 180): T {
-  const [dv, setDv] = useState(value);
-  useEffect(() => { const t = setTimeout(() => setDv(value), ms); return () => clearTimeout(t); }, [value, ms]);
-  return dv;
-}
 
 function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls: string): FieldMeta[] {
   const t = q.trim().toLowerCase();
@@ -59,7 +54,9 @@ function filterWithClassifiers(fields: FieldMeta[], q: string, grp: string, cls:
 
 export function FieldsDictionaryDialog(_props: Props = {}) {
   const { fields, addField, addMany, updateField, removeField, isCustom, exists, clearAll, groups, disciplines } = useFields();
-  const { removeFieldColFromAll } = useEquipments();
+  // PERF FIX: llegim removeFieldColFromAll del DataStore centralitzat en lloc de
+  // subscriure un useEquipments() addicional — evita un re-render extra per cada mutació
+  const { removeFieldColFromAll } = useDataStore();
   const { canEditView } = useAuth();
   const canEdit = canEditView("fields");
   const [q, setQ]             = useState("");

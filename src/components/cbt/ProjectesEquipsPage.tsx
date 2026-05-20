@@ -1,5 +1,5 @@
 // src/components/cbt/ProjectesEquipsPage.tsx
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -151,6 +151,25 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [allUsers, setAllUsers]           = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers]   = useState(false);
   const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+
+  // PERF FIX: ref al contenidor de la taula de tags per fer scroll to top
+  // quan el projecte actiu canvia (equivalent al reset de EquipmentsTable)
+  const tagTableRef = useRef<HTMLDivElement>(null);
+
+  // Reset scroll i selecció quan canvia el projecte actiu
+  useEffect(() => {
+    setSelectedTagIds(new Set());
+    tagTableRef.current?.scrollTo(0, 0);
+  }, [projecteActiu]);
+
+  // ESC esborra el filtre de cerca d'equips (consistent amb EquipmentsTable)
+  useEffect(() => {
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape" && equipSearch) { setEquipSearch(""); ev.preventDefault(); }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [equipSearch]);
 
   // Filtre
   const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("tots");
@@ -850,7 +869,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     </Button>
                   </div>
                 )}
-                <div className="overflow-auto" style={{ maxHeight: `calc(100vh - ${selectedTagIds.size > 0 ? "360px" : "320px"})` }}>
+                <div ref={tagTableRef} className="overflow-auto" style={{ maxHeight: `calc(100vh - ${selectedTagIds.size > 0 ? "360px" : "320px"})` }}>
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                       <tr>
