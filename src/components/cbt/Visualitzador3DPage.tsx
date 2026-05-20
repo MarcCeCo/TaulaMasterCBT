@@ -57,6 +57,29 @@ import {
   type Installacio,
 } from "@/hooks/useVisor3DSistemes";
 
+// ─── Helper: codi de sistema derivat de les instal·lacions ───────────────────
+// Llegeix els codiInstallacio del sistema i extreu el codi numèric del primer
+// que comenci per "ed0" (ex: "ED005" → "005"). Serveix per mostrar el codi
+// al costat del nom i per ordenar la llista de sistemes numèricament.
+
+function codiSistema(sistema: Sistema): string {
+  // 1. Camp persistit a Supabase (prioritat màxima)
+  if (sistema.codi?.trim()) return sistema.codi.trim();
+  // 2. Fallback: derivat del primer codiInstallacio que comenci per ED0
+  const regex = /^ed0*(\d+)/i;
+  for (const inst of sistema.installacions) {
+    const codi = inst.codiInstallacio ?? "";
+    const m = codi.match(regex);
+    if (m) return m[1].padStart(3, "0");
+  }
+  return "";
+}
+
+function codiSistemaNumeric(sistema: Sistema): number {
+  const c = codiSistema(sistema);
+  return c ? parseInt(c, 10) : 99999;
+}
+
 // ─── Colors predefinits ───────────────────────────────────────────────────────
 
 const COLORS_PRESET = [
@@ -67,8 +90,8 @@ const COLORS_PRESET = [
 
 // ─── Formulari Sistema ────────────────────────────────────────────────────────
 
-interface SistemaFormData { nom: string; descripcio: string; color: string; }
-const SISTEMA_BUIT: SistemaFormData = { nom: "", descripcio: "", color: "#0099A8" };
+interface SistemaFormData { nom: string; descripcio: string; codi: string; color: string; }
+const SISTEMA_BUIT: SistemaFormData = { nom: "", descripcio: "", codi: "", color: "#0099A8" };
 
 function SistemaFormDialog({ open, onClose, onSave, initial, title, saving }: {
   open: boolean; onClose: () => void;
@@ -102,6 +125,23 @@ function SistemaFormDialog({ open, onClose, onSave, initial, title, saving }: {
             </Label>
             <Input value={form.descripcio} onChange={(e) => setForm(f => ({ ...f, descripcio: e.target.value }))}
               placeholder="Descripció breu (opcional)" className="text-sm" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
+              <Box className="h-3 w-3 text-[#0099A8]" /> Codi del sistema
+              <span className="text-[10px] font-normal text-slate-400 ml-1">(ex: 005, 012)</span>
+            </Label>
+            <Input
+              value={form.codi}
+              onChange={(e) => setForm(f => ({ ...f, codi: e.target.value.toUpperCase() }))}
+              placeholder="p.ex. 005"
+              className="text-sm font-mono w-32"
+              maxLength={10}
+            />
+            <p className="text-[10.5px] text-slate-400 leading-relaxed">
+              S'omple automàticament des del codi d'instal·lació (ED0XX → XX).
+              Pots sobreescriure'l manualment si cal.
+            </p>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
@@ -645,10 +685,16 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden" style={{ maxHeight: "90vh" }}>
+      {/* [&>button]:hidden amaga el botó X per defecte de Radix per evitar solapament */}
+      <DialogContent className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden [&>button:last-child]:hidden" style={{ maxHeight: "90vh" }}>
 
-        {/* Capçalera */}
-        <div className="flex items-center gap-3 px-5 py-3 border-b border-slate-100 bg-white shrink-0">
+        {/* DialogTitle ocult però present per accessibilitat (Radix ho requereix) */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{sistema.nom} — {installacio.nom}</DialogTitle>
+        </DialogHeader>
+
+        {/* Capçalera personalitzada */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-100 bg-white shrink-0">
           <div className="h-7 w-1 rounded-full shrink-0" style={{ background: sistema.color }} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -681,8 +727,12 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
             />
           )}
 
-          <button onClick={onClose}
-            className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0">
+          {/* Botó tancar propi — sense solapament amb el de Radix */}
+          <button
+            onClick={onClose}
+            aria-label="Tancar"
+            className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0 ml-1"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -785,6 +835,11 @@ function SistemaGroup({
               ? <ChevronDown className="h-3.5 w-3.5 shrink-0" style={{ color: sistema.color }} />
               : <ChevronRight className="h-3.5 w-3.5 shrink-0" style={{ color: sistema.color }} />
             }
+            {codiSistema(sistema) && (
+              <span className="font-mono text-[11px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                {codiSistema(sistema)}
+              </span>
+            )}
             <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: sistema.color }}>
               {sistema.nom}
             </span>
@@ -1070,9 +1125,8 @@ export function Visualitzador3DPage() {
       )}
 
       {!loading && !error && (
-        <div className="border border-slate-200 rounded-xl bg-white overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: 700 }}>
+        <div className="border border-slate-200 rounded-lg bg-white overflow-auto shadow-sm" style={{ maxHeight: "calc(100vh - 280px)" }}>
+          <table className="w-full text-sm" style={{ tableLayout: "fixed", minWidth: 700 }}>
               <colgroup>
                 <col style={{ width: 4 }} />
                 <col style={{ width: 90 }} />
@@ -1080,13 +1134,13 @@ export function Visualitzador3DPage() {
                 <col style={{ width: 280 }} />
                 <col style={{ width: modeAdmin ? 180 : 130 }} />
               </colgroup>
-              <thead className="sticky top-0 z-10 bg-white border-b border-slate-200">
+              <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                 <tr className="text-left">
                   <th className="p-0" />
-                  <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400">Codi</th>
-                  <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Instal·lació</th>
-                  <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 hidden lg:table-cell">URN Model</th>
-                  <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-400 text-right">Accions</th>
+                  <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500">Codi</th>
+                  <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-500">Instal·lació</th>
+                  <th className="py-2.5 px-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hidden lg:table-cell">URN Model</th>
+                  <th className="py-2.5 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-500 text-right">Accions</th>
                 </tr>
               </thead>
               <tbody>
@@ -1104,7 +1158,9 @@ export function Visualitzador3DPage() {
                     </td>
                   </tr>
                 ) : (
-                  sistemes.map((sistema) => (
+                  [...sistemes]
+                    .sort((a, b) => codiSistemaNumeric(a) - codiSistemaNumeric(b))
+                    .map((sistema) => (
                     <SistemaGroup
                       key={sistema.id}
                       sistema={sistema}
@@ -1127,7 +1183,6 @@ export function Visualitzador3DPage() {
                 )}
               </tbody>
             </table>
-          </div>
         </div>
       )}
 
@@ -1146,7 +1201,7 @@ export function Visualitzador3DPage() {
         title={sistemaDialeg.mode === "create" ? "Nou sistema" : "Editar sistema"}
         saving={saving}
         initial={sistemaDialeg.target
-          ? { nom: sistemaDialeg.target.nom, descripcio: sistemaDialeg.target.descripcio ?? "", color: sistemaDialeg.target.color }
+          ? { nom: sistemaDialeg.target.nom, descripcio: sistemaDialeg.target.descripcio ?? "", codi: sistemaDialeg.target.codi ?? "", color: sistemaDialeg.target.color }
           : undefined}
       />
 
