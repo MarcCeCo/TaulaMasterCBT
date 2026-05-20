@@ -22,22 +22,24 @@ export default defineConfig({
     // PERF: chunks separats per evitar que xlsx (gran) bloquegi la càrrega inicial
     rollupOptions: {
       output: {
-        manualChunks: {
-          // xlsx (~800KB) només es carrega quan s'importa/exporta, no a l'inici
-          "vendor-xlsx": ["xlsx"],
-          // supabase separat del bundle principal
-          "vendor-supabase": ["@supabase/supabase-js"],
-          // radix/shadcn — canvia poc, ben cacheable
-          "vendor-ui": [
-            "@radix-ui/react-dialog",
-            "@radix-ui/react-tooltip",
-            "@radix-ui/react-alert-dialog",
-            "@radix-ui/react-select",
-            "@radix-ui/react-tabs",
-          ],
+        manualChunks: (id) => {
+          // Vendors pesants — sempre separats
+          if (id.includes("node_modules/xlsx")) return "vendor-xlsx";
+          if (id.includes("node_modules/@supabase")) return "vendor-supabase";
+          if (id.includes("node_modules/@radix-ui")) return "vendor-ui";
+          if (id.includes("node_modules/lucide-react")) return "vendor-ui";
+
+          // Pàgines pesants de l'app — chunks propis per lazy loading efectiu
+          if (id.includes("ProjectesEquipsPage")) return "page-projectes";
+          if (id.includes("EquipmentsTable") || id.includes("EquipmentDetailDialog") || id.includes("EquipmentFormDialog")) return "page-equips";
+          if (id.includes("Visualitzador3DPage")) return "page-visor3d";
+          if (id.includes("RevitBimPage")) return "page-revit";
+          if (id.includes("GubimClassManager")) return "page-gubim";
+          if (id.includes("FieldsDictionaryDialog") || id.includes("AddFieldDialog") || id.includes("FieldPickerDialog")) return "page-fields";
         },
       },
     },
+    chunkSizeWarningLimit: 600,
     // PERF: treeshaking agressiu
     minify: "esbuild",
     target: "es2020",
