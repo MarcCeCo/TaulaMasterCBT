@@ -35,6 +35,7 @@ export interface Sistema {
   id: string;
   nom: string;
   descripcio?: string;
+  codi?: string;
   color: string;
   installacions: Installacio[];
 }
@@ -45,6 +46,7 @@ interface SistemaRow {
   id: string;
   nom: string;
   descripcio: string | null;
+  codi: string | null;
   color: string;
   ordre: number;
   created_at: string;
@@ -87,6 +89,7 @@ function buildSistemes(
       id: s.id,
       nom: s.nom,
       descripcio: s.descripcio ?? undefined,
+      codi: s.codi ?? undefined,
       color: s.color,
       installacions: installacioRows
         .filter((i) => i.sistema_id === s.id)
@@ -200,12 +203,13 @@ export function useVisor3DSistemes() {
   // ── CRUD Sistemes ──────────────────────────────────────────────────────────
 
   const createSistema = useCallback(
-    async (data: { nom: string; descripcio: string; color: string }) => {
+    async (data: { nom: string; descripcio: string; codi: string; color: string }) => {
       const token = getToken();
       const ordre = sistemes.length;
       const rows = await supa(token, "POST", "visor3d_sistemes", {
         nom: data.nom.trim(),
         descripcio: data.descripcio.trim() || null,
+        codi: data.codi.trim() || null,
         color: data.color,
         ordre,
       });
@@ -214,6 +218,7 @@ export function useVisor3DSistemes() {
         id: row.id,
         nom: row.nom,
         descripcio: row.descripcio ?? undefined,
+        codi: row.codi ?? undefined,
         color: row.color,
         installacions: [],
       };
@@ -224,18 +229,19 @@ export function useVisor3DSistemes() {
   );
 
   const updateSistema = useCallback(
-    async (id: string, data: { nom: string; descripcio: string; color: string }) => {
+    async (id: string, data: { nom: string; descripcio: string; codi: string; color: string }) => {
       const token = getToken();
       await supa(token, "PATCH", `visor3d_sistemes?id=eq.${id}`, {
         nom: data.nom.trim(),
         descripcio: data.descripcio.trim() || null,
+        codi: data.codi.trim() || null,
         color: data.color,
         updated_at: new Date().toISOString(),
       });
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === id
-            ? { ...s, nom: data.nom.trim(), descripcio: data.descripcio.trim() || undefined, color: data.color }
+            ? { ...s, nom: data.nom.trim(), descripcio: data.descripcio.trim() || undefined, codi: data.codi.trim() || undefined, color: data.color }
             : s
         )
       );
