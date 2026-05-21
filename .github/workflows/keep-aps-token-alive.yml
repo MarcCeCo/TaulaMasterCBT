@@ -2,8 +2,9 @@ name: Keep APS Token Alive
 
 on:
   schedule:
-    # TEMPORAL: cada 2 minuts per activar el primer Scheduled - tornar a 0 3 */10 * * un cop funcioni
-    - cron: '*/2 * * * *'
+    # S'executa cada 10 dies a les 03:00 UTC
+    # Això garanteix que el refresh token (caduca als 15 dies) mai expiri
+    - cron: '0 3 */10 * *'
   workflow_dispatch: # Permet executar-lo manualment si cal
 
 jobs:
