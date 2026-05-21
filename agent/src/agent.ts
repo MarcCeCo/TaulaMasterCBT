@@ -70,6 +70,11 @@ function construeixEmbedUrlFallback(urn: string): string {
 
 // ─── Autenticació APS 3-legged OAuth ─────────────────────────────────────────
 
+// Mutex per evitar renovacions simultànies del token APS.
+// Si dues crides arriben alhora amb el token expirat, només una renova
+// i les altres esperen el resultat — evita l'error "invalid_grant".
+let renovacioEnCurs: Promise<string> | null = null;
+
 export async function obteToken3Legged(
   supabase: SupabaseClient,
   clientId: string,
@@ -104,9 +109,28 @@ export async function obteToken3Legged(
     throw new Error("Refresh token no disponible. Executa: npm run auth-setup");
   }
 
+  // Si ja hi ha una renovació en curs, esperem el seu resultat
+  if (renovacioEnCurs) {
+    console.log("⏳ Renovació ja en curs, esperant resultat...");
+    return renovacioEnCurs;
+  }
+
+  renovacioEnCurs = _renovaToken(supabase, clientId, clientSecret, row.refresh_token)
+    .finally(() => { renovacioEnCurs = null; });
+
+  return renovacioEnCurs;
+}
+
+async function _renovaToken(
+  supabase: SupabaseClient,
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string
+): Promise<string> {
+
   const body = new URLSearchParams({
     grant_type: "refresh_token",
-    refresh_token: row.refresh_token,
+    refresh_token: refreshToken,
     scope: "data:read viewables:read",
   });
 
