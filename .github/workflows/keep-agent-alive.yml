@@ -13,7 +13,8 @@ jobs:
       - name: Ping Agent
         run: |
           response=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 30 \
+            --max-time 60 \
+            --connect-timeout 10 \
             "${{ secrets.AGENT_URL }}/health")
 
           echo "Resposta HTTP: $response"
