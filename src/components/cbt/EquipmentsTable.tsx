@@ -34,10 +34,10 @@ const GROUP_COLORS = [
 // PERF FIX: TooltipProvider eliminat de dins EquipmentRow — ara viu al component pare
 // Això evita muntar/desmuntar centenars de proveïdors en cada interacció de la taula
 const EquipmentRow = memo(function EquipmentRow({
-  e, gubimName, parentName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
+  e, gubimName, parentName, parentEquipName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
   isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth, canEdit,
 }: {
-  e: Equipment; gubimName: string; parentName: string; level: 1|2|3|4;
+  e: Equipment; gubimName: string; parentName: string; parentEquipName: string; level: 1|2|3|4;
   onEdit: (e: Equipment) => void; onDelete: (e: Equipment) => void; onView: (e: Equipment) => void;
   fieldCount: number; orphanCols: string[]; isChild: boolean;
   isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
@@ -48,6 +48,8 @@ const EquipmentRow = memo(function EquipmentRow({
   const childIndentPx = childDepth * 32;
   const hasOrphans = orphanCols.length > 0;
   const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
+  // Nom complet: si té equip pare, mostrem "NomPare · NomEquip"
+  const displayName = parentEquipName ? `${parentEquipName} · ${e.equipName}` : e.equipName;
   return (
     <tr className={cn("border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors", isChild && !isSharedCode && "bg-slate-50/40", groupClass)} onClick={() => onView(e)}>
       <td className={cn("px-3 py-2", gubimIndent)}>
@@ -81,9 +83,7 @@ const EquipmentRow = memo(function EquipmentRow({
         {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate">↳ {parentName}</div>}
       </td>
       <td className="px-3 py-2 font-mono text-xs text-slate-600">
-        <div style={{ paddingLeft: childIndentPx }}>
-          {e.equipCode || <span className="text-slate-400 italic">—</span>}
-        </div>
+        {e.equipCode || <span className="text-slate-400 italic">—</span>}
       </td>
       <td className="px-3 py-2 font-medium text-[13px] text-slate-700">
         <div className="flex items-center gap-1.5" style={{ paddingLeft: childIndentPx }}>
@@ -92,7 +92,7 @@ const EquipmentRow = memo(function EquipmentRow({
               <path d="M1 0 L1 10 Q1 13 4 13 L12 13" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
             </svg>
           )}
-          {e.equipName}
+          {displayName}
         </div>
       </td>
       <td className="px-3 py-2">
@@ -315,6 +315,13 @@ export function EquipmentsTable() {
     });
     return { countByCode, colorIdxByCode, firstInGroup };
   }, [filtered]);
+
+  // Mapa equipCode → equipName per trobar el nom de l'equip pare
+  const equipNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    items.forEach((e) => { if (e.equipCode) m.set(e.equipCode, e.equipName); });
+    return m;
+  }, [items]);
 
   const exportXlsx = useCallback(async () => {
     const XLSX = await import("xlsx");
@@ -629,6 +636,7 @@ export function EquipmentsTable() {
                               key={e.id} e={e}
                               gubimName={node?.name ?? ""}
                               parentName={parent ? `${parent.code} · ${parent.name}` : ""}
+                              parentEquipName={e.parentEquipCode ? (equipNameMap.get(e.parentEquipCode) ?? "") : ""}
                               level={lvl} fieldCount={e.fieldCols.length}
                               orphanCols={orphanCols} isChild={isChild}
                               isSharedCode={isSharedCode}
