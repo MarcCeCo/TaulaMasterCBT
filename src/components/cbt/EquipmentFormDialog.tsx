@@ -108,13 +108,16 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   // tableCode: "T" + codi si té codi, buit si no
   const tableCode = needs && sanitizedCode ? "T" + sanitizedCode : "";
   // tableName = "NomMare NomFill" si hi ha equip pare, sinó sol el nom
-  const parentEquip = parentEquipCode ? allEquipments.find(e => e.equipCode === parentEquipCode) : null;
+  // parentEquipCode pot contenir un equipCode o un id (per pares sense codi)
+  const parentEquip = parentEquipCode
+    ? (allEquipments.find(e => e.equipCode === parentEquipCode) ?? allEquipments.find(e => e.id === parentEquipCode))
+    : null;
   const tableName = needs && sanitizedName
     ? (parentEquip ? `${parentEquip.equipName} ${sanitizedName}` : sanitizedName)
     : "";
 
-  // Equips candidats a ser pares (mateixa gubimCode, diferent id)
-  const parentCandidates = allEquipments.filter(e => e.gubimCode === gubim && e.id !== editing?.id && e.equipCode);
+  // Equips candidats a ser pares (mateixa gubimCode, diferent id, amb o sense codi)
+  const parentCandidates = allEquipments.filter(e => e.gubimCode === gubim && e.id !== editing?.id);
 
   const [saving, setSaving] = useState(false);
 
@@ -125,7 +128,10 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
     if (C && isCodeTaken(C, editing?.id)) return toast.error("Aquest codi ja existeix");
     if (!name.trim()) return toast.error("El nom és obligatori");
 
-    const parentE = parentEquipCode ? allEquipments.find(e => e.equipCode === parentEquipCode) : null;
+    // parentEquipCode pot contenir equipCode o id; resolem per codi primer, si no per id
+    const parentE = parentEquipCode
+      ? (allEquipments.find(e => e.equipCode === parentEquipCode) ?? allEquipments.find(e => e.id === parentEquipCode))
+      : null;
     const computedTableName = needs
       ? (parentE ? `${parentE.equipName} ${name.trim()}` : name.trim())
       : "";
@@ -187,7 +193,9 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
                 <SelectContent>
                   <SelectItem value="__none__">Sense pare (equip principal)</SelectItem>
                   {parentCandidates.map(e => (
-                    <SelectItem key={e.id} value={e.equipCode}>{e.equipCode} · {e.equipName}</SelectItem>
+                    <SelectItem key={e.id} value={e.equipCode || e.id}>
+                      {e.equipCode ? `${e.equipCode} · ${e.equipName}` : e.equipName}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>

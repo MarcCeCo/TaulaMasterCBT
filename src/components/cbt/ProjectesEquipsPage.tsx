@@ -461,8 +461,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   async function guardarEditTag() {
     if (!dialogEditTag) return;
-    const equip = equipMap.get(dialogEditTag.equipId);
-    if (!equip) return;
+    if (!tagEquipId) { setTagError("Selecciona un equip."); return; }
+    const equip = equipMap.get(tagEquipId);
+    if (!equip) { setTagError("Equip no trobat."); return; }
     const err = validateTagFields(tagCodiInstallacio, tagCcm, tagFuncio, tagDuplicitat);
     if (err) { setTagError(err); return; }
     const tagCandidatEdit = buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, tagDuplicitat);
@@ -485,6 +486,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
     try {
       await updateTag(projecteActiu!, dialogEditTag.id, {
+        equipId: tagEquipId,
         codiInstallacio: tagCodiInstallacio.toUpperCase(),
         ccm: tagCcm,
         funcio: tagFuncio.padStart(2, "0"),
@@ -601,6 +603,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     setTagComentari(tag.comentari);
     setTagDescripcio(tag.descripcioEquip ?? "");
     setTagError(null);
+    setEquipSearch("");
     setDialogEditTag(tag);
   }
 
@@ -1281,10 +1284,60 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                   </div>
                 )}
                 {dialogEditTag && (
-                  <div className="p-2 bg-slate-50 rounded text-xs">
-                    <span className="text-slate-500">Equip: </span>
-                    <span className="font-mono font-medium">{equipMap.get(dialogEditTag.equipId)?.equipCode}</span>
-                    <span className="text-slate-500 ml-1">{equipMap.get(dialogEditTag.equipId)?.tableName || equipMap.get(dialogEditTag.equipId)?.equipName}</span>
+                  <div>
+                    <Label className="text-xs font-medium">Equip de la Taula Master *</Label>
+                    {tagEquipId && equipMap.get(tagEquipId) ? (
+                      <div className="mt-1 flex items-center gap-2 p-2 bg-[#0099A8]/8 border border-[#0099A8]/30 rounded-md">
+                        <CheckCircle2 className="h-4 w-4 text-[#0099A8] shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-medium text-[#006E7A] truncate block">{equipMap.get(tagEquipId)!.tableName || equipMap.get(tagEquipId)!.equipName}</span>
+                          <span className="text-xs font-mono text-slate-500">{equipMap.get(tagEquipId)!.equipCode}</span>
+                        </div>
+                        <button onClick={() => { setTagEquipId(""); setEquipSearch(""); }}
+                          className="text-xs text-[#0099A8] hover:text-[#006E7A] shrink-0 underline">
+                          Canviar
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-1 border rounded-md overflow-hidden">
+                        <div className="flex items-center gap-2 px-2.5 py-1.5 border-b bg-slate-50">
+                          <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <input
+                            className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
+                            placeholder="Escriu la descripció de l'equip..."
+                            value={equipSearch}
+                            onChange={e => setEquipSearch(e.target.value)}
+                            autoFocus
+                          />
+                          {equipSearch && (
+                            <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
+                              <XCircle className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="max-h-44 overflow-y-auto">
+                          {!equipSearch.trim() ? (
+                            <p className="text-xs text-slate-400 px-3 py-2 italic">Comença a escriure per buscar equips per descripció o codi…</p>
+                          ) : equipsFiltrats.length === 0 ? (
+                            <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
+                          ) : (
+                            equipsFiltrats.map(e => (
+                              <button key={e.id} onClick={() => { setTagEquipId(e.id); setEquipSearch(""); }}
+                                className={cn(
+                                  "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
+                                  tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
+                                )}>
+                                <div className="flex-1 min-w-0">
+                                  <span className="block truncate font-medium">{e.tableName || e.equipName}</span>
+                                  <span className="font-mono text-slate-400">{e.equipCode}</span>
+                                </div>
+                                {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

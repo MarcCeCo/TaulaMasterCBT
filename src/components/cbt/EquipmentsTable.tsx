@@ -34,10 +34,10 @@ const GROUP_COLORS = [
 // PERF FIX: TooltipProvider eliminat de dins EquipmentRow — ara viu al component pare
 // Això evita muntar/desmuntar centenars de proveïdors en cada interacció de la taula
 const EquipmentRow = memo(function EquipmentRow({
-  e, gubimName, parentName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
+  e, gubimName, parentName, parentEquipName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
   isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth, canEdit,
 }: {
-  e: Equipment; gubimName: string; parentName: string; level: 1|2|3|4;
+  e: Equipment; gubimName: string; parentName: string; parentEquipName: string; level: 1|2|3|4;
   onEdit: (e: Equipment) => void; onDelete: (e: Equipment) => void; onView: (e: Equipment) => void;
   fieldCount: number; orphanCols: string[]; isChild: boolean;
   isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
@@ -48,6 +48,8 @@ const EquipmentRow = memo(function EquipmentRow({
   const childIndentPx = childDepth * 32;
   const hasOrphans = orphanCols.length > 0;
   const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
+  // Nom complet: si té equip pare, mostrem "NomPare · NomEquip"
+  const displayName = parentEquipName ? `${parentEquipName} · ${e.equipName}` : e.equipName;
   return (
     <tr className={cn("border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors", isChild && !isSharedCode && "bg-slate-50/40", groupClass)} onClick={() => onView(e)}>
       <td className={cn("px-3 py-2", gubimIndent)}>
@@ -81,9 +83,7 @@ const EquipmentRow = memo(function EquipmentRow({
         {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate">↳ {parentName}</div>}
       </td>
       <td className="px-3 py-2 font-mono text-xs text-slate-600">
-        <div style={{ paddingLeft: childIndentPx }}>
-          {e.equipCode || <span className="text-slate-400 italic">—</span>}
-        </div>
+        {e.equipCode || <span className="text-slate-400 italic">—</span>}
       </td>
       <td className="px-3 py-2 font-medium text-[13px] text-slate-700">
         <div className="flex items-center gap-1.5" style={{ paddingLeft: childIndentPx }}>
@@ -92,7 +92,7 @@ const EquipmentRow = memo(function EquipmentRow({
               <path d="M1 0 L1 10 Q1 13 4 13 L12 13" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
             </svg>
           )}
-          {e.equipName}
+          {displayName}
         </div>
       </td>
       <td className="px-3 py-2">
@@ -210,11 +210,15 @@ export function EquipmentsTable() {
     const added = new Set<string>();
 
     // PERF FIX: precomputem un Map de parentEquipCode+gubimCode → fills
-    // Abans: .filter() dins insertWithChildren → O(n) per node → O(n²) total
-    // Ara: lookup O(1) per node → O(n) total
+    // parentEquipCode pot contenir un equipCode o un id (quan el pare no té codi)
+    // Indexem per les dues possibles claus de referència: codi i id
     const childrenByKey = new Map<string, Equipment[]>();
+    // Mapa id → equipCode per poder construir la clau inversa
+    const idToRef = new Map<string, string>(); // id → equipCode (si en té) o id
+    base.forEach((e) => { idToRef.set(e.id, e.equipCode || e.id); });
+
     base.forEach((e) => {
-      if (e.parentEquipCode && e.equipCode) {
+      if (e.parentEquipCode) {
         const key = `${e.gubimCode}::${e.parentEquipCode}`;
         const list = childrenByKey.get(key) ?? [];
         list.push(e);
@@ -226,8 +230,10 @@ export function EquipmentsTable() {
       if (added.has(e.id)) return;
       added.add(e.id);
       result.push({ equip: e, depth });
-      const key = `${e.gubimCode}::${e.equipCode}`;
-      const children = (e.equipCode ? childrenByKey.get(key) ?? [] : []).filter((c) => !added.has(c.id));
+      // La clau de referència és el codi (si en té) o l'id
+      const ref = e.equipCode || e.id;
+      const key = `${e.gubimCode}::${ref}`;
+      const children = childrenByKey.get(key)?.filter((c) => !added.has(c.id)) ?? [];
       children.forEach((c) => insertWithChildren(c, depth + 1));
     }
 
@@ -249,9 +255,10 @@ export function EquipmentsTable() {
       const hasExplicitParent = group.some((e) => !!e.parentEquipCode);
 
       if (hasExplicitParent) {
-        // Jerarquia explícita via parentEquipCode
-        const groupCodes = new Set(group.map((e) => e.equipCode).filter(Boolean));
-        const roots = group.filter((e) => !e.parentEquipCode || !groupCodes.has(e.parentEquipCode));
+        // Jerarquia explícita via parentEquipCode (pot ser equipCode o id)
+        // Construïm un set de les claus de referència vàlides dins el grup
+        const groupRefs = new Set(group.map((e) => e.equipCode || e.id));
+        const roots = group.filter((e) => !e.parentEquipCode || !groupRefs.has(e.parentEquipCode));
         roots.forEach((r) => insertWithChildren(r, 0));
         group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));
       } else {
@@ -315,6 +322,17 @@ export function EquipmentsTable() {
     });
     return { countByCode, colorIdxByCode, firstInGroup };
   }, [filtered]);
+
+  // Mapa equipCode → equipName i id → equipName per trobar el nom de l'equip pare
+  // (parentEquipCode pot contenir un equipCode o un id quan el pare no té codi)
+  const equipNameMap = useMemo(() => {
+    const m = new Map<string, string>();
+    items.forEach((e) => {
+      if (e.equipCode) m.set(e.equipCode, e.equipName);
+      m.set(e.id, e.equipName); // sempre per id, per pares sense codi
+    });
+    return m;
+  }, [items]);
 
   const exportXlsx = useCallback(async () => {
     const XLSX = await import("xlsx");
@@ -629,6 +647,7 @@ export function EquipmentsTable() {
                               key={e.id} e={e}
                               gubimName={node?.name ?? ""}
                               parentName={parent ? `${parent.code} · ${parent.name}` : ""}
+                              parentEquipName={e.parentEquipCode ? (equipNameMap.get(e.parentEquipCode) ?? "") : ""}
                               level={lvl} fieldCount={e.fieldCols.length}
                               orphanCols={orphanCols} isChild={isChild}
                               isSharedCode={isSharedCode}
