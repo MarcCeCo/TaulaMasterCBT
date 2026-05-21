@@ -6,7 +6,7 @@
 import http from "http";
 import WebSocket from "ws";
 import { createClient } from "@supabase/supabase-js";
-import { executaAgent } from "./agent";
+import { executaAgent, obteToken3Legged } from "./agent";
 
 // Node.js < 22 no té WebSocket natiu — el client de Supabase el necessita
 (globalThis as any).WebSocket = WebSocket;
@@ -361,63 +361,46 @@ const server = http.createServer(async (req, res) => {
 
   // ── APS Token 2-legged per al Viewer SDK ─────────────────────────────────
   // GET /api/aps-token
-  // Genera un token 2-legged (client_credentials) per al Viewer SDK.
-  // No requereix cap login manual ni refresh token — es renova automàticament
-  // cada vegada que un usuari obre un model 3D. Sempre disponible.
+  // Retorna el token 3-legged guardat a Supabase per al Viewer SDK.
+  // Si ha expirat, el renova automàticament amb el refresh token.
   if (url.pathname === "/api/aps-token" && req.method === "GET") {
     try {
-      const clientId     = process.env.APS_CLIENT_ID;
-      const clientSecret = process.env.APS_CLIENT_SECRET;
+      const supabaseUrl  = process.env.SUPABASE_URL!;
+      const supabaseKey  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+      const clientId     = process.env.APS_CLIENT_ID!;
+      const clientSecret = process.env.APS_CLIENT_SECRET!;
 
-      if (!clientId || !clientSecret) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Variables d'entorn APS_CLIENT_ID o APS_CLIENT_SECRET no configurades" }));
-        return;
-      }
-
-      const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-      const tokenResp = await fetch(`${APS_AUTH_BASE}/token`, {
-        method: "POST",
-        headers: {
-          "Content-Type":  "application/x-www-form-urlencoded",
-          Authorization: `Basic ${credentials}`,
-        },
-        body: new URLSearchParams({
-          grant_type: "client_credentials",
-          scope:      "viewables:read",
-        }).toString(),
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
       });
 
-      if (!tokenResp.ok) {
-        const errText = await tokenResp.text();
-        console.error("❌ Error generant token 2-legged APS:", errText);
-        res.writeHead(502, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: `Error obtenint token APS: ${tokenResp.status}` }));
-        return;
-      }
+      // Reutilitza obteToken3Legged: retorna el token vàlid o el renova automàticament
+      const accessToken = await obteToken3Legged(supabase, clientId, clientSecret);
 
-      const tokenData = await tokenResp.json() as {
-        access_token: string;
-        expires_in:   number;
-        token_type:   string;
-      };
+      // Calcula temps restant
+      const { data: row } = await supabase
+        .from("aps_tokens")
+        .select("expires_at")
+        .eq("id", 1)
+        .single();
 
-      console.log(`✅ Token 2-legged APS generat (expira en ${Math.round(tokenData.expires_in / 60)} min)`);
+      const expiresIn = row ? Math.max(0, Math.round((row.expires_at - Date.now()) / 1000)) : 3600;
+
+      console.log(`✅ Token 3-legged APS retornat al viewer (expira en ${Math.round(expiresIn / 60)} min)`);
 
       res.writeHead(200, {
         "Content-Type":  "application/json",
-        "Cache-Control": `private, max-age=${Math.max(0, tokenData.expires_in - 60)}`,
+        "Cache-Control": `private, max-age=${Math.max(0, expiresIn - 60)}`,
       });
       res.end(JSON.stringify({
-        access_token: tokenData.access_token,
-        expires_in:   tokenData.expires_in,
+        access_token: accessToken,
+        expires_in:   expiresIn,
         token_type:   "Bearer",
       }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error("❌ Error inesperat a /api/aps-token:", msg);
-      res.writeHead(500, { "Content-Type": "application/json" });
+      console.error("❌ Error retornant token APS al viewer:", msg);
+      res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: msg }));
     }
     return;

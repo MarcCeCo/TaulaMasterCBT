@@ -70,7 +70,7 @@ function construeixEmbedUrlFallback(urn: string): string {
 
 // ─── Autenticació APS 3-legged OAuth ─────────────────────────────────────────
 
-async function obteToken3Legged(
+export async function obteToken3Legged(
   supabase: SupabaseClient,
   clientId: string,
   clientSecret: string
