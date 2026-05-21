@@ -358,11 +358,12 @@ export function RevitBimPage() {
   // PERF FIX: debounce de 200ms — la cerca no recalcula equipRows a cada tecla
   const debouncedSearch = useDebounce(search, 200);
 
-  // ── Mapa equipCode → nom (estable entre renders) ──
+  // ── Mapa equipCode → nom i id → nom (per pares sense codi) ──
   const equipByCode = useMemo(() => {
     const m = new Map<string, string>();
     for (const eq of equipments) {
       if (eq.equipCode) m.set(eq.equipCode, eq.equipName);
+      m.set(eq.id, eq.equipName); // sempre per id, per pares sense codi
     }
     return m;
   }, [equipments]);

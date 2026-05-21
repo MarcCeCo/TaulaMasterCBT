@@ -210,11 +210,15 @@ export function EquipmentsTable() {
     const added = new Set<string>();
 
     // PERF FIX: precomputem un Map de parentEquipCode+gubimCode → fills
-    // Abans: .filter() dins insertWithChildren → O(n) per node → O(n²) total
-    // Ara: lookup O(1) per node → O(n) total
+    // parentEquipCode pot contenir un equipCode o un id (quan el pare no té codi)
+    // Indexem per les dues possibles claus de referència: codi i id
     const childrenByKey = new Map<string, Equipment[]>();
+    // Mapa id → equipCode per poder construir la clau inversa
+    const idToRef = new Map<string, string>(); // id → equipCode (si en té) o id
+    base.forEach((e) => { idToRef.set(e.id, e.equipCode || e.id); });
+
     base.forEach((e) => {
-      if (e.parentEquipCode && e.equipCode) {
+      if (e.parentEquipCode) {
         const key = `${e.gubimCode}::${e.parentEquipCode}`;
         const list = childrenByKey.get(key) ?? [];
         list.push(e);
@@ -226,8 +230,10 @@ export function EquipmentsTable() {
       if (added.has(e.id)) return;
       added.add(e.id);
       result.push({ equip: e, depth });
-      const key = `${e.gubimCode}::${e.equipCode}`;
-      const children = (e.equipCode ? childrenByKey.get(key) ?? [] : []).filter((c) => !added.has(c.id));
+      // La clau de referència és el codi (si en té) o l'id
+      const ref = e.equipCode || e.id;
+      const key = `${e.gubimCode}::${ref}`;
+      const children = childrenByKey.get(key)?.filter((c) => !added.has(c.id)) ?? [];
       children.forEach((c) => insertWithChildren(c, depth + 1));
     }
 
@@ -249,9 +255,10 @@ export function EquipmentsTable() {
       const hasExplicitParent = group.some((e) => !!e.parentEquipCode);
 
       if (hasExplicitParent) {
-        // Jerarquia explícita via parentEquipCode
-        const groupCodes = new Set(group.map((e) => e.equipCode).filter(Boolean));
-        const roots = group.filter((e) => !e.parentEquipCode || !groupCodes.has(e.parentEquipCode));
+        // Jerarquia explícita via parentEquipCode (pot ser equipCode o id)
+        // Construïm un set de les claus de referència vàlides dins el grup
+        const groupRefs = new Set(group.map((e) => e.equipCode || e.id));
+        const roots = group.filter((e) => !e.parentEquipCode || !groupRefs.has(e.parentEquipCode));
         roots.forEach((r) => insertWithChildren(r, 0));
         group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));
       } else {
@@ -316,10 +323,14 @@ export function EquipmentsTable() {
     return { countByCode, colorIdxByCode, firstInGroup };
   }, [filtered]);
 
-  // Mapa equipCode → equipName per trobar el nom de l'equip pare
+  // Mapa equipCode → equipName i id → equipName per trobar el nom de l'equip pare
+  // (parentEquipCode pot contenir un equipCode o un id quan el pare no té codi)
   const equipNameMap = useMemo(() => {
     const m = new Map<string, string>();
-    items.forEach((e) => { if (e.equipCode) m.set(e.equipCode, e.equipName); });
+    items.forEach((e) => {
+      if (e.equipCode) m.set(e.equipCode, e.equipName);
+      m.set(e.id, e.equipName); // sempre per id, per pares sense codi
+    });
     return m;
   }, [items]);
 
