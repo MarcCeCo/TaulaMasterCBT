@@ -371,6 +371,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     if (patch.tagComplet  !== undefined) rowPatch.tag_complet  = patch.tagComplet;
     if (patch.codiInstallacio  !== undefined) rowPatch.codi_installacio  = patch.codiInstallacio;
     if (patch.descripcioEquip  !== undefined) rowPatch.descripcio_equip = patch.descripcioEquip;
+    if (patch.equipId     !== undefined) rowPatch.equip_id     = patch.equipId;
 
     await supa(token, "PATCH", `projecte_tags?id=eq.${tagId}`, rowPatch, { "Prefer": "return=minimal" });
     setProjectes(prev => prev.map(p =>
