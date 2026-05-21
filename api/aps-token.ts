@@ -68,7 +68,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       body: new URLSearchParams({
         grant_type:    "refresh_token",
         refresh_token: row.refresh_token,
-        scope:         "data:read",
+        scope:         "data:read viewables:read",
       }).toString(),
     });
 

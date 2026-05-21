@@ -107,7 +107,7 @@ async function obteToken3Legged(
   const body = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: row.refresh_token,
-    scope: "data:read",
+    scope: "data:read viewables:read",
   });
 
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
