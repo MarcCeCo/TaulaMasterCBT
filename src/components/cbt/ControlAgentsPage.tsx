@@ -467,18 +467,18 @@ export function ControlAgentsPage() {
                           : <span className="text-slate-400">Sense canvis</span>}
                       </td>
                       <td className="px-5 py-3 text-slate-400 hidden lg:table-cell max-w-xs truncate">
-                        (() => {
+                        {(() => {
                           const d = log.detalls;
                           if (!d) return "—";
-                          const parts = [];
+                          const parts: string[] = [];
                           if (d.sistemesCreats?.length) parts.push(`+${d.sistemesCreats.length} sist.`);
                           if (d.sistemesEliminats?.length) parts.push(`-${d.sistemesEliminats.length} sist.`);
                           if (d.installacionsCreades?.length) parts.push(`+${d.installacionsCreades.length} inst.`);
                           if (d.installacionsActualitzades?.length) parts.push(`~${d.installacionsActualitzades.length} inst.`);
                           if (d.installacionsEliminades?.length) parts.push(`-${d.installacionsEliminades.length} inst.`);
-                          if (d.errors?.length) parts.push(`⚠️ ${d.errors.slice(0,2).join(", ")}`);
-                          return parts.length ? parts.join(" · ") : "Sense canvis";
-                        })()
+                          if (d.errors?.length) parts.push(`⚠️ ${d.errors.slice(0, 2).join(", ")}`);
+                          return parts.length ? parts.join(" · ") : "—";
+                        })()}
                       </td>
                     </tr>
                   );
