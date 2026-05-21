@@ -2,8 +2,8 @@ name: Keep Agent Alive
 
 on:
   schedule:
-    # Ping cada 10 minuts per evitar que Render adormi el servei
-    - cron: '*/10 * * * *'
+    # TEMPORAL: cada 2 minuts per activar el primer Scheduled - tornar a */10 * * * * un cop funcioni
+    - cron: '*/2 * * * *'
   workflow_dispatch: # Permet executar-lo manualment si cal
 
 jobs:
