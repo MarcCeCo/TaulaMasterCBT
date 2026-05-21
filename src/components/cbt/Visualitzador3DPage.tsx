@@ -387,8 +387,13 @@ function useApsViewer(
       if (!mountedRef.current) return;
 
       setEstat("carregant-token");
-      const tokenUrl = agentUrl ? `${agentUrl}/api/aps-token` : "/api/aps-token";
-      const tokenResp = await fetch(tokenUrl);
+      // Sempre usa la ruta Vercel /api/aps-token (independent de l'agent extern).
+      // El viewer només necessita el token 2-legged (client_credentials), sempre disponible.
+      let tokenResp = await fetch("/api/aps-token");
+      if (!tokenResp.ok && agentUrl) {
+        // Fallback a l'agent si la ruta Vercel falla (p.ex. variables no configurades)
+        tokenResp = await fetch(`${agentUrl}/api/aps-token`);
+      }
       if (!tokenResp.ok) throw new Error(`Error obtenint token APS: ${tokenResp.status}`);
       const { access_token, expires_in } = await tokenResp.json() as {
         access_token: string; expires_in: number;
