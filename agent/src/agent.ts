@@ -559,35 +559,57 @@ export async function executaAgent(): Promise<ResultatSync> {
     realtime: { transport: WebSocket as any },
   });
 
-  const token = await obteToken3Legged(supabase, apsClientId, apsClientSecret);
-  const sistemesTrobats = await extrauSistemes(apsHubId, apsProjectId, token);
+  // Resultat buit per si l'agent falla abans d'arribar a sincronitzaSupabase
+  let resultat: ResultatSync = {
+    sistemesCreats: [],
+    sistemesActualitzats: [],
+    sistemesEliminats: [],
+    installacionsCreades: [],
+    installacionsActualitzades: [],
+    installacionsEliminades: [],
+    installacionsSenseCanvis: [],
+    codisDuplicats: [],
+    errors: [],
+  };
 
-  console.log(`\n📊 Resum extracció de Fusion:`);
-  console.log(`  Sistemes: ${sistemesTrobats.length}`);
-  sistemesTrobats.forEach((s) =>
-    console.log(`  - ${s.nom}: ${s.installacions.length} instal·lació${s.installacions.length !== 1 ? "ns" : ""}`)
-  );
+  try {
+    const token = await obteToken3Legged(supabase, apsClientId, apsClientSecret);
+    const sistemesTrobats = await extrauSistemes(apsHubId, apsProjectId, token);
 
-  const resultat = await sincronitzaSupabase(supabase, sistemesTrobats);
+    console.log(`\n📊 Resum extracció de Fusion:`);
+    console.log(`  Sistemes: ${sistemesTrobats.length}`);
+    sistemesTrobats.forEach((s) =>
+      console.log(`  - ${s.nom}: ${s.installacions.length} instal·lació${s.installacions.length !== 1 ? "ns" : ""}`)
+    );
 
-  console.log("\n✅ Sincronització completada:");
-  console.log(`  ➕ Sistemes creats:             ${resultat.sistemesCreats.length}`);
-  console.log(`  ♻️  Sistemes actualitzats:        ${resultat.sistemesActualitzats.length}`);
-  console.log(`  🗑️  Sistemes eliminats:           ${resultat.sistemesEliminats.length}`);
-  console.log(`  ➕ Instal·lacions creades:       ${resultat.installacionsCreades.length}`);
-  console.log(`  ✏️  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
-  console.log(`  🗑️  Instal·lacions eliminades:    ${resultat.installacionsEliminades.length}`);
-  console.log(`  ─  Sense canvis:                ${resultat.installacionsSenseCanvis.length}`);
-  if (resultat.codisDuplicats.length > 0) {
-    console.log(`  ⚠️  Codis duplicats: ${resultat.codisDuplicats.length}`);
-    resultat.codisDuplicats.forEach((d) => console.warn(`    - ${d}`));
+    resultat = await sincronitzaSupabase(supabase, sistemesTrobats);
+
+    console.log("\n✅ Sincronització completada:");
+    console.log(`  ➕ Sistemes creats:             ${resultat.sistemesCreats.length}`);
+    console.log(`  ♻️  Sistemes actualitzats:        ${resultat.sistemesActualitzats.length}`);
+    console.log(`  🗑️  Sistemes eliminats:           ${resultat.sistemesEliminats.length}`);
+    console.log(`  ➕ Instal·lacions creades:       ${resultat.installacionsCreades.length}`);
+    console.log(`  ✏️  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
+    console.log(`  🗑️  Instal·lacions eliminades:    ${resultat.installacionsEliminades.length}`);
+    console.log(`  ─  Sense canvis:                ${resultat.installacionsSenseCanvis.length}`);
+    if (resultat.codisDuplicats.length > 0) {
+      console.log(`  ⚠️  Codis duplicats: ${resultat.codisDuplicats.length}`);
+      resultat.codisDuplicats.forEach((d) => console.warn(`    - ${d}`));
+    }
+    if (resultat.errors.length > 0) {
+      console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
+      resultat.errors.forEach((e) => console.error(`    - ${e}`));
+    }
+  } catch (errFatal) {
+    // Error fatal (token, APS, Supabase estructural…) — el capturem i el
+    // guardem al resultat perquè quedi registrat al log de Supabase igualment.
+    const msg = errFatal instanceof Error ? errFatal.message : String(errFatal);
+    console.error("❌ Error fatal a l'agent:", msg);
+    resultat.errors.push(`[FATAL] ${msg}`);
   }
-  if (resultat.errors.length > 0) {
-    console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
-    resultat.errors.forEach((e) => console.error(`    - ${e}`));
-  }
 
-  await supabase.from("visor3d_sync_log").insert({
+  // ── Sempre guardem el log a Supabase, tant si ha anat bé com si ha fallat ──
+  const { error: logError } = await supabase.from("visor3d_sync_log").insert({
     executat_a: new Date().toISOString(),
     sistemes_creats: resultat.sistemesCreats.length,
     sistemes_actualitzats: resultat.sistemesActualitzats.length,
@@ -599,7 +621,13 @@ export async function executaAgent(): Promise<ResultatSync> {
     errors: resultat.errors.length,
     detalls: resultat,
   });
-  // Avís final si hi ha codis compartits entre instal·lacions distintes
+
+  if (logError) {
+    console.error("❌ Error guardant el log a Supabase:", logError.message);
+  } else {
+    console.log("📝 Log guardat a visor3d_sync_log correctament.");
+  }
+
   if (resultat.codisDuplicats.length > 0) {
     console.warn(`\n⚠️  Hi ha ${resultat.codisDuplicats.length} codi(s) compartit(s) entre instal·lacions distintes — revisa els fitxers a Autodesk:`);
     resultat.codisDuplicats.forEach(d => console.warn(`   · ${d}`));
