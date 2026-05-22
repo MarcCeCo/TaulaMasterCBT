@@ -399,8 +399,8 @@ async function sincronitzaSupabase(
       let sistemaId: string;
 
       if (sistemaPerNom.has(clauNom)) {
+        // Ja existeix — no compta com a canvi
         sistemaId = sistemaPerNom.get(clauNom)!.id;
-        resultat.sistemesActualitzats.push(sistema.nom);
         
       } else {
         const maxOrdre = Math.max(0, ...(sistemesSupabase ?? []).map((s: any) => s.ordre ?? 0));
@@ -439,23 +439,27 @@ async function sincronitzaSupabase(
             console.log(`  ➕ Nova: ${inst.codi} - ${inst.nom}`);
 
           } else {
-            // Ja existeix (codi+nom coincideixen): actualitzem URN i metadades.
-            // Això cobreix el cas de fitxer .rvt renovat a Fusion (nou versionId → nou URN).
-            const urnCanviat = existent.urn !== inst.urn;
-            await supabase.from("visor3d_installacions")
-              .update({
-                nom: inst.nom,
-                embed_url: inst.embedUrl,
-                urn: inst.urn,
-                sistema_id: sistemaId,
-                updated_at: inst.lastModifiedTime,
-              })
-              .eq("id", existent.id);
-            resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
-            if (urnCanviat) {
-              console.log(`  ✏️  Actualitzat (URN renovat): ${inst.codi} - ${inst.nom}`);
+            // Ja existeix: comprovem si hi ha canvis reals
+            const urnCanviat      = existent.urn !== inst.urn;
+            const embedCanviat    = existent.embed_url !== inst.embedUrl;
+            const sistemaCanviat  = existent.sistema_id !== sistemaId;
+
+            if (urnCanviat || embedCanviat || sistemaCanviat) {
+              await supabase.from("visor3d_installacions")
+                .update({
+                  nom: inst.nom,
+                  embed_url: inst.embedUrl,
+                  urn: inst.urn,
+                  sistema_id: sistemaId,
+                  updated_at: inst.lastModifiedTime,
+                })
+                .eq("id", existent.id);
+              resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
+              console.log(`  ✏️  Actualitzat: ${inst.codi} - ${inst.nom}${urnCanviat ? " (URN nou)" : ""}`);
             } else {
-              console.log(`  ✏️  Actualitzat (sense canvis d'URN): ${inst.codi} - ${inst.nom}`);
+              // Sense canvis reals
+              resultat.installacionsSenseCanvis.push(`${inst.codi} - ${inst.nom}`);
+              console.log(`  ─  Sense canvis: ${inst.codi} - ${inst.nom}`);
             }
           }
         } catch (err) {

@@ -72,7 +72,7 @@ const AGENTS_CONFIG: AgentConfig[] = [
   {
     id: "visor3d",
     nom: "Agent Visor 3D",
-    descripcio: "Sincronitza models Revit d'Autodesk Construction Cloud amb la base de dades",
+    descripcio: "Sincronitza models Revit d'Autodesk Fusion Teams amb la base de dades",
     cronSchedule: "0 6 1 * *",
     logTable: "visor3d_sync_log",
     syncEndpoint: "/sync",
@@ -201,7 +201,10 @@ function AgentListItem({ agent, lastLog, selected, onClick }: AgentListItemProps
         <p className={`text-[13px] font-semibold truncate ${selected ? "text-[#006E7A]" : "text-slate-700"}`}>
           {agent.nom}
         </p>
-        <p className="text-[11px] text-slate-400 mt-0.5">
+        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug line-clamp-2 whitespace-normal">
+          {agent.descripcio}
+        </p>
+        <p className="text-[10px] text-slate-400 mt-1">
           {lastLog ? timeAgo(lastLog.executat_a) : "Sense execucions"}
         </p>
       </div>
@@ -435,11 +438,12 @@ function AgentDetail({
 
                   const d = log.detalls;
                   const parts: string[] = [];
-                  if (d?.sistemesCreats?.length)            parts.push(`+${d.sistemesCreats.length} sist.`);
-                  if (d?.sistemesEliminats?.length)          parts.push(`-${d.sistemesEliminats.length} sist.`);
-                  if (d?.installacionsCreades?.length)       parts.push(`+${d.installacionsCreades.length} inst.`);
-                  if (d?.installacionsActualitzades?.length) parts.push(`~${d.installacionsActualitzades.length} inst.`);
-                  if (d?.installacionsEliminades?.length)    parts.push(`-${d.installacionsEliminades.length} inst.`);
+                  if (d?.sistemesCreats?.length)            parts.push(`✚ ${d.sistemesCreats.length} sist. nous`);
+                  if (d?.sistemesActualitzats?.length)      parts.push(`↻ ${d.sistemesActualitzats.length} sist.`);
+                  if (d?.sistemesEliminats?.length)          parts.push(`✕ ${d.sistemesEliminats.length} sist. elim.`);
+                  if (d?.installacionsCreades?.length)       parts.push(`✚ ${d.installacionsCreades.length} inst. noves`);
+                  if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst.`);
+                  if (d?.installacionsEliminades?.length)    parts.push(`✕ ${d.installacionsEliminades.length} inst. elim.`);
                   const resumDetalls = parts.length ? parts.join(" · ") : "Sense canvis";
 
                   return (
