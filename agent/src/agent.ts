@@ -181,6 +181,20 @@ async function _renovaToken(
 
 // ─── APS Data Management API ──────────────────────────────────────────────────
 
+// Obté el versionId del "tip" (versió actual) d'un item.
+// Fusion Teams indexa els derivats per versionId (fs.file), no per lineage (dm.lineage).
+async function obteTipVersionId(projectId: string, itemId: string, token: string): Promise<string | null> {
+  try {
+    const url = `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/tip`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) return null;
+    const data = await resp.json() as any;
+    return data?.data?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function llistaContingutCarpeta(projectId: string, carpetaId: string, token: string): Promise<any[]> {
   const resp = await fetch(
     `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents`,
@@ -283,9 +297,11 @@ async function extrauSistemes(
 
       const itemId: string = fitxer.id ?? "";
 
-      // El Viewer SDK necessita l'URN del lineage (dm.lineage), que és l'itemId.
-      // NO usar tipVersionId (fs.file) — el Model Derivative API no l'accepta com a URN de document.
-      const urn = Buffer.from(itemId).toString("base64url");
+      // Fusion Teams genera derivats per versionId (fs.file), no per lineage (dm.lineage).
+      // Obtenim el tipVersionId i l'usem com a base de l'URN pel Viewer SDK.
+      const tipVersionId = await obteTipVersionId(projectId, itemId, token);
+      const urnBase = tipVersionId ?? itemId;
+      const urn = Buffer.from(urnBase).toString("base64url");
       const embedUrl = construeixEmbedUrlFallback(urn);
 
       const lastModifiedTime: string =
@@ -295,7 +311,11 @@ async function extrauSistemes(
 
       installacions.push({ ...parsed, embedUrl, urn, lastModifiedTime });
 
-      console.log(`  ✅ ${parsed.codi} · ${parsed.nom}`);
+      if (tipVersionId) {
+        console.log(`  ✅ ${parsed.codi} · ${parsed.nom}`);
+      } else {
+        console.warn(`  ⚠️  ${parsed.codi} · ${parsed.nom} — no s'ha pogut obtenir la versió, pot no funcionar al Viewer`);
+      }
     }
 
     // Afegim els duplicats al sistema perquè sincronitzaSupabase els pugui reportar
