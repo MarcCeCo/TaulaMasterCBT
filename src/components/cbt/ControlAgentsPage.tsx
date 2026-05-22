@@ -157,7 +157,7 @@ function timeAgo(iso: string): string {
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days  = Math.floor(hours / 24);
-  if (days > 0)  return `fa ${days} dia${days > 1 ? "s" : ""}`;
+  if (days > 0)  return `fa ${days} ${days > 1 ? "dies" : "dia"}`;
   if (hours > 0) return `fa ${hours}h`;
   if (mins > 0)  return `fa ${mins} min`;
   return "ara mateix";
@@ -169,7 +169,7 @@ function timeUntil(date: Date): string {
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days  = Math.floor(hours / 24);
-  if (days > 0)  return `d'aquí ${days} dia${days > 1 ? "s" : ""}`;
+  if (days > 0)  return `d'aquí ${days} ${days > 1 ? "dies" : "dia"}`;
   if (hours > 0) return `d'aquí ${hours}h ${mins % 60}min`;
   return `d'aquí ${mins} min`;
 }
