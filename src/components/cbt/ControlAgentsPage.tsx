@@ -103,11 +103,10 @@ function cronToText(schedule: string): string {
     const d = parseInt(dom);
     const h = parseInt(hour);
     const m = parseInt(min);
-    const suffix = d === 1 ? "er" : "è";
-    return `El dia ${d}${suffix} de cada mes a les ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}h`;
+    return `El dia ${d} de cada mes a les ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")} UTC`;
   }
   if (dom === "*" && dow === "*") {
-    return `Cada dia a les ${hour}:${String(min).padStart(2, "0")}h`;
+    return `Cada dia a les ${String(parseInt(hour)).padStart(2, "0")}:${String(parseInt(min)).padStart(2, "0")} UTC`;
   }
   return schedule;
 }
@@ -120,19 +119,27 @@ function nextCronDate(schedule: string): Date | null {
     const min  = parseInt(minS);
     const hour = parseInt(hourS);
     const dom  = parseInt(domS);
-    const now  = new Date();
-    const candidate = new Date(now);
-    if (!isNaN(dom)) {
-      candidate.setDate(dom);
-      candidate.setHours(hour, min, 0, 0);
-      if (candidate <= now) {
-        candidate.setMonth(candidate.getMonth() + 1);
-        candidate.setDate(dom);
-        candidate.setHours(hour, min, 0, 0);
+
+    // Treballem sempre en UTC per reflectir l'hora real del cron
+    const now = new Date();
+    const candidate = new Date(Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      isNaN(dom) ? now.getUTCDate() : dom,
+      hour,
+      min,
+      0,
+      0,
+    ));
+
+    if (candidate <= now) {
+      if (!isNaN(dom)) {
+        // Avancem un mes i tornem a posar el dia correcte
+        candidate.setUTCMonth(candidate.getUTCMonth() + 1);
+        candidate.setUTCDate(dom);
+      } else {
+        candidate.setUTCDate(candidate.getUTCDate() + 1);
       }
-    } else {
-      candidate.setHours(hour, min, 0, 0);
-      if (candidate <= now) candidate.setDate(candidate.getDate() + 1);
     }
     return candidate;
   } catch { return null; }
@@ -150,7 +157,7 @@ function timeAgo(iso: string): string {
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days  = Math.floor(hours / 24);
-  if (days > 0)  return `fa ${days} dia${days > 1 ? "s" : ""}`;
+  if (days > 0)  return `fa ${days} dia${days > 1 ? "es" : ""}`;
   if (hours > 0) return `fa ${hours}h`;
   if (mins > 0)  return `fa ${mins} min`;
   return "ara mateix";
@@ -162,7 +169,7 @@ function timeUntil(date: Date): string {
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days  = Math.floor(hours / 24);
-  if (days > 0)  return `d'aquí ${days} dia${days > 1 ? "s" : ""}`;
+  if (days > 0)  return `d'aquí ${days} dia${days > 1 ? "es" : ""}`;
   if (hours > 0) return `d'aquí ${hours}h ${mins % 60}min`;
   return `d'aquí ${mins} min`;
 }
@@ -438,11 +445,11 @@ function AgentDetail({
 
                   const d = log.detalls;
                   const parts: string[] = [];
-                  if (d?.sistemesCreats?.length)            parts.push(`✚ ${d.sistemesCreats.length} sist. nous`);
-                  if (d?.sistemesEliminats?.length)          parts.push(`✕ ${d.sistemesEliminats.length} sist. elim.`);
+                  if (d?.sistemesCreats?.length)            parts.push(`✚ ${d.sistemesCreats.length} sistemes nous`);
+                  if (d?.sistemesEliminats?.length)          parts.push(`✕ ${d.sistemesEliminats.length} sistemes eliminats`);
                   if (d?.installacionsCreades?.length)       parts.push(`✚ ${d.installacionsCreades.length} inst. noves`);
-                  if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst. actualitz.`);
-                  if (d?.installacionsEliminades?.length)    parts.push(`✕ ${d.installacionsEliminades.length} inst. elim.`);
+                  if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst. actualitzades`);
+                  if (d?.installacionsEliminades?.length)    parts.push(`✕ ${d.installacionsEliminades.length} inst. eliminades`);
                   if (d?.installacionsSenseCanvis?.length)   parts.push(`✓ ${d.installacionsSenseCanvis.length} comprovades`);
                   const resumDetalls = parts.length ? parts.join(" · ") : "Sense canvis";
 
