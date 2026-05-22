@@ -428,10 +428,20 @@ function useApsViewer(
             if (!mountedRef.current) { rej(new Error("_desmontat_")); return; }
             docRef.current = doc;
 
-            // Recull totes les vistes publicades (3D i 2D)
+            // Recull totes les vistes publicades (3D i 2D).
+            // Fusion Teams pot publicar geometries com a tipus "geometry" o "lmvdoc".
+            // Provem múltiples estratègies per trobar nodes carregables.
             const root = doc.getRoot();
+
             const nodes3d: any[] = root.search({ type: "geometry", role: "3d" }) ?? [];
             const nodes2d: any[] = root.search({ type: "geometry", role: "2d" }) ?? [];
+
+            // Fallback 1: Fusion Teams de vegades usa "lmvdoc" com a tipus de geometry
+            const nodesLmv: any[] = (nodes3d.length === 0 && nodes2d.length === 0)
+              ? (root.search({ type: "resource", role: "graphics" }) ?? [])
+              : [];
+
+            console.log(`[Viewer] Nodes trobats — 3D: ${nodes3d.length}, 2D: ${nodes2d.length}, lmv/graphics: ${nodesLmv.length}`);
 
             const toVista = (role: "3d" | "2d") => (node: any, i: number): VistaModel => ({
               node,
@@ -439,14 +449,38 @@ function useApsViewer(
               rol: role,
               index: i,
             });
+            const toVistaLmv = (node: any, i: number): VistaModel => ({
+              node,
+              nom: node.name() || node.guid() || `Vista ${i + 1}`,
+              rol: "3d",
+              index: i,
+            });
 
             const totes: VistaModel[] = [
               ...nodes3d.map(toVista("3d")),
               ...nodes2d.map(toVista("2d")),
+              ...nodesLmv.map(toVistaLmv),
             ];
 
-            // Carrega la primera vista disponible (getDefaultGeometry com a fallback)
-            const primerNode = totes[0]?.node ?? root.getDefaultGeometry();
+            // Fallback 2: getDefaultGeometry amb el flag 'true' per incloure sheets 2D
+            // Fallback 3: primer fill del root (per manifests de Fusion amb estructura plana)
+            const primerNode: any =
+              totes[0]?.node
+              ?? root.getDefaultGeometry(true)
+              ?? root.getDefaultGeometry()
+              ?? (() => {
+                const fills = root.search({}) ?? [];
+                return fills.find((n: any) => n !== root) ?? null;
+              })();
+
+            if (!primerNode) {
+              console.error(`[Viewer] Cap node carregable trobat. URN: ${urnB64}`);
+              rej(new Error("El model no té geometries disponibles. Pot ser que la traducció APS no s'hagi completat, hagi fallat, o el manifest no contingui vistes 3D/2D."));
+              return;
+            }
+
+            console.log(`[Viewer] Carregant node: ${primerNode.name?.() ?? primerNode.guid?.() ?? "sense nom"}`);
+
             viewer.loadDocumentNode(doc, primerNode);
 
             setVistes(totes);
