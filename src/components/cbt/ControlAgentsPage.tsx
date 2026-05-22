@@ -73,7 +73,7 @@ const AGENTS_CONFIG: AgentConfig[] = [
     id: "visor3d",
     nom: "Agent Visor 3D",
     descripcio: "Sincronitza models Revit d'Autodesk Construction Cloud amb la base de dades",
-    cronSchedule: "0 2 1 * *",
+    cronSchedule: "0 6 1 * *",
     logTable: "visor3d_sync_log",
     syncEndpoint: "/sync",
     tokenTable: "aps_tokens",
@@ -270,7 +270,7 @@ function AgentDetail({
             <>
               <p className="text-[15px] font-bold text-slate-800 leading-tight">{formatDate(lastLog.executat_a)}</p>
               <p className="text-[12px] text-slate-400 mt-1">{timeAgo(lastLog.executat_a)}</p>
-              <div className="mt-2">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {!(lastLog.errors) ? (
                   <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Correcte
@@ -278,6 +278,11 @@ function AgentDetail({
                 ) : (
                   <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
                     <XCircle className="h-3 w-3" /> {lastLog.errors} errors
+                  </Badge>
+                )}
+                {(lastLog.detalls?.codisDuplicats?.length ?? 0) > 0 && (
+                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] gap-1">
+                    <AlertTriangle className="h-3 w-3" /> {lastLog.detalls!.codisDuplicats!.length} codis duplicats
                   </Badge>
                 )}
               </div>
@@ -427,15 +432,22 @@ function AgentDetail({
                         <span className="ml-2 text-slate-400 font-normal">{timeAgo(log.executat_a)}</span>
                       </td>
                       <td className="px-5 py-3">
-                        {isOk ? (
-                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
-                            <CheckCircle2 className="h-3 w-3" /> OK
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
-                            <XCircle className="h-3 w-3" /> {log.errors} errors
-                          </Badge>
-                        )}
+                        <div className="flex flex-wrap gap-1">
+                          {isOk ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> OK
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
+                              <XCircle className="h-3 w-3" /> {log.errors} errors
+                            </Badge>
+                          )}
+                          {(log.detalls?.codisDuplicats?.length ?? 0) > 0 && (
+                            <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] gap-1">
+                              <AlertTriangle className="h-3 w-3" /> {log.detalls!.codisDuplicats!.length} duplicats
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-slate-500 hidden md:table-cell">
                         {totalCanvis > 0
@@ -452,9 +464,18 @@ function AgentDetail({
                           if (d.installacionsCreades?.length)       parts.push(`+${d.installacionsCreades.length} inst.`);
                           if (d.installacionsActualitzades?.length) parts.push(`~${d.installacionsActualitzades.length} inst.`);
                           if (d.installacionsEliminades?.length)    parts.push(`-${d.installacionsEliminades.length} inst.`);
-                          if (d.codisDuplicats?.length)             parts.push(`⚠️ Duplicats: ${d.codisDuplicats.join(", ")}`);
-                          if (d.errors?.length)                     parts.push(`❌ ${d.errors.slice(0, 2).join(", ")}`);
-                          return parts.length ? parts.join(" · ") : "—";
+                          const resum = parts.length ? parts.join(" · ") : "Sense canvis";
+                          return (
+                            <span>
+                              {resum}
+                              {d.codisDuplicats?.length ? (
+                                <span className="ml-2 text-amber-600">⚠ {d.codisDuplicats.join(", ")}</span>
+                              ) : null}
+                              {d.errors?.length ? (
+                                <span className="ml-2 text-red-500">❌ {d.errors.slice(0, 2).join(", ")}</span>
+                              ) : null}
+                            </span>
+                          );
                         })()}
                       </td>
                     </tr>
