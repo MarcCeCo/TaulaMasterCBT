@@ -422,8 +422,9 @@ function AgentDetail({
           ) : logs.length === 0 ? (
             <div className="p-10 text-center text-slate-400 text-[13px]">Sense registres d'execució</div>
           ) : (
+            <div className="overflow-y-auto max-h-[420px]">
             <table className="w-full text-[12.5px]">
-              <thead>
+              <thead className="sticky top-0 bg-white z-10 shadow-[0_1px_0_0_#f1f5f9]">
                 <tr className="border-b border-slate-100">
                   <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Data</th>
                   <th className="text-left px-5 py-3 text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Estat</th>
@@ -522,6 +523,7 @@ function AgentDetail({
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </Card>
       </div>
