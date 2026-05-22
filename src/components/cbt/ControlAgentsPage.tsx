@@ -43,6 +43,7 @@ interface SyncLog {
     installacionsCreades?: string[];
     installacionsActualitzades?: string[];
     installacionsEliminades?: string[];
+    codisDuplicats?: string[];
     errors?: string[];
   };
 }
@@ -446,12 +447,13 @@ function AgentDetail({
                           const d = log.detalls;
                           if (!d) return "—";
                           const parts: string[] = [];
-                          if (d.sistemesCreats?.length)          parts.push(`+${d.sistemesCreats.length} sist.`);
-                          if (d.sistemesEliminats?.length)        parts.push(`-${d.sistemesEliminats.length} sist.`);
-                          if (d.installacionsCreades?.length)     parts.push(`+${d.installacionsCreades.length} inst.`);
+                          if (d.sistemesCreats?.length)            parts.push(`+${d.sistemesCreats.length} sist.`);
+                          if (d.sistemesEliminats?.length)          parts.push(`-${d.sistemesEliminats.length} sist.`);
+                          if (d.installacionsCreades?.length)       parts.push(`+${d.installacionsCreades.length} inst.`);
                           if (d.installacionsActualitzades?.length) parts.push(`~${d.installacionsActualitzades.length} inst.`);
-                          if (d.installacionsEliminades?.length)  parts.push(`-${d.installacionsEliminades.length} inst.`);
-                          if (d.errors?.length)                   parts.push(`⚠️ ${d.errors.slice(0, 2).join(", ")}`);
+                          if (d.installacionsEliminades?.length)    parts.push(`-${d.installacionsEliminades.length} inst.`);
+                          if (d.codisDuplicats?.length)             parts.push(`⚠️ Duplicats: ${d.codisDuplicats.join(", ")}`);
+                          if (d.errors?.length)                     parts.push(`❌ ${d.errors.slice(0, 2).join(", ")}`);
                           return parts.length ? parts.join(" · ") : "—";
                         })()}
                       </td>
