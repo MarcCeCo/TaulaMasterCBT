@@ -4,7 +4,7 @@
 // Afegir un nou agent = afegir una entrada a AGENTS_CONFIG.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import { supaFetch as supa } from "@/lib/supaFetch";
 import { useAuth } from "@/lib/auth";
@@ -221,13 +221,14 @@ interface AgentDetailProps {
   token: ApsToken | null;
   loading: boolean;
   triggering: boolean;
+  polling: boolean;
   triggerMsg: { ok: boolean; text: string } | null;
   onTrigger: () => void;
   onRefresh: () => void;
 }
 
 function AgentDetail({
-  agent, logs, token, loading, triggering, triggerMsg, onTrigger, onRefresh,
+  agent, logs, token, loading, triggering, polling, triggerMsg, onTrigger, onRefresh,
 }: AgentDetailProps) {
   const agentUrl = (import.meta.env as any)[agent.agentUrlEnv] as string | undefined;
   const lastLog  = logs[0] ?? null;
@@ -369,11 +370,18 @@ function AgentDetail({
             size="sm"
             className="gap-1.5 bg-[#0099A8] hover:bg-[#007A87] text-white border-0"
             onClick={onTrigger}
-            disabled={triggering || !agentUrl}
+            disabled={triggering || polling || !agentUrl}
           >
-            <Zap className={`h-3.5 w-3.5 ${triggering ? "animate-pulse" : ""}`} />
-            {triggering ? "Iniciant..." : "Executa ara"}
+            <Zap className={`h-3.5 w-3.5 ${triggering || polling ? "animate-pulse" : ""}`} />
+            {triggering ? "Iniciant..." : polling ? "Executant…" : "Executa ara"}
           </Button>
+        </div>
+        {polling && (
+          <div className="mt-3 flex items-center gap-2 text-[12px] px-3 py-2 rounded-lg bg-blue-50 text-blue-700">
+            <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
+            Sincronització en curs — actualitzant cada 8 s fins que finalitzi…
+          </div>
+        )}
         </div>
         {!agentUrl && (
           <p className="mt-3 text-[11px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
@@ -417,68 +425,81 @@ function AgentDetail({
               <tbody>
                 {logs.map((log, i) => {
                   const isOk = !log.errors;
+                  // FIX: inclou installacions_actualitzades (abans faltava)
                   const totalCanvis =
-                    (log.sistemes_creats ?? 0) +
-                    (log.sistemes_actualitzats ?? 0) +
-                    (log.sistemes_eliminats ?? 0) +
-                    (log.installacions_creades ?? 0) +
+                    (log.sistemes_creats          ?? 0) +
+                    (log.sistemes_actualitzats    ?? 0) +
+                    (log.sistemes_eliminats       ?? 0) +
+                    (log.installacions_creades    ?? 0) +
                     (log.installacions_actualitzades ?? 0) +
                     (log.installacions_eliminades ?? 0);
+
+                  const d = log.detalls;
+                  const parts: string[] = [];
+                  if (d?.sistemesCreats?.length)            parts.push(`+${d.sistemesCreats.length} sist.`);
+                  if (d?.sistemesEliminats?.length)          parts.push(`-${d.sistemesEliminats.length} sist.`);
+                  if (d?.installacionsCreades?.length)       parts.push(`+${d.installacionsCreades.length} inst.`);
+                  if (d?.installacionsActualitzades?.length) parts.push(`~${d.installacionsActualitzades.length} inst.`);
+                  if (d?.installacionsEliminades?.length)    parts.push(`-${d.installacionsEliminades.length} inst.`);
+                  const resumDetalls = parts.length ? parts.join(" · ") : "Sense canvis";
+
                   return (
-                    <tr key={log.id}
-                      className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i === 0 ? "bg-slate-50/40" : ""}`}>
-                      <td className="px-5 py-3 font-medium text-slate-700 whitespace-nowrap">
-                        {formatDate(log.executat_a)}
-                        <span className="ml-2 text-slate-400 font-normal">{timeAgo(log.executat_a)}</span>
-                      </td>
-                      <td className="px-5 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {isOk ? (
-                            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
-                              <CheckCircle2 className="h-3 w-3" /> OK
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
-                              <XCircle className="h-3 w-3" /> {log.errors} errors
-                            </Badge>
-                          )}
-                          {(log.detalls?.codisDuplicats?.length ?? 0) > 0 && (
-                            <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] gap-1">
-                              <AlertTriangle className="h-3 w-3" /> {log.detalls!.codisDuplicats!.length} duplicats
-                            </Badge>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-5 py-3 text-slate-500 hidden md:table-cell">
-                        {totalCanvis > 0
-                          ? <span className="font-medium text-slate-700">{totalCanvis} canvis</span>
-                          : <span className="text-slate-400">Sense canvis</span>}
-                      </td>
-                      <td className="px-5 py-3 text-slate-400 hidden lg:table-cell max-w-xs truncate">
-                        {(() => {
-                          const d = log.detalls;
-                          if (!d) return "—";
-                          const parts: string[] = [];
-                          if (d.sistemesCreats?.length)            parts.push(`+${d.sistemesCreats.length} sist.`);
-                          if (d.sistemesEliminats?.length)          parts.push(`-${d.sistemesEliminats.length} sist.`);
-                          if (d.installacionsCreades?.length)       parts.push(`+${d.installacionsCreades.length} inst.`);
-                          if (d.installacionsActualitzades?.length) parts.push(`~${d.installacionsActualitzades.length} inst.`);
-                          if (d.installacionsEliminades?.length)    parts.push(`-${d.installacionsEliminades.length} inst.`);
-                          const resum = parts.length ? parts.join(" · ") : "Sense canvis";
-                          return (
-                            <span>
-                              {resum}
-                              {d.codisDuplicats?.length ? (
-                                <span className="ml-2 text-amber-600">⚠ {d.codisDuplicats.join(", ")}</span>
-                              ) : null}
-                              {d.errors?.length ? (
-                                <span className="ml-2 text-red-500">❌ {d.errors.slice(0, 2).join(", ")}</span>
-                              ) : null}
+                    <Fragment key={log.id}>
+                      <tr className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i === 0 ? "bg-slate-50/40" : ""}`}>
+                        <td className="px-5 py-3 font-medium text-slate-700 whitespace-nowrap">
+                          {formatDate(log.executat_a)}
+                          <span className="ml-2 text-slate-400 font-normal">{timeAgo(log.executat_a)}</span>
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {isOk ? (
+                              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                                <CheckCircle2 className="h-3 w-3" /> OK
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px] gap-1">
+                                <XCircle className="h-3 w-3" /> {log.errors} errors
+                              </Badge>
+                            )}
+                            {(d?.codisDuplicats?.length ?? 0) > 0 && (
+                              <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] gap-1">
+                                <AlertTriangle className="h-3 w-3" /> {d!.codisDuplicats!.length} duplicats
+                              </Badge>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-5 py-3 text-slate-500 hidden md:table-cell">
+                          {totalCanvis > 0
+                            ? <span className="font-medium text-slate-700">{totalCanvis} canvis</span>
+                            : <span className="text-slate-400">Sense canvis</span>}
+                        </td>
+                        <td className="px-5 py-3 text-slate-400 hidden lg:table-cell">
+                          <span className="text-slate-500">{resumDetalls}</span>
+                          {(d?.codisDuplicats?.length ?? 0) > 0 && (
+                            <span className="ml-2 text-amber-600 text-[11px]">
+                              ⚠ {d!.codisDuplicats!.join(", ")}
                             </span>
-                          );
-                        })()}
-                      </td>
-                    </tr>
+                          )}
+                        </td>
+                      </tr>
+                      {/* Fila expandida d'errors — visible sempre que n'hi hagi */}
+                      {(d?.errors?.length ?? 0) > 0 && (
+                        <tr className="border-b border-red-50 bg-red-50/40">
+                          <td colSpan={4} className="px-5 py-2">
+                            <p className="text-[10.5px] font-semibold text-red-500 uppercase tracking-widest mb-1">
+                              Detall d'errors
+                            </p>
+                            <ul className="space-y-0.5">
+                              {d!.errors!.map((e, ei) => (
+                                <li key={ei} className="text-[11.5px] text-red-700 font-mono break-all leading-snug">
+                                  ❌ {e}
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -504,6 +525,9 @@ export function ControlAgentsPage() {
 
   const loadingRef     = useRef(false);
   const needsReloadRef = useRef(false);
+  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const [polling, setPolling] = useState(false);
 
   const selectedAgent = AGENTS_CONFIG.find(a => a.id === selectedAgentId) ?? AGENTS_CONFIG[0];
 
@@ -600,6 +624,8 @@ export function ControlAgentsPage() {
     return () => {
       subscription.unsubscribe();
       document.removeEventListener("visibilitychange", handleVisibility);
+      if (pollRef.current)        clearInterval(pollRef.current);
+      if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
     };
   }, [fetchAll]);
 
@@ -620,8 +646,46 @@ export function ControlAgentsPage() {
       if (agentSecret) headers["Authorization"] = `Bearer ${agentSecret}`;
       const res = await fetch(`${agentUrl}${selectedAgent.syncEndpoint}`, { method: "POST", headers });
       if (res.ok) {
-        setTriggerMsg({ ok: true, text: "Agent iniciat correctament. Revisa els logs en uns moments." });
-        setTimeout(fetchAll, 4000);
+        setTriggerMsg({ ok: true, text: "Agent iniciat. Esperant el resultat (pot trigar uns minuts)…" });
+
+        // Guardem l'id del darrer log conegut per detectar quan n'arriba un de nou
+        const lastKnownId = (logsPerAgent[selectedAgent.id] ?? [])[0]?.id ?? 0;
+
+        // Neteja qualsevol polling anterior
+        if (pollRef.current)        clearInterval(pollRef.current);
+        if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
+
+        setPolling(true);
+
+        const stopPolling = () => {
+          if (pollRef.current)        { clearInterval(pollRef.current);  pollRef.current = null; }
+          if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
+          setPolling(false);
+        };
+
+        pollRef.current = setInterval(async () => {
+          await fetchAll();
+          setLogsPerAgent(prev => {
+            const newest = (prev[selectedAgent.id] ?? [])[0];
+            if (newest && newest.id !== lastKnownId) {
+              stopPolling();
+              // Actualitza el missatge amb el resultat real
+              setTriggerMsg(
+                newest.errors
+                  ? { ok: false, text: `Execució finalitzada amb ${newest.errors} error(s). Revisa els detalls a l'historial.` }
+                  : { ok: true,  text: "Execució finalitzada correctament." }
+              );
+            }
+            return prev;
+          });
+        }, 8000); // cada 8 s
+
+        // Para el polling com a molt als 10 min (l'agent pot haver fallat silenciosament)
+        pollTimeoutRef.current = setTimeout(() => {
+          stopPolling();
+          setTriggerMsg({ ok: false, text: "Temps d'espera superat (>10 min). Comprova els logs manualment." });
+        }, 10 * 60 * 1000);
+
       } else {
         const body = await res.json().catch(() => ({}));
         setTriggerMsg({ ok: false, text: body?.error ?? `Error ${res.status}` });
@@ -678,6 +742,7 @@ export function ControlAgentsPage() {
             token={tokenPerAgent[selectedAgent.id] ?? null}
             loading={loading}
             triggering={triggering}
+            polling={polling}
             triggerMsg={triggerMsg}
             onTrigger={handleTrigger}
             onRefresh={fetchAll}
