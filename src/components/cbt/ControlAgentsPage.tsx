@@ -1,9 +1,7 @@
 // src/components/cbt/ControlAgentsPage.tsx
 // Pàgina d'administració: Control d'Agents
-// Segueix EXACTAMENT el mateix patró que useVisor3DSistemes.ts:
-//  - fetch directe a la REST API de Supabase amb Bearer token (supaFetch)
-//  - TOKEN_REFRESHED: si pàgina en segon pla, marca needsReloadRef = true
-//  - visibilitychange: quan l'usuari torna, recarrega les dades amb token fresc
+// Arquitectura multi-agent: llista a l'esquerra, detall a la dreta.
+// Afegir un nou agent = afegir una entrada a AGENTS_CONFIG.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -22,6 +20,7 @@ import {
   XCircle,
   Zap,
   AlertTriangle,
+  ChevronRight,
 } from "lucide-react";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
@@ -52,6 +51,46 @@ interface ApsToken {
   updated_at: string;
   expires_at: number;
 }
+
+// ─── Configuració d'agents ────────────────────────────────────────────────────
+// Per afegir un nou agent, afegeix una entrada aquí.
+
+interface AgentConfig {
+  id: string;
+  nom: string;
+  descripcio: string;
+  cronSchedule: string;
+  logTable: string;         // taula de Supabase amb els logs
+  syncEndpoint: string;     // path de l'endpoint POST per disparar l'agent
+  tokenTable?: string;      // opcional: taula amb el token extern (per mostrar estat)
+  agentUrlEnv: string;      // nom de la variable d'entorn VITE_ amb la URL base
+  agentSecretEnv: string;   // nom de la variable d'entorn VITE_ amb el secret
+}
+
+const AGENTS_CONFIG: AgentConfig[] = [
+  {
+    id: "visor3d",
+    nom: "Agent Visor 3D",
+    descripcio: "Sincronitza models Revit d'Autodesk Construction Cloud amb la base de dades",
+    cronSchedule: "0 2 1 * *",
+    logTable: "visor3d_sync_log",
+    syncEndpoint: "/sync",
+    tokenTable: "aps_tokens",
+    agentUrlEnv: "VITE_AGENT_URL",
+    agentSecretEnv: "VITE_AGENT_SECRET",
+  },
+  // Exemple per afegir un segon agent en el futur:
+  // {
+  //   id: "facturacio",
+  //   nom: "Agent Facturació",
+  //   descripcio: "Genera informes mensuals de facturació",
+  //   cronSchedule: "0 6 1 * *",
+  //   logTable: "facturacio_sync_log",
+  //   syncEndpoint: "/sync",
+  //   agentUrlEnv: "VITE_FACTURACIO_AGENT_URL",
+  //   agentSecretEnv: "VITE_FACTURACIO_AGENT_SECRET",
+  // },
+];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -127,154 +166,86 @@ function timeUntil(date: Date): string {
   return `d'aquí ${mins} min`;
 }
 
-// ─── Component principal ──────────────────────────────────────────────────────
+// ─── Subcomponent: llista d'agents (esquerra) ─────────────────────────────────
 
-const CRON_SCHEDULE = "0 2 1 * *";
+interface AgentListItemProps {
+  agent: AgentConfig;
+  lastLog: SyncLog | null;
+  selected: boolean;
+  onClick: () => void;
+}
 
-export function ControlAgentsPage() {
-  const { getToken, loading: authLoading, user } = useAuth();
-  const [logs, setLogs]     = useState<SyncLog[]>([]);
-  const [token, setToken]   = useState<ApsToken | null>(null);
-  const [loading, setLoading]       = useState(true);
-  const [triggering, setTriggering] = useState(false);
-  const [triggerMsg, setTriggerMsg] = useState<{ ok: boolean; text: string } | null>(null);
-
-  const loadingRef     = useRef(false);
-  const needsReloadRef = useRef(false);
-
-  const agentUrl    = import.meta.env.VITE_AGENT_URL as string | undefined;
-  const agentSecret = import.meta.env.VITE_AGENT_SECRET as string | undefined;
-
-  // ── Fetch dades (patró idèntic a useVisor3DSistemes) ──────────────────────
-
-  const fetchAll = useCallback(async () => {
-    if (loadingRef.current) return;
-    loadingRef.current = true;
-    setLoading(true);
-
-    // Token fresc — igual que dataStore i useVisor3DSistemes
-    let tok = getToken();
-    if (!tok) {
-      const { data: { session } } = await supabase.auth.getSession();
-      tok = session?.access_token ?? "";
-    }
-    if (!tok) {
-      for (let i = 0; i < 6; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        const { data: { session } } = await supabase.auth.getSession();
-        tok = session?.access_token ?? "";
-        if (tok) break;
-      }
-    }
-
-    if (!tok) {
-      setLoading(false);
-      loadingRef.current = false;
-      return;
-    }
-
-    try {
-      const [logsData, tokenData] = await Promise.all([
-        supa(tok, "GET", "visor3d_sync_log?select=*&order=executat_a.desc&limit=10"),
-        supa(tok, "GET", "aps_tokens?select=updated_at,expires_at&id=eq.1"),
-      ]);
-      setLogs(logsData as SyncLog[]);
-      setToken((tokenData[0] as ApsToken) ?? null);
-    } catch (_err) {
-      // silent — la UI mostra "Sense registres" si no hi ha dades
-    } finally {
-      setLoading(false);
-      loadingRef.current = false;
-    }
-  }, [getToken]);
-
-  // Càrrega inicial
-  useEffect(() => {
-    if (!authLoading && user) fetchAll();
-  }, [authLoading, user, fetchAll]);
-
-  // TOKEN_REFRESHED + visibilitychange — EXACTAMENT el mateix patró que
-  // useVisor3DSistemes.ts per evitar la pàgina penjada en tornar a la finestra
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN") {
-        setTimeout(() => fetchAll(), 50);
-      }
-      if (event === "SIGNED_OUT") {
-        setLogs([]);
-        setToken(null);
-        setLoading(false);
-        loadingRef.current = false;
-      }
-      if (event === "TOKEN_REFRESHED") {
-        if (document.hidden) {
-          needsReloadRef.current = true;
-        } else {
-          fetchAll();
-        }
-      }
-    });
-
-    const handleVisibility = () => {
-      if (!document.hidden && needsReloadRef.current) {
-        needsReloadRef.current = false;
-        fetchAll();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => {
-      subscription.unsubscribe();
-      document.removeEventListener("visibilitychange", handleVisibility);
-    };
-  }, [fetchAll]);
-
-  // ── Execució manual ───────────────────────────────────────────────────────
-
-  const handleTrigger = async () => {
-    if (!agentUrl) {
-      setTriggerMsg({ ok: false, text: "VITE_AGENT_URL no està configurada." });
-      return;
-    }
-    setTriggering(true);
-    setTriggerMsg(null);
-    try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (agentSecret) headers["Authorization"] = `Bearer ${agentSecret}`;
-      const res = await fetch(`${agentUrl}/sync`, { method: "POST", headers });
-      if (res.ok) {
-        setTriggerMsg({ ok: true, text: "Agent iniciat correctament. Revisa els logs en uns moments." });
-        setTimeout(fetchAll, 4000);
-      } else {
-        const body = await res.json().catch(() => ({}));
-        setTriggerMsg({ ok: false, text: body?.error ?? `Error ${res.status}` });
-      }
-    } catch {
-      setTriggerMsg({ ok: false, text: "No s'ha pogut connectar amb l'agent." });
-    } finally {
-      setTriggering(false);
-    }
-  };
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  const lastLog = logs[0] ?? null;
-  const nextRun = nextCronDate(CRON_SCHEDULE);
-  const tokenOk = token ? token.expires_at > Date.now() : null;
+function AgentListItem({ agent, lastLog, selected, onClick }: AgentListItemProps) {
+  const hasError = lastLog ? (lastLog.errors ?? 0) > 0 : false;
+  const statusColor = !lastLog
+    ? "bg-slate-200"
+    : hasError
+    ? "bg-red-400"
+    : "bg-emerald-400";
 
   return (
-    <div className="space-y-6">
+    <button
+      onClick={onClick}
+      className={`w-full text-left px-4 py-3.5 rounded-xl transition-all flex items-center gap-3 group
+        ${selected
+          ? "bg-[#0099A8]/8 border border-[#0099A8]/20"
+          : "border border-transparent hover:bg-slate-50"
+        }`}
+    >
+      <div className={`h-9 w-9 rounded-xl flex items-center justify-center shrink-0 transition-colors
+        ${selected ? "bg-[#0099A8]/10" : "bg-slate-100 group-hover:bg-slate-200"}`}>
+        <Bot className={`h-4 w-4 ${selected ? "text-[#0099A8]" : "text-slate-400"}`} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={`text-[13px] font-semibold truncate ${selected ? "text-[#006E7A]" : "text-slate-700"}`}>
+          {agent.nom}
+        </p>
+        <p className="text-[11px] text-slate-400 mt-0.5">
+          {lastLog ? timeAgo(lastLog.executat_a) : "Sense execucions"}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className={`h-2 w-2 rounded-full ${statusColor}`} />
+        <ChevronRight className={`h-3.5 w-3.5 transition-colors ${selected ? "text-[#0099A8]" : "text-slate-300"}`} />
+      </div>
+    </button>
+  );
+}
+
+// ─── Subcomponent: detall de l'agent (dreta) ──────────────────────────────────
+
+interface AgentDetailProps {
+  agent: AgentConfig;
+  logs: SyncLog[];
+  token: ApsToken | null;
+  loading: boolean;
+  triggering: boolean;
+  triggerMsg: { ok: boolean; text: string } | null;
+  onTrigger: () => void;
+  onRefresh: () => void;
+}
+
+function AgentDetail({
+  agent, logs, token, loading, triggering, triggerMsg, onTrigger, onRefresh,
+}: AgentDetailProps) {
+  const agentUrl = (import.meta.env as any)[agent.agentUrlEnv] as string | undefined;
+  const lastLog  = logs[0] ?? null;
+  const nextRun  = nextCronDate(agent.cronSchedule);
+  const tokenOk  = token ? token.expires_at > Date.now() : null;
+
+  return (
+    <div className="space-y-5">
 
       {/* Capçalera */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Control d'Agents</h1>
-          <p className="text-sm text-slate-500 mt-1">Estat i gestió de la sincronització amb Autodesk</p>
+          <h2 className="text-xl font-bold text-slate-800 tracking-tight">{agent.nom}</h2>
+          <p className="text-sm text-slate-400 mt-0.5">{agent.descripcio}</p>
         </div>
         <Button
           variant="outline" size="sm"
           className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
-          onClick={fetchAll} disabled={loading}
+          onClick={onRefresh} disabled={loading}
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           Actualitza
@@ -282,7 +253,7 @@ export function ControlAgentsPage() {
       </div>
 
       {/* Cards de resum */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
         {/* Última execució */}
         <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
@@ -299,7 +270,7 @@ export function ControlAgentsPage() {
               <p className="text-[15px] font-bold text-slate-800 leading-tight">{formatDate(lastLog.executat_a)}</p>
               <p className="text-[12px] text-slate-400 mt-1">{timeAgo(lastLog.executat_a)}</p>
               <div className="mt-2">
-                {!lastLog.errors ? (
+                {!(lastLog.errors) ? (
                   <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
                     <CheckCircle2 className="h-3 w-3" /> Correcte
                   </Badge>
@@ -328,7 +299,7 @@ export function ControlAgentsPage() {
               <p className="text-[15px] font-bold text-slate-800 leading-tight">{formatDate(nextRun.toISOString())}</p>
               <p className="text-[12px] text-slate-400 mt-1">{timeUntil(nextRun)}</p>
               <p className="text-[11px] text-slate-400 mt-2 font-mono bg-slate-50 px-2 py-1 rounded-lg inline-block">
-                {cronToText(CRON_SCHEDULE)}
+                {cronToText(agent.cronSchedule)}
               </p>
             </>
           ) : (
@@ -336,47 +307,49 @@ export function ControlAgentsPage() {
           )}
         </Card>
 
-        {/* Token Autodesk */}
-        <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="h-9 w-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
-              <Bot className="h-4 w-4 text-slate-400" />
-            </div>
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Token Autodesk</span>
-          </div>
-          {loading ? (
-            <div className="h-8 bg-slate-100 rounded animate-pulse" />
-          ) : token ? (
-            <>
-              <div className="flex items-center gap-2 mb-1">
-                {tokenOk ? (
-                  <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
-                    <CheckCircle2 className="h-3 w-3" /> Actiu
-                  </Badge>
-                ) : (
-                  <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] gap-1">
-                    <AlertTriangle className="h-3 w-3" /> Expirat
-                  </Badge>
-                )}
+        {/* Token extern (opcional) */}
+        {agent.tokenTable && (
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="h-9 w-9 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0">
+                <Bot className="h-4 w-4 text-slate-400" />
               </div>
-              <p className="text-[12px] text-slate-400 mt-1">Renovat: {formatDate(token.updated_at)}</p>
-              {!tokenOk && (
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-400">Token Autodesk</span>
+            </div>
+            {loading ? (
+              <div className="h-8 bg-slate-100 rounded animate-pulse" />
+            ) : token ? (
+              <>
+                <div className="flex items-center gap-2 mb-1">
+                  {tokenOk ? (
+                    <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1">
+                      <CheckCircle2 className="h-3 w-3" /> Actiu
+                    </Badge>
+                  ) : (
+                    <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Expirat
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[12px] text-slate-400 mt-1">Renovat: {formatDate(token.updated_at)}</p>
+                {!tokenOk && (
+                  <a href={`${agentUrl ?? ""}/auth/login`} target="_blank" rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium">
+                    Renova el token →
+                  </a>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-[13px] text-slate-400 mb-2">Sense token</p>
                 <a href={`${agentUrl ?? ""}/auth/login`} target="_blank" rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium">
-                  Renova el token →
+                  className="inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium">
+                  Fes el login Autodesk →
                 </a>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="text-[13px] text-slate-400 mb-2">Sense token</p>
-              <a href={`${agentUrl ?? ""}/auth/login`} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-[#0099A8] hover:underline font-medium">
-                Fes el login Autodesk →
-              </a>
-            </>
-          )}
-        </Card>
+              </>
+            )}
+          </Card>
+        )}
       </div>
 
       {/* Execució manual */}
@@ -389,7 +362,7 @@ export function ControlAgentsPage() {
           <Button
             size="sm"
             className="gap-1.5 bg-[#0099A8] hover:bg-[#007A87] text-white border-0"
-            onClick={handleTrigger}
+            onClick={onTrigger}
             disabled={triggering || !agentUrl}
           >
             <Zap className={`h-3.5 w-3.5 ${triggering ? "animate-pulse" : ""}`} />
@@ -398,14 +371,16 @@ export function ControlAgentsPage() {
         </div>
         {!agentUrl && (
           <p className="mt-3 text-[11px] text-amber-600 bg-amber-50 px-3 py-2 rounded-lg">
-            Configura <code className="font-mono">VITE_AGENT_URL</code> a Vercel per habilitar l'execució manual.
+            Configura <code className="font-mono">{agent.agentUrlEnv}</code> a Vercel per habilitar l'execució manual.
           </p>
         )}
         {triggerMsg && (
           <div className={`mt-3 flex items-center gap-2 text-[12px] px-3 py-2 rounded-lg ${
             triggerMsg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
           }`}>
-            {triggerMsg.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <XCircle className="h-3.5 w-3.5 shrink-0" />}
+            {triggerMsg.ok
+              ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+              : <XCircle className="h-3.5 w-3.5 shrink-0" />}
             {triggerMsg.text}
           </div>
         )}
@@ -413,9 +388,9 @@ export function ControlAgentsPage() {
 
       {/* Historial */}
       <div>
-        <h2 className="text-[13px] font-semibold text-slate-600 mb-3 uppercase tracking-widest">
+        <h3 className="text-[13px] font-semibold text-slate-600 mb-3 uppercase tracking-widest">
           Historial d'execucions
-        </h2>
+        </h3>
         <Card className="border-slate-100 shadow-sm bg-white rounded-2xl overflow-hidden">
           {loading ? (
             <div className="p-6 space-y-3">
@@ -471,12 +446,12 @@ export function ControlAgentsPage() {
                           const d = log.detalls;
                           if (!d) return "—";
                           const parts: string[] = [];
-                          if (d.sistemesCreats?.length) parts.push(`+${d.sistemesCreats.length} sist.`);
-                          if (d.sistemesEliminats?.length) parts.push(`-${d.sistemesEliminats.length} sist.`);
-                          if (d.installacionsCreades?.length) parts.push(`+${d.installacionsCreades.length} inst.`);
+                          if (d.sistemesCreats?.length)          parts.push(`+${d.sistemesCreats.length} sist.`);
+                          if (d.sistemesEliminats?.length)        parts.push(`-${d.sistemesEliminats.length} sist.`);
+                          if (d.installacionsCreades?.length)     parts.push(`+${d.installacionsCreades.length} inst.`);
                           if (d.installacionsActualitzades?.length) parts.push(`~${d.installacionsActualitzades.length} inst.`);
-                          if (d.installacionsEliminades?.length) parts.push(`-${d.installacionsEliminades.length} inst.`);
-                          if (d.errors?.length) parts.push(`⚠️ ${d.errors.slice(0, 2).join(", ")}`);
+                          if (d.installacionsEliminades?.length)  parts.push(`-${d.installacionsEliminades.length} inst.`);
+                          if (d.errors?.length)                   parts.push(`⚠️ ${d.errors.slice(0, 2).join(", ")}`);
                           return parts.length ? parts.join(" · ") : "—";
                         })()}
                       </td>
@@ -487,6 +462,204 @@ export function ControlAgentsPage() {
             </table>
           )}
         </Card>
+      </div>
+    </div>
+  );
+}
+
+// ─── Component principal ──────────────────────────────────────────────────────
+
+export function ControlAgentsPage() {
+  const { getToken, loading: authLoading, user } = useAuth();
+
+  const [selectedAgentId, setSelectedAgentId] = useState<string>(AGENTS_CONFIG[0].id);
+  const [logsPerAgent, setLogsPerAgent]     = useState<Record<string, SyncLog[]>>({});
+  const [tokenPerAgent, setTokenPerAgent]   = useState<Record<string, ApsToken | null>>({});
+  const [loading, setLoading]               = useState(true);
+  const [triggering, setTriggering]         = useState(false);
+  const [triggerMsg, setTriggerMsg]         = useState<{ ok: boolean; text: string } | null>(null);
+
+  const loadingRef     = useRef(false);
+  const needsReloadRef = useRef(false);
+
+  const selectedAgent = AGENTS_CONFIG.find(a => a.id === selectedAgentId) ?? AGENTS_CONFIG[0];
+
+  // ── Fetch dades de tots els agents ────────────────────────────────────────
+
+  const fetchAll = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    setLoading(true);
+
+    let tok = getToken();
+    if (!tok) {
+      const { data: { session } } = await supabase.auth.getSession();
+      tok = session?.access_token ?? "";
+    }
+    if (!tok) {
+      for (let i = 0; i < 6; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        const { data: { session } } = await supabase.auth.getSession();
+        tok = session?.access_token ?? "";
+        if (tok) break;
+      }
+    }
+    if (!tok) {
+      setLoading(false);
+      loadingRef.current = false;
+      return;
+    }
+
+    try {
+      const results = await Promise.all(
+        AGENTS_CONFIG.map(async (agent) => {
+          const logsData = await supa(
+            tok!,
+            "GET",
+            `${agent.logTable}?select=*&order=executat_a.desc&limit=10`
+          ).catch(() => []);
+
+          let tokenData: ApsToken | null = null;
+          if (agent.tokenTable) {
+            const td = await supa(
+              tok!,
+              "GET",
+              `${agent.tokenTable}?select=updated_at,expires_at&id=eq.1`
+            ).catch(() => []);
+            tokenData = (td[0] as ApsToken) ?? null;
+          }
+
+          return { id: agent.id, logs: logsData as SyncLog[], token: tokenData };
+        })
+      );
+
+      const newLogs: Record<string, SyncLog[]>      = {};
+      const newTokens: Record<string, ApsToken | null> = {};
+      results.forEach(r => {
+        newLogs[r.id]   = r.logs;
+        newTokens[r.id] = r.token;
+      });
+      setLogsPerAgent(newLogs);
+      setTokenPerAgent(newTokens);
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
+      loadingRef.current = false;
+    }
+  }, [getToken]);
+
+  useEffect(() => {
+    if (!authLoading && user) fetchAll();
+  }, [authLoading, user, fetchAll]);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN")       setTimeout(() => fetchAll(), 50);
+      if (event === "TOKEN_REFRESHED") {
+        if (document.hidden) needsReloadRef.current = true;
+        else fetchAll();
+      }
+      if (event === "SIGNED_OUT") {
+        setLogsPerAgent({});
+        setTokenPerAgent({});
+        setLoading(false);
+        loadingRef.current = false;
+      }
+    });
+    const handleVisibility = () => {
+      if (!document.hidden && needsReloadRef.current) {
+        needsReloadRef.current = false;
+        fetchAll();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [fetchAll]);
+
+  // ── Execució manual ───────────────────────────────────────────────────────
+
+  const handleTrigger = async () => {
+    const agentUrl    = (import.meta.env as any)[selectedAgent.agentUrlEnv] as string | undefined;
+    const agentSecret = (import.meta.env as any)[selectedAgent.agentSecretEnv] as string | undefined;
+
+    if (!agentUrl) {
+      setTriggerMsg({ ok: false, text: `${selectedAgent.agentUrlEnv} no està configurada.` });
+      return;
+    }
+    setTriggering(true);
+    setTriggerMsg(null);
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (agentSecret) headers["Authorization"] = `Bearer ${agentSecret}`;
+      const res = await fetch(`${agentUrl}${selectedAgent.syncEndpoint}`, { method: "POST", headers });
+      if (res.ok) {
+        setTriggerMsg({ ok: true, text: "Agent iniciat correctament. Revisa els logs en uns moments." });
+        setTimeout(fetchAll, 4000);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setTriggerMsg({ ok: false, text: body?.error ?? `Error ${res.status}` });
+      }
+    } catch {
+      setTriggerMsg({ ok: false, text: "No s'ha pogut connectar amb l'agent." });
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="space-y-6">
+
+      {/* Capçalera de la pàgina */}
+      <div>
+        <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Control d'Agents</h1>
+        <p className="text-sm text-slate-500 mt-1">Estat i gestió de la sincronització amb serveis externs</p>
+      </div>
+
+      {/* Layout: llista esquerra + detall dreta */}
+      <div className="flex gap-5 items-start">
+
+        {/* Llista d'agents */}
+        <div className="w-64 shrink-0">
+          <Card className="p-2 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 px-3 pt-2 pb-1">
+              Agents ({AGENTS_CONFIG.length})
+            </p>
+            <div className="space-y-0.5">
+              {AGENTS_CONFIG.map(agent => (
+                <AgentListItem
+                  key={agent.id}
+                  agent={agent}
+                  lastLog={(logsPerAgent[agent.id] ?? [])[0] ?? null}
+                  selected={selectedAgentId === agent.id}
+                  onClick={() => {
+                    setSelectedAgentId(agent.id);
+                    setTriggerMsg(null);
+                  }}
+                />
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        {/* Detall de l'agent seleccionat */}
+        <div className="flex-1 min-w-0">
+          <AgentDetail
+            agent={selectedAgent}
+            logs={logsPerAgent[selectedAgent.id] ?? []}
+            token={tokenPerAgent[selectedAgent.id] ?? null}
+            loading={loading}
+            triggering={triggering}
+            triggerMsg={triggerMsg}
+            onTrigger={handleTrigger}
+            onRefresh={fetchAll}
+          />
+        </div>
       </div>
     </div>
   );
