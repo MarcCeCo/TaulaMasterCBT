@@ -1,0 +1,33 @@
+name: Sincronització Mensual Fusion → Plataforma
+
+on:
+  schedule:
+    # El dia 1 de cada mes a les 06:00 UTC
+    - cron: '0 6 1 * *'
+  workflow_dispatch: # Permet executar-lo manualment si cal
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Executar agent APS (sincronització mensual)
+        run: |
+          echo "🔄 Sincronització mensual Fusion → Plataforma..."
+
+          response=$(curl -s -w "\n%{http_code}" \
+            -X POST "${{ secrets.AGENT_URL }}/sync" \
+            -H "Authorization: Bearer ${{ secrets.AGENT_SECRET }}" \
+            -H "Content-Type: application/json")
+
+          http_code=$(echo "$response" | tail -n1)
+          body=$(echo "$response" | head -n-1)
+
+          echo "Resposta HTTP: $http_code"
+          echo "Body: $body"
+
+          if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
+            echo "✅ Sincronització completada correctament"
+          else
+            echo "❌ Error en la sincronització: codi $http_code"
+            exit 1
+          fi
