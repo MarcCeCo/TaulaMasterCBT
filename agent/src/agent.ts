@@ -276,8 +276,11 @@ async function extrauSistemes(
     console.log(`  📄 ${fitxersRvt.length} fitxers .rvt`);
 
     const installacions: InstallacioTrobada[] = [];
-    // Detectem codis duplicats dins la mateixa carpeta
-    const codiVistos = new Map<string, string[]>(); // codi → llista de noms de fitxer
+    // Detectem duplicats: una instal·lació és duplicada si codi + nom coincideixen.
+    // Un codi amb noms DIFERENTS no és duplicat — és una instal·lació distinta amb el mateix codi,
+    // i s'importa igualment però es reporta com a avís.
+    const clauVistes = new Map<string, true>();        // "CODI|NOM" → true (duplicat real)
+    const codiVistos = new Map<string, string[]>();    // codi → noms vistos (per detectar codi compartit)
 
     for (const fitxer of fitxersRvt) {
       const nomFitxer: string = fitxer.attributes?.displayName ?? "";
@@ -287,13 +290,19 @@ async function extrauSistemes(
         continue;
       }
 
-      // Registrem el fitxer per al codi (ara guardem tots, sense saltar cap)
+      // Registrem el nom per a aquest codi (per reportar codis compartits)
       const nomsAnteriors = codiVistos.get(parsed.codi) ?? [];
-      codiVistos.set(parsed.codi, [...nomsAnteriors, parsed.nom]);
-
-      if (nomsAnteriors.length > 0) {
-        console.warn(`  ⚠️  Codi duplicat ${parsed.codi}: guardant també "${parsed.nom}"`);
+      if (!nomsAnteriors.includes(parsed.nom)) {
+        codiVistos.set(parsed.codi, [...nomsAnteriors, parsed.nom]);
       }
+
+      // Duplicat real: mateixa clau codi+nom ja vista → saltem
+      const clau = `${parsed.codi}|${parsed.nom}`;
+      if (clauVistes.has(clau)) {
+        console.warn(`  ⚠️  Duplicat exacte ignorat (codi+nom): ${parsed.codi} - ${parsed.nom}`);
+        continue;
+      }
+      clauVistes.set(clau, true);
 
       const itemId: string = fitxer.id ?? "";
 
@@ -318,10 +327,11 @@ async function extrauSistemes(
       }
     }
 
-    // Afegim els duplicats al sistema perquè sincronitzaSupabase els pugui reportar
+    // Reportem codis que apareixen amb més d'un nom diferent (codi compartit entre instal·lacions distintes).
+    // Els duplicats exactes (codi+nom iguals) ja s'han saltat més amunt.
     const duplicatsSistema = [...codiVistos.entries()]
       .filter(([, noms]) => noms.length > 1)
-      .map(([codi, noms]) => `${codi}: ${noms.join(", ")}`);
+      .map(([codi, noms]) => `${codi} (${noms.map(n => `"${n}"`).join(", ")})`);
 
     sistemes.push({ nom: nomSistema, installacions, duplicats: duplicatsSistema });
   }
@@ -364,7 +374,7 @@ async function sincronitzaSupabase(
 
   // Ara que el constraint únic s'ha eliminat, pot haver-hi múltiples files amb el mateix codi.
   // Usem un Map de codi → array per gestionar-ho correctament.
-  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string; embed_url?: string; urn?: string }[]>();
+  const instPerCodi = new Map<string, { id: string; nom: string; updated_at: string; sistema_id: string; embed_url?: string; urn?: string }[]>();
   for (const i of (installacionsSupabase ?? [])) {
     if (i.codi_installacio) {
       const llista = instPerCodi.get(i.codi_installacio) ?? [];
@@ -407,13 +417,15 @@ async function sincronitzaSupabase(
 
       for (const [instIndex, inst] of sistema.installacions.entries()) {
         try {
-          // Busquem si ja existeix una fila a Supabase amb el mateix codi I el mateix urn.
-          // Ara que no hi ha constraint únic, pot haver-hi múltiples files per codi.
+          // Identitat d'una instal·lació: codi + nom.
+          // Si coincideixen, es tracta de la mateixa instal·lació (pot tenir un URN nou
+          // si el fitxer .rvt ha canviat de versió a Fusion) → actualitzem l'URN.
+          // Si el codi existeix però amb un nom diferent → instal·lació distinta → inserim.
           const existentsPerCodi = instPerCodi.get(inst.codi) ?? [];
-          const existent = existentsPerCodi.find(e => e.urn === inst.urn) ?? null;
+          const existent = existentsPerCodi.find(e => e.nom === inst.nom) ?? null;
 
           if (!existent) {
-            // No existeix cap fila amb aquest codi+urn: inserim una nova fila
+            // No existeix cap fila amb aquest codi+nom: inserim una nova instal·lació
             await supabase.from("visor3d_installacions").insert({
               sistema_id: sistemaId,
               nom: inst.nom,
@@ -427,7 +439,9 @@ async function sincronitzaSupabase(
             console.log(`  ➕ Nova: ${inst.codi} - ${inst.nom}`);
 
           } else {
-            // Ja existeix una fila amb aquest codi+urn: actualitzem nom i metadades
+            // Ja existeix (codi+nom coincideixen): actualitzem URN i metadades.
+            // Això cobreix el cas de fitxer .rvt renovat a Fusion (nou versionId → nou URN).
+            const urnCanviat = existent.urn !== inst.urn;
             await supabase.from("visor3d_installacions")
               .update({
                 nom: inst.nom,
@@ -438,7 +452,11 @@ async function sincronitzaSupabase(
               })
               .eq("id", existent.id);
             resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
-            console.log(`  ✏️  Actualitzat: ${inst.codi} (urn: ${inst.urn?.substring(0, 30)}…)`);
+            if (urnCanviat) {
+              console.log(`  ✏️  Actualitzat (URN renovat): ${inst.codi} - ${inst.nom}`);
+            } else {
+              console.log(`  ✏️  Actualitzat (sense canvis d'URN): ${inst.codi} - ${inst.nom}`);
+            }
           }
         } catch (err) {
           const msg = `Error amb instal·lació ${inst.codi}: ${err}`;
@@ -453,11 +471,11 @@ async function sincronitzaSupabase(
     }
   }
 
-  // Recollim tots els codis duplicats de tots els sistemes
+  // Recollim tots els codis compartits (codi amb múltiples noms) de tots els sistemes
   for (const s of sistemesFusion) {
     if (s.duplicats?.length) {
       resultat.codisDuplicats.push(...s.duplicats);
-      s.duplicats.forEach(d => console.warn(`  ⚠️  Codi duplicat — ${d}`));
+      s.duplicats.forEach(d => console.warn(`  ⚠️  Codi compartit entre instal·lacions — ${d}`));
     }
   }
 
@@ -581,9 +599,9 @@ export async function executaAgent(): Promise<ResultatSync> {
     errors: resultat.errors.length,
     detalls: resultat,
   });
-  // Avís final si hi ha duplicats
+  // Avís final si hi ha codis compartits entre instal·lacions distintes
   if (resultat.codisDuplicats.length > 0) {
-    console.warn(`\n⚠️  Hi ha ${resultat.codisDuplicats.length} codi(s) duplicat(s) — revisa els fitxers a Autodesk:`);
+    console.warn(`\n⚠️  Hi ha ${resultat.codisDuplicats.length} codi(s) compartit(s) entre instal·lacions distintes — revisa els fitxers a Autodesk:`);
     resultat.codisDuplicats.forEach(d => console.warn(`   · ${d}`));
   }
 
