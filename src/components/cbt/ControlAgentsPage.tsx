@@ -522,10 +522,12 @@ export function ControlAgentsPage() {
   const [triggering, setTriggering]         = useState(false);
   const [triggerMsg, setTriggerMsg]         = useState<{ ok: boolean; text: string } | null>(null);
 
-  const loadingRef     = useRef(false);
-  const needsReloadRef = useRef(false);
-  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const loadingRef        = useRef(false);
+  const needsReloadRef    = useRef(false);
+  const pollRef           = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef    = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const pollAgentIdRef    = useRef<string>("");   // evita closure estale dins setInterval
+  const pollLastIdRef     = useRef<number>(0);    // id del log conegut en el moment de disparar
   const [polling, setPolling] = useState(false);
 
   const selectedAgent = AGENTS_CONFIG.find(a => a.id === selectedAgentId) ?? AGENTS_CONFIG[0];
@@ -614,7 +616,7 @@ export function ControlAgentsPage() {
       }
     });
     const handleVisibility = () => {
-      if (!document.hidden && needsReloadRef.current) {
+      if (!document.hidden && needsReloadRef.current && !pollRef.current) {
         needsReloadRef.current = false;
         fetchAll();
       }
@@ -654,6 +656,8 @@ export function ControlAgentsPage() {
         if (pollRef.current)        clearInterval(pollRef.current);
         if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
 
+        pollAgentIdRef.current  = selectedAgent.id;
+        pollLastIdRef.current   = lastKnownId;
         setPolling(true);
 
         const stopPolling = () => {
@@ -665,10 +669,12 @@ export function ControlAgentsPage() {
         pollRef.current = setInterval(async () => {
           await fetchAll();
           setLogsPerAgent(prev => {
-            const newest = (prev[selectedAgent.id] ?? [])[0];
-            if (newest && newest.id !== lastKnownId) {
+            // Usem els refs — no valors capturats pel closure
+            const agId   = pollAgentIdRef.current;
+            const lastId = pollLastIdRef.current;
+            const newest = (prev[agId] ?? [])[0];
+            if (newest && newest.id !== lastId) {
               stopPolling();
-              // Actualitza el missatge amb el resultat real
               setTriggerMsg(
                 newest.errors
                   ? { ok: false, text: `Execució finalitzada amb ${newest.errors} error(s). Revisa els detalls a l'historial.` }
@@ -677,7 +683,7 @@ export function ControlAgentsPage() {
             }
             return prev;
           });
-        }, 8000); // cada 8 s
+        }, 8000);
 
         // Para el polling com a molt als 10 min (l'agent pot haver fallat silenciosament)
         pollTimeoutRef.current = setTimeout(() => {
@@ -725,7 +731,8 @@ export function ControlAgentsPage() {
                   selected={selectedAgentId === agent.id}
                   onClick={() => {
                     setSelectedAgentId(agent.id);
-                    setTriggerMsg(null);
+                    // No neteges el missatge si hi ha polling en curs
+                    if (!pollRef.current) setTriggerMsg(null);
                   }}
                 />
               ))}
