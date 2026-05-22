@@ -105,7 +105,7 @@ function SistemaFormDialog({ open, onClose, onSave, initial, title, saving }: {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 text-sm font-bold uppercase tracking-wide">
             <Building2 className="h-4 w-4 text-[#0099A8]" /> {title}
@@ -201,7 +201,7 @@ function InstallacioFormDialog({ open, onClose, onSave, initial, title, sistemaC
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-800 text-sm font-bold uppercase tracking-wide">
             <Monitor className="h-4 w-4" style={{ color: sistemaColor }} /> {title}
@@ -720,7 +720,7 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       {/* [&>button]:hidden amaga el botó X per defecte de Radix per evitar solapament */}
-      <DialogContent className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden [&>button:last-child]:hidden" style={{ maxHeight: "90vh" }}>
+      <DialogContent className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden [&>button:last-child]:hidden" style={{ maxHeight: "90vh" }} aria-describedby={undefined}>
 
         {/* DialogTitle ocult però present per accessibilitat (Radix ho requereix) */}
         <DialogHeader className="sr-only">
