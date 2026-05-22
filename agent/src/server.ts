@@ -421,3 +421,34 @@ server.listen(PORT, () => {
   console.log(`   POST /sync          → executa l'agent (requereix Authorization: Bearer <secret>)`);
   console.log(`   GET  /api/aps-token → token 2-legged per al Viewer SDK (viewables:read)`);
 });
+
+// ─── Renovació proactiva del token APS cada 50 minuts ──────────────────────
+// El token APS expira als 60 min. Renovem cada 50 min per garantir
+// que mai estigui expirat, sense dependre de crons externs ni GitHub Actions.
+const INTERVAL_RENOVACIO_MS = 50 * 60 * 1000;
+
+async function renovaTokenProactivament() {
+  const supabaseUrl  = process.env.SUPABASE_URL;
+  const supabaseKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const clientId     = process.env.APS_CLIENT_ID;
+  const clientSecret = process.env.APS_CLIENT_SECRET;
+
+  if (!supabaseUrl || !supabaseKey || !clientId || !clientSecret) {
+    console.warn("⚠️  Renovació proactiva: falten variables d'entorn, saltant...");
+    return;
+  }
+
+  try {
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    await obteToken3Legged(supabase, clientId, clientSecret);
+    console.log("🔄 Renovació proactiva del token APS completada");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("❌ Error en la renovació proactiva del token APS:", msg);
+  }
+}
+
+setInterval(renovaTokenProactivament, INTERVAL_RENOVACIO_MS);
+console.log(`⏱️  Renovació proactiva del token APS activada (cada 50 min)`);
