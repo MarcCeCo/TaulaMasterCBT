@@ -427,23 +427,23 @@ function AgentDetail({
               <tbody>
                 {logs.map((log, i) => {
                   const isOk = !log.errors;
-                  // FIX: inclou installacions_actualitzades (abans faltava)
+                  // FIX: només compta canvis reals (creats + actualitzats + eliminats)
+                  // Les instal·lacions "sense canvis" (comprovades) no compten
                   const totalCanvis =
-                    (log.sistemes_creats          ?? 0) +
-                    (log.sistemes_actualitzats    ?? 0) +
-                    (log.sistemes_eliminats       ?? 0) +
-                    (log.installacions_creades    ?? 0) +
+                    (log.sistemes_creats             ?? 0) +
+                    (log.sistemes_eliminats          ?? 0) +
+                    (log.installacions_creades       ?? 0) +
                     (log.installacions_actualitzades ?? 0) +
-                    (log.installacions_eliminades ?? 0);
+                    (log.installacions_eliminades    ?? 0);
 
                   const d = log.detalls;
                   const parts: string[] = [];
                   if (d?.sistemesCreats?.length)            parts.push(`✚ ${d.sistemesCreats.length} sist. nous`);
-                  if (d?.sistemesActualitzats?.length)      parts.push(`↻ ${d.sistemesActualitzats.length} sist.`);
                   if (d?.sistemesEliminats?.length)          parts.push(`✕ ${d.sistemesEliminats.length} sist. elim.`);
                   if (d?.installacionsCreades?.length)       parts.push(`✚ ${d.installacionsCreades.length} inst. noves`);
-                  if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst.`);
+                  if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst. actualitz.`);
                   if (d?.installacionsEliminades?.length)    parts.push(`✕ ${d.installacionsEliminades.length} inst. elim.`);
+                  if (d?.installacionsSenseCanvis?.length)   parts.push(`✓ ${d.installacionsSenseCanvis.length} comprovades`);
                   const resumDetalls = parts.length ? parts.join(" · ") : "Sense canvis";
 
                   return (
