@@ -22,6 +22,7 @@ interface InstallacioTrobada {
 interface SistemaTrobat {
   nom: string;
   installacions: InstallacioTrobada[];
+  duplicats?: string[]; // codis amb més d'un fitxer .rvt
 }
 
 interface ResultatSync {
@@ -32,6 +33,7 @@ interface ResultatSync {
   installacionsActualitzades: string[];
   installacionsEliminades: string[];
   installacionsSenseCanvis: string[];
+  codisDuplicats: string[]; // format: "ED030: LA ROCA BOMBAMENT, LA ROCA DEL VALLES"
   errors: string[];
 }
 
@@ -273,6 +275,8 @@ async function extrauSistemes(
     console.log(`  📄 ${fitxersRvt.length} fitxers .rvt`);
 
     const installacions: InstallacioTrobada[] = [];
+    // Detectem codis duplicats dins la mateixa carpeta
+    const codiVistos = new Map<string, string[]>(); // codi → llista de noms de fitxer
 
     for (const fitxer of fitxersRvt) {
       const nomFitxer: string = fitxer.attributes?.displayName ?? "";
@@ -280,6 +284,14 @@ async function extrauSistemes(
       if (!parsed) {
         console.warn(`  ⚠️  No s'ha pogut parsejar: ${nomFitxer}`);
         continue;
+      }
+
+      // Registrem el fitxer per al codi (ara guardem tots, sense saltar cap)
+      const nomsAnteriors = codiVistos.get(parsed.codi) ?? [];
+      codiVistos.set(parsed.codi, [...nomsAnteriors, parsed.nom]);
+
+      if (nomsAnteriors.length > 0) {
+        console.warn(`  ⚠️  Codi duplicat ${parsed.codi}: guardant també "${parsed.nom}"`);
       }
 
       const itemId: string = fitxer.id ?? "";
@@ -304,7 +316,12 @@ async function extrauSistemes(
       }
     }
 
-    sistemes.push({ nom: nomSistema, installacions });
+    // Afegim els duplicats al sistema perquè sincronitzaSupabase els pugui reportar
+    const duplicatsSistema = [...codiVistos.entries()]
+      .filter(([, noms]) => noms.length > 1)
+      .map(([codi, noms]) => `${codi}: ${noms.join(", ")}`);
+
+    sistemes.push({ nom: nomSistema, installacions, duplicats: duplicatsSistema });
   }
 
   return sistemes;
@@ -324,6 +341,7 @@ async function sincronitzaSupabase(
     installacionsActualitzades: [],
     installacionsEliminades: [],
     installacionsSenseCanvis: [],
+    codisDuplicats: [],
     errors: [],
   };
 
@@ -342,9 +360,15 @@ async function sincronitzaSupabase(
     sistemaPerNom.set(s.nom.toUpperCase(), { id: s.id, ordre: s.ordre });
   }
 
-  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string; embed_url?: string; urn?: string }>();
+  // Ara que el constraint únic s'ha eliminat, pot haver-hi múltiples files amb el mateix codi.
+  // Usem un Map de codi → array per gestionar-ho correctament.
+  const instPerCodi = new Map<string, { id: string; updated_at: string; sistema_id: string; embed_url?: string; urn?: string }[]>();
   for (const i of (installacionsSupabase ?? [])) {
-    if (i.codi_installacio) instPerCodi.set(i.codi_installacio, i);
+    if (i.codi_installacio) {
+      const llista = instPerCodi.get(i.codi_installacio) ?? [];
+      llista.push(i);
+      instPerCodi.set(i.codi_installacio, llista);
+    }
   }
 
   const codisFusion = new Set<string>();
@@ -381,9 +405,13 @@ async function sincronitzaSupabase(
 
       for (const [instIndex, inst] of sistema.installacions.entries()) {
         try {
-          const existent = instPerCodi.get(inst.codi);
+          // Busquem si ja existeix una fila a Supabase amb el mateix codi I el mateix urn.
+          // Ara que no hi ha constraint únic, pot haver-hi múltiples files per codi.
+          const existentsPerCodi = instPerCodi.get(inst.codi) ?? [];
+          const existent = existentsPerCodi.find(e => e.urn === inst.urn) ?? null;
 
           if (!existent) {
+            // No existeix cap fila amb aquest codi+urn: inserim una nova fila
             await supabase.from("visor3d_installacions").insert({
               sistema_id: sistemaId,
               nom: inst.nom,
@@ -397,13 +425,11 @@ async function sincronitzaSupabase(
             console.log(`  ➕ Nova: ${inst.codi} - ${inst.nom}`);
 
           } else {
-            // Fusion és la font de veritat: sempre sobreescrivim nom, urn i embed_url.
-            const embedUrlFinal = inst.embedUrl;
-
+            // Ja existeix una fila amb aquest codi+urn: actualitzem nom i metadades
             await supabase.from("visor3d_installacions")
               .update({
                 nom: inst.nom,
-                embed_url: embedUrlFinal,
+                embed_url: inst.embedUrl,
                 urn: inst.urn,
                 sistema_id: sistemaId,
                 updated_at: inst.lastModifiedTime,
@@ -425,17 +451,28 @@ async function sincronitzaSupabase(
     }
   }
 
+  // Recollim tots els codis duplicats de tots els sistemes
+  for (const s of sistemesFusion) {
+    if (s.duplicats?.length) {
+      resultat.codisDuplicats.push(...s.duplicats);
+      s.duplicats.forEach(d => console.warn(`  ⚠️  Codi duplicat — ${d}`));
+    }
+  }
+
   console.log("\n🗑️  Comprovant eliminacions d'instal·lacions...");
-  for (const [codi, inst] of instPerCodi.entries()) {
+  for (const [codi, instLlista] of instPerCodi.entries()) {
     if (!codisFusion.has(codi)) {
-      try {
-        await supabase.from("visor3d_installacions").delete().eq("id", inst.id);
-        resultat.installacionsEliminades.push(codi);
-        console.log(`  🗑️  Eliminada: ${codi}`);
-      } catch (err) {
-        const msg = `Error eliminant instal·lació ${codi}: ${err}`;
-        resultat.errors.push(msg);
-        console.error(`  ❌ ${msg}`);
+      // El codi ja no existeix a Fusion: eliminem totes les files d'aquest codi
+      for (const inst of instLlista) {
+        try {
+          await supabase.from("visor3d_installacions").delete().eq("id", inst.id);
+          resultat.installacionsEliminades.push(codi);
+          console.log(`  🗑️  Eliminada: ${codi}`);
+        } catch (err) {
+          const msg = `Error eliminant instal·lació ${codi}: ${err}`;
+          resultat.errors.push(msg);
+          console.error(`  ❌ ${msg}`);
+        }
       }
     }
   }
@@ -521,6 +558,10 @@ export async function executaAgent(): Promise<ResultatSync> {
   console.log(`  ✏️  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
   console.log(`  🗑️  Instal·lacions eliminades:    ${resultat.installacionsEliminades.length}`);
   console.log(`  ─  Sense canvis:                ${resultat.installacionsSenseCanvis.length}`);
+  if (resultat.codisDuplicats.length > 0) {
+    console.log(`  ⚠️  Codis duplicats: ${resultat.codisDuplicats.length}`);
+    resultat.codisDuplicats.forEach((d) => console.warn(`    - ${d}`));
+  }
   if (resultat.errors.length > 0) {
     console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
     resultat.errors.forEach((e) => console.error(`    - ${e}`));
@@ -538,6 +579,11 @@ export async function executaAgent(): Promise<ResultatSync> {
     errors: resultat.errors.length,
     detalls: resultat,
   });
+  // Avís final si hi ha duplicats
+  if (resultat.codisDuplicats.length > 0) {
+    console.warn(`\n⚠️  Hi ha ${resultat.codisDuplicats.length} codi(s) duplicat(s) — revisa els fitxers a Autodesk:`);
+    resultat.codisDuplicats.forEach(d => console.warn(`   · ${d}`));
+  }
 
   return resultat;
 }
