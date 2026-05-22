@@ -157,7 +157,7 @@ function timeAgo(iso: string): string {
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days  = Math.floor(hours / 24);
-  if (days > 0)  return `fa ${days} dia${days > 1 ? "es" : ""}`;
+  if (days > 0)  return `fa ${days} dia${days > 1 ? "s" : ""}`;
   if (hours > 0) return `fa ${hours}h`;
   if (mins > 0)  return `fa ${mins} min`;
   return "ara mateix";
@@ -169,7 +169,7 @@ function timeUntil(date: Date): string {
   const mins  = Math.floor(diff / 60000);
   const hours = Math.floor(mins / 60);
   const days  = Math.floor(hours / 24);
-  if (days > 0)  return `d'aquí ${days} dia${days > 1 ? "es" : ""}`;
+  if (days > 0)  return `d'aquí ${days} dia${days > 1 ? "s" : ""}`;
   if (hours > 0) return `d'aquí ${hours}h ${mins % 60}min`;
   return `d'aquí ${mins} min`;
 }
@@ -446,12 +446,12 @@ function AgentDetail({
                   const d = log.detalls;
                   const parts: string[] = [];
                   if (d?.sistemesCreats?.length)            parts.push(`✚ ${d.sistemesCreats.length} sistemes nous`);
+                  if (d?.sistemesActualitzats?.length)       parts.push(`✓ ${d.sistemesActualitzats.length} sistemes comprovats`);
                   if (d?.sistemesEliminats?.length)          parts.push(`✕ ${d.sistemesEliminats.length} sistemes eliminats`);
                   if (d?.installacionsCreades?.length)       parts.push(`✚ ${d.installacionsCreades.length} inst. noves`);
                   if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst. actualitzades`);
                   if (d?.installacionsEliminades?.length)    parts.push(`✕ ${d.installacionsEliminades.length} inst. eliminades`);
-                  if (d?.installacionsSenseCanvis?.length)   parts.push(`✓ ${d.installacionsSenseCanvis.length} comprovades`);
-                  const resumDetalls = parts.length ? parts.join(" · ") : "Sense canvis";
+                  if (d?.installacionsSenseCanvis?.length)   parts.push(`✓ ${d.installacionsSenseCanvis.length} inst. comprovades`);
 
                   return (
                     <Fragment key={log.id}>
@@ -484,9 +484,17 @@ function AgentDetail({
                             : <span className="text-slate-400">Sense canvis</span>}
                         </td>
                         <td className="px-5 py-3 text-slate-400 hidden lg:table-cell">
-                          <span className="text-slate-500">{resumDetalls}</span>
+                          {parts.length > 0 ? (
+                            <div className="flex flex-col gap-0.5">
+                              {parts.map((p, pi) => (
+                                <span key={pi} className="text-slate-500 leading-snug">{p}</span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-slate-400">Sense canvis</span>
+                          )}
                           {(d?.codisDuplicats?.length ?? 0) > 0 && (
-                            <span className="ml-2 text-amber-600 text-[11px]">
+                            <span className="block mt-1 text-amber-600 text-[11px]">
                               ⚠ {d!.codisDuplicats!.join(", ")}
                             </span>
                           )}
