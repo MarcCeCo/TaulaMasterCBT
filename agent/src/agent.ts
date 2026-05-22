@@ -399,8 +399,8 @@ async function sincronitzaSupabase(
       let sistemaId: string;
 
       if (sistemaPerNom.has(clauNom)) {
+        // Ja existeix — no compta com a canvi
         sistemaId = sistemaPerNom.get(clauNom)!.id;
-        resultat.sistemesActualitzats.push(sistema.nom);
         
       } else {
         const maxOrdre = Math.max(0, ...(sistemesSupabase ?? []).map((s: any) => s.ordre ?? 0));
@@ -439,23 +439,27 @@ async function sincronitzaSupabase(
             console.log(`  ➕ Nova: ${inst.codi} - ${inst.nom}`);
 
           } else {
-            // Ja existeix (codi+nom coincideixen): actualitzem URN i metadades.
-            // Això cobreix el cas de fitxer .rvt renovat a Fusion (nou versionId → nou URN).
-            const urnCanviat = existent.urn !== inst.urn;
-            await supabase.from("visor3d_installacions")
-              .update({
-                nom: inst.nom,
-                embed_url: inst.embedUrl,
-                urn: inst.urn,
-                sistema_id: sistemaId,
-                updated_at: inst.lastModifiedTime,
-              })
-              .eq("id", existent.id);
-            resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
-            if (urnCanviat) {
-              console.log(`  ✏️  Actualitzat (URN renovat): ${inst.codi} - ${inst.nom}`);
+            // Ja existeix: comprovem si hi ha canvis reals
+            const urnCanviat      = existent.urn !== inst.urn;
+            const embedCanviat    = existent.embed_url !== inst.embedUrl;
+            const sistemaCanviat  = existent.sistema_id !== sistemaId;
+
+            if (urnCanviat || embedCanviat || sistemaCanviat) {
+              await supabase.from("visor3d_installacions")
+                .update({
+                  nom: inst.nom,
+                  embed_url: inst.embedUrl,
+                  urn: inst.urn,
+                  sistema_id: sistemaId,
+                  updated_at: inst.lastModifiedTime,
+                })
+                .eq("id", existent.id);
+              resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
+              console.log(`  ✏️  Actualitzat: ${inst.codi} - ${inst.nom}${urnCanviat ? " (URN nou)" : ""}`);
             } else {
-              console.log(`  ✏️  Actualitzat (sense canvis d'URN): ${inst.codi} - ${inst.nom}`);
+              // Sense canvis reals
+              resultat.installacionsSenseCanvis.push(`${inst.codi} - ${inst.nom}`);
+              console.log(`  ─  Sense canvis: ${inst.codi} - ${inst.nom}`);
             }
           }
         } catch (err) {
@@ -559,35 +563,57 @@ export async function executaAgent(): Promise<ResultatSync> {
     realtime: { transport: WebSocket as any },
   });
 
-  const token = await obteToken3Legged(supabase, apsClientId, apsClientSecret);
-  const sistemesTrobats = await extrauSistemes(apsHubId, apsProjectId, token);
+  // Resultat buit per si l'agent falla abans d'arribar a sincronitzaSupabase
+  let resultat: ResultatSync = {
+    sistemesCreats: [],
+    sistemesActualitzats: [],
+    sistemesEliminats: [],
+    installacionsCreades: [],
+    installacionsActualitzades: [],
+    installacionsEliminades: [],
+    installacionsSenseCanvis: [],
+    codisDuplicats: [],
+    errors: [],
+  };
 
-  console.log(`\n📊 Resum extracció de Fusion:`);
-  console.log(`  Sistemes: ${sistemesTrobats.length}`);
-  sistemesTrobats.forEach((s) =>
-    console.log(`  - ${s.nom}: ${s.installacions.length} instal·lació${s.installacions.length !== 1 ? "ns" : ""}`)
-  );
+  try {
+    const token = await obteToken3Legged(supabase, apsClientId, apsClientSecret);
+    const sistemesTrobats = await extrauSistemes(apsHubId, apsProjectId, token);
 
-  const resultat = await sincronitzaSupabase(supabase, sistemesTrobats);
+    console.log(`\n📊 Resum extracció de Fusion:`);
+    console.log(`  Sistemes: ${sistemesTrobats.length}`);
+    sistemesTrobats.forEach((s) =>
+      console.log(`  - ${s.nom}: ${s.installacions.length} instal·lació${s.installacions.length !== 1 ? "ns" : ""}`)
+    );
 
-  console.log("\n✅ Sincronització completada:");
-  console.log(`  ➕ Sistemes creats:             ${resultat.sistemesCreats.length}`);
-  console.log(`  ♻️  Sistemes actualitzats:        ${resultat.sistemesActualitzats.length}`);
-  console.log(`  🗑️  Sistemes eliminats:           ${resultat.sistemesEliminats.length}`);
-  console.log(`  ➕ Instal·lacions creades:       ${resultat.installacionsCreades.length}`);
-  console.log(`  ✏️  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
-  console.log(`  🗑️  Instal·lacions eliminades:    ${resultat.installacionsEliminades.length}`);
-  console.log(`  ─  Sense canvis:                ${resultat.installacionsSenseCanvis.length}`);
-  if (resultat.codisDuplicats.length > 0) {
-    console.log(`  ⚠️  Codis duplicats: ${resultat.codisDuplicats.length}`);
-    resultat.codisDuplicats.forEach((d) => console.warn(`    - ${d}`));
+    resultat = await sincronitzaSupabase(supabase, sistemesTrobats);
+
+    console.log("\n✅ Sincronització completada:");
+    console.log(`  ➕ Sistemes creats:             ${resultat.sistemesCreats.length}`);
+    console.log(`  ♻️  Sistemes actualitzats:        ${resultat.sistemesActualitzats.length}`);
+    console.log(`  🗑️  Sistemes eliminats:           ${resultat.sistemesEliminats.length}`);
+    console.log(`  ➕ Instal·lacions creades:       ${resultat.installacionsCreades.length}`);
+    console.log(`  ✏️  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
+    console.log(`  🗑️  Instal·lacions eliminades:    ${resultat.installacionsEliminades.length}`);
+    console.log(`  ─  Sense canvis:                ${resultat.installacionsSenseCanvis.length}`);
+    if (resultat.codisDuplicats.length > 0) {
+      console.log(`  ⚠️  Codis duplicats: ${resultat.codisDuplicats.length}`);
+      resultat.codisDuplicats.forEach((d) => console.warn(`    - ${d}`));
+    }
+    if (resultat.errors.length > 0) {
+      console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
+      resultat.errors.forEach((e) => console.error(`    - ${e}`));
+    }
+  } catch (errFatal) {
+    // Error fatal (token, APS, Supabase estructural…) — el capturem i el
+    // guardem al resultat perquè quedi registrat al log de Supabase igualment.
+    const msg = errFatal instanceof Error ? errFatal.message : String(errFatal);
+    console.error("❌ Error fatal a l'agent:", msg);
+    resultat.errors.push(`[FATAL] ${msg}`);
   }
-  if (resultat.errors.length > 0) {
-    console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
-    resultat.errors.forEach((e) => console.error(`    - ${e}`));
-  }
 
-  await supabase.from("visor3d_sync_log").insert({
+  // ── Sempre guardem el log a Supabase, tant si ha anat bé com si ha fallat ──
+  const { error: logError } = await supabase.from("visor3d_sync_log").insert({
     executat_a: new Date().toISOString(),
     sistemes_creats: resultat.sistemesCreats.length,
     sistemes_actualitzats: resultat.sistemesActualitzats.length,
@@ -599,7 +625,13 @@ export async function executaAgent(): Promise<ResultatSync> {
     errors: resultat.errors.length,
     detalls: resultat,
   });
-  // Avís final si hi ha codis compartits entre instal·lacions distintes
+
+  if (logError) {
+    console.error("❌ Error guardant el log a Supabase:", logError.message);
+  } else {
+    console.log("📝 Log guardat a visor3d_sync_log correctament.");
+  }
+
   if (resultat.codisDuplicats.length > 0) {
     console.warn(`\n⚠️  Hi ha ${resultat.codisDuplicats.length} codi(s) compartit(s) entre instal·lacions distintes — revisa els fitxers a Autodesk:`);
     resultat.codisDuplicats.forEach(d => console.warn(`   · ${d}`));

@@ -15,7 +15,6 @@ import { supaFetch as supa } from "@/lib/supaFetch";
 export interface Installacio {
   id: string;
   nom: string;
-  descripcio?: string;
   codiInstallacio?: string;
   embedUrl: string;
   urn?: string;
@@ -24,7 +23,6 @@ export interface Installacio {
 export interface Sistema {
   id: string;
   nom: string;
-  descripcio?: string;
   codi?: string;
   color: string;
   installacions: Installacio[];
@@ -35,11 +33,9 @@ export interface Sistema {
 interface SistemaRow {
   id: string;
   nom: string;
-  descripcio: string | null;
   codi: string | null;
   color: string;
   ordre: number;
-  created_at: string;
   updated_at: string;
 }
 
@@ -47,12 +43,10 @@ interface InstallacioRow {
   id: string;
   sistema_id: string;
   nom: string;
-  descripcio: string | null;
   codi_installacio: string | null;
   embed_url: string;
   urn: string | null;
   ordre: number;
-  created_at: string;
   updated_at: string;
 }
 
@@ -62,7 +56,6 @@ function rowToInstallacio(row: InstallacioRow): Installacio {
   return {
     id: row.id,
     nom: row.nom,
-    descripcio: row.descripcio ?? undefined,
     codiInstallacio: row.codi_installacio ?? undefined,
     embedUrl: row.embed_url,
     urn: row.urn ?? undefined,
@@ -78,7 +71,6 @@ function buildSistemes(
     .map((s) => ({
       id: s.id,
       nom: s.nom,
-      descripcio: s.descripcio ?? undefined,
       codi: s.codi ?? undefined,
       color: s.color,
       installacions: installacioRows
@@ -157,12 +149,11 @@ export function useVisor3DSistemes() {
   // ── CRUD Sistemes ──────────────────────────────────────────────────────────
 
   const createSistema = useCallback(
-    async (data: { nom: string; descripcio: string; codi: string; color: string }) => {
+    async (data: { nom: string; codi: string; color: string }) => {
       const token = await getToken();
       const ordre = sistemes.length;
       const rows = await supa(token, "POST", "visor3d_sistemes", {
         nom: data.nom.trim(),
-        descripcio: data.descripcio.trim() || null,
         codi: data.codi.trim() || null,
         color: data.color,
         ordre,
@@ -171,7 +162,6 @@ export function useVisor3DSistemes() {
       const nou: Sistema = {
         id: row.id,
         nom: row.nom,
-        descripcio: row.descripcio ?? undefined,
         codi: row.codi ?? undefined,
         color: row.color,
         installacions: [],
@@ -183,11 +173,10 @@ export function useVisor3DSistemes() {
   );
 
   const updateSistema = useCallback(
-    async (id: string, data: { nom: string; descripcio: string; codi: string; color: string }) => {
+    async (id: string, data: { nom: string; codi: string; color: string }) => {
       const token = await getToken();
       await supa(token, "PATCH", `visor3d_sistemes?id=eq.${id}`, {
         nom: data.nom.trim(),
-        descripcio: data.descripcio.trim() || null,
         codi: data.codi.trim() || null,
         color: data.color,
         updated_at: new Date().toISOString(),
@@ -195,7 +184,7 @@ export function useVisor3DSistemes() {
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === id
-            ? { ...s, nom: data.nom.trim(), descripcio: data.descripcio.trim() || undefined, codi: data.codi.trim() || undefined, color: data.color }
+            ? { ...s, nom: data.nom.trim(), codi: data.codi.trim() || undefined, color: data.color }
             : s
         )
       );
@@ -214,7 +203,7 @@ export function useVisor3DSistemes() {
   const createInstallacio = useCallback(
     async (
       sistemaId: string,
-      data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string; urn?: string }
+      data: { nom: string; codiInstallacio: string; embedUrl: string; urn?: string }
     ) => {
       const token = await getToken();
       const sistema = sistemes.find((s) => s.id === sistemaId);
@@ -222,7 +211,6 @@ export function useVisor3DSistemes() {
       const rows = await supa(token, "POST", "visor3d_installacions", {
         sistema_id: sistemaId,
         nom: data.nom.trim(),
-        descripcio: data.descripcio.trim() || null,
         codi_installacio: data.codiInstallacio.trim() || null,
         embed_url: data.embedUrl.trim() || null,
         urn: data.urn?.trim() || null,
@@ -245,12 +233,11 @@ export function useVisor3DSistemes() {
     async (
       sistemaId: string,
       installacioId: string,
-      data: { nom: string; descripcio: string; codiInstallacio: string; embedUrl: string; urn?: string }
+      data: { nom: string; codiInstallacio: string; embedUrl: string; urn?: string }
     ) => {
       const token = await getToken();
       await supa(token, "PATCH", `visor3d_installacions?id=eq.${installacioId}`, {
         nom: data.nom.trim(),
-        descripcio: data.descripcio.trim() || null,
         codi_installacio: data.codiInstallacio.trim() || null,
         embed_url: data.embedUrl.trim() || null,
         urn: data.urn?.trim() || null,
@@ -266,7 +253,6 @@ export function useVisor3DSistemes() {
                     ? {
                         ...i,
                         nom: data.nom.trim(),
-                        descripcio: data.descripcio.trim() || undefined,
                         codiInstallacio: data.codiInstallacio.trim() || undefined,
                         embedUrl: data.embedUrl.trim(),
                         urn: data.urn?.trim() || undefined,
