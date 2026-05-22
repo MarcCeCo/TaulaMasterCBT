@@ -13,6 +13,8 @@ jobs:
       - name: Ping Supabase
         run: |
           response=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 60 \
+            --connect-timeout 10 \
             "${{ secrets.VITE_SUPABASE_URL }}/rest/v1/user_profiles?select=id&limit=1" \
             -H "apikey: ${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
             -H "Authorization: Bearer ${{ secrets.VITE_SUPABASE_ANON_KEY }}")
