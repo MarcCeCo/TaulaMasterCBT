@@ -1,0 +1,57 @@
+name: Add SSA Bot to ACC Project (executar 1 cop)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  add-ssa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obté token 2-legged
+        id: token
+        run: |
+          RESPONSE=$(curl -s -X POST \
+            https://developer.api.autodesk.com/authentication/v2/token \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -u "${{ secrets.APS_CLIENT_ID }}:${{ secrets.APS_CLIENT_SECRET }}" \
+            -d "grant_type=client_credentials&scope=account:write data:read")
+          
+          TOKEN=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+          echo "token=$TOKEN" >> $GITHUB_OUTPUT
+          echo "✅ Token obtingut"
+
+      - name: Afegeix SSA bot al projecte ACC
+        run: |
+          # Extreu account_id i project_id nets
+          ACCOUNT_ID=$(echo "${{ secrets.APS_HUB_ID }}" | sed 's/urn:adsk.ace:prod.hub://' | sed 's/^b\.//')
+          PROJECT_ID=$(echo "${{ secrets.APS_PROJECT_ID }}" | sed 's/^b\.//')
+          
+          echo "Account ID: $ACCOUNT_ID"
+          echo "Project ID: $PROJECT_ID"
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://developer.api.autodesk.com/construction/admin/v1/projects/$PROJECT_ID/users" \
+            -H "Authorization: Bearer ${{ steps.token.outputs.token }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "email": "${{ secrets.SSA_BOT_EMAIL }}",
+              "products": [
+                {
+                  "key": "documentManagement",
+                  "access": "administrator"
+                }
+              ]
+            }')
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+          
+          echo "HTTP: $HTTP_CODE"
+          echo "Resposta: $BODY"
+          
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Bot afegit correctament al projecte!"
+          else
+            echo "❌ Error afegint el bot"
+            exit 1
+          fi
