@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-    "discover-ids": "ts-node src/discover-ids.ts"
+    "discover-ids": "ts-node src/discover-ids.ts",
+    "add-service-account": "ts-node src/add-service-account.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.0",
