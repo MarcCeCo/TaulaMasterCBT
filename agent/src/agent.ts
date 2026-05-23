@@ -409,6 +409,11 @@ export async function executaAgent(): Promise<ResultatSync> {
   const apsHubId        = process.env.APS_HUB_ID;
   const apsProjectId    = process.env.APS_PROJECT_ID;
 
+  // Credencials SSA (TaulaMaster-bot) per a navegació de carpetes ACC
+  // Si no existeixen, s'usen les credencials principals
+  const ssaClientId     = process.env.APS_SSA_CLIENT_ID     || apsClientId;
+  const ssaClientSecret = process.env.APS_SSA_CLIENT_SECRET || apsClientSecret;
+
   if (!supabaseUrl || !supabaseKey)     throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
   if (!apsClientId || !apsClientSecret) throw new Error("Falten APS_CLIENT_ID o APS_CLIENT_SECRET");
   if (!apsHubId || !apsProjectId)       throw new Error("Falten APS_HUB_ID o APS_PROJECT_ID");
@@ -418,6 +423,7 @@ export async function executaAgent(): Promise<ResultatSync> {
   console.log(`   APS_PROJECT_ID: ${apsProjectId}`);
   console.log(`   Carpeta arrel:  ${CARPETA_ARREL_FORMA}`);
   console.log(`   Subcarpeta BIM: ${CARPETA_MODEL_BIM}`);
+  console.log(`   SSA Client:     ${ssaClientId !== apsClientId ? "✅ TaulaMaster-bot" : "⚠️  App principal (sense SSA)"}`);
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
     realtime: { transport: WebSocket as any },
@@ -431,8 +437,14 @@ export async function executaAgent(): Promise<ResultatSync> {
 
   try {
     // 2-legged: token nou a cada execució, cap dependència de Supabase per auth
+    // Token principal per al Viewer SDK (viewables:read)
     const token = await obteToken2Legged(apsClientId, apsClientSecret);
-    const sistemesTobrats = await extrauSistemes(apsHubId, apsProjectId, token);
+    // Token SSA per a navegació de carpetes ACC (data:read)
+    const ssaToken = (ssaClientId !== apsClientId)
+      ? await obteToken2Legged(ssaClientId!, ssaClientSecret!)
+      : token;
+    console.log(`🔑 Token SSA: ${ssaClientId !== apsClientId ? "TaulaMaster-bot" : "App principal"}`);
+    const sistemesTobrats = await extrauSistemes(apsHubId, apsProjectId, ssaToken);
 
     console.log(`\n📊 Resum extracció:`);
     sistemesTobrats.forEach(s =>
