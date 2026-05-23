@@ -1,4 +1,4 @@
-name: Sincronització Mensual Fusion → Plataforma
+name: Sincronització Mensual Forma → Plataforma
 
 on:
   schedule:
@@ -10,9 +10,9 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Executar agent APS (sincronització mensual)
+      - name: Executar agent APS (sincronització mensual Forma)
         run: |
-          echo "🔄 Sincronització mensual Fusion → Plataforma..."
+          echo "🔄 Sincronització mensual Autodesk Forma → Plataforma..."
 
           response=$(curl -s -w "\n%{http_code}" \
             -X POST "${{ secrets.AGENT_URL }}/sync" \
