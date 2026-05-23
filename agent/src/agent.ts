@@ -12,6 +12,7 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
+import * as crypto from "crypto";
 
 (globalThis as any).WebSocket = WebSocket;
 
@@ -49,6 +50,61 @@ const APS_BASE           = "https://developer.api.autodesk.com";
 const APS_AUTH_URL       = `${APS_BASE}/authentication/v2/token`;
 const CARPETA_ARREL_FORMA = "besso-digital";
 const CARPETA_MODEL_BIM   = "001_model-bim";
+
+// ─── Autenticació SSA (Secure Service Account) amb JWT ───────────────────────
+// Usa la clau privada .pem per generar un JWT i obtenir un token d'accés.
+// Permet accedir als fitxers ACC sense 3-legged ni refresh token.
+
+export async function obteTokenSSA(
+  clientId: string,
+  serviceAccountId: string,
+  privateKeyPem: string,
+  scope: string = "data:read viewables:read"
+): Promise<string> {
+  console.log("🔑 Obtenint token APS SSA (JWT)...");
+
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: "RS256", typ: "JWT" };
+  const payload = {
+    iss: clientId,
+    sub: serviceAccountId,
+    aud: "https://developer.api.autodesk.com/authentication/v2/token",
+    iat: now,
+    exp: now + 300, // 5 minuts
+    scope: scope,
+  };
+
+  const encode = (obj: object) =>
+    Buffer.from(JSON.stringify(obj)).toString("base64url");
+
+  const headerB64  = encode(header);
+  const payloadB64 = encode(payload);
+  const signingInput = `${headerB64}.${payloadB64}`;
+
+  const sign = crypto.createSign("RSA-SHA256");
+  sign.update(signingInput);
+  const signature = sign.sign(privateKeyPem, "base64url");
+  const jwt = `${signingInput}.${signature}`;
+
+  const resp = await fetch("https://developer.api.autodesk.com/authentication/v2/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+      scope: scope,
+    }).toString(),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Error obtenint token SSA: ${resp.status} ${text}`);
+  }
+
+  const data = await resp.json() as { access_token: string; expires_in: number };
+  console.log(`✅ Token SSA obtingut (expira en ${Math.round(data.expires_in / 60)} min)`);
+  return data.access_token;
+}
 
 // ─── Autenticació 2-legged OAuth ─────────────────────────────────────────────
 // El token dura 1 hora. Es demana de nou a cada execució de l'agent.
@@ -439,11 +495,22 @@ export async function executaAgent(): Promise<ResultatSync> {
     // 2-legged: token nou a cada execució, cap dependència de Supabase per auth
     // Token principal per al Viewer SDK (viewables:read)
     const token = await obteToken2Legged(apsClientId, apsClientSecret);
-    // Token SSA per a navegació de carpetes ACC (data:read)
-    const ssaToken = (ssaClientId !== apsClientId)
-      ? await obteToken2Legged(ssaClientId!, ssaClientSecret!)
-      : token;
-    console.log(`🔑 Token SSA: ${ssaClientId !== apsClientId ? "TaulaMaster-bot" : "App principal"}`);
+
+    // Token SSA per a navegació de carpetes ACC
+    let ssaToken = token;
+    const ssaServiceAccountId = process.env.SSA_SERVICE_ACCOUNT_ID;
+    const ssaPrivateKey        = process.env.SSA_PRIVATE_KEY;
+
+    if (ssaServiceAccountId && ssaPrivateKey && ssaClientId !== apsClientId) {
+      console.log("🔑 Usant autenticació SSA (JWT) per a navegació de carpetes...");
+      ssaToken = await obteTokenSSA(ssaClientId!, ssaServiceAccountId, ssaPrivateKey);
+    } else if (ssaClientId !== apsClientId) {
+      ssaToken = await obteToken2Legged(ssaClientId!, ssaClientSecret!);
+      console.log("🔑 Token SSA: TaulaMaster-bot (2-legged)");
+    } else {
+      console.log("⚠️  Token SSA: App principal (sense SSA)");
+    }
+
     const sistemesTobrats = await extrauSistemes(apsHubId, apsProjectId, ssaToken);
 
     console.log(`\n📊 Resum extracció:`);
