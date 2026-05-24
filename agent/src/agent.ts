@@ -1,6 +1,13 @@
 // agent/src/agent.ts
 // Agent APS (Autodesk Platform Services) → Supabase visor3d
-// 3-legged OAuth + detecció de canvis (nous / modificats / eliminats)
+// 3-legged OAuth + navegació Autodesk Forma
+//
+// Estructura esperada a Autodesk Forma:
+//   besso-digital/
+//     xxx_nomSistema/           ← carpeta de sistema
+//       xxxxx_nomInstallacio/   ← carpeta d'instal·lació
+//         001_model-bim/        ← carpeta fixa que conté els RVTs
+//           fitxer.rvt
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
@@ -22,7 +29,7 @@ interface InstallacioTrobada {
 interface SistemaTrobat {
   nom: string;
   installacions: InstallacioTrobada[];
-  duplicats?: string[]; // codis amb més d'un fitxer .rvt
+  duplicats?: string[];
 }
 
 interface ResultatSync {
@@ -33,7 +40,7 @@ interface ResultatSync {
   installacionsActualitzades: string[];
   installacionsEliminades: string[];
   installacionsSenseCanvis: string[];
-  codisDuplicats: string[]; // format: "ED030: LA ROCA BOMBAMENT, LA ROCA DEL VALLES"
+  codisDuplicats: string[];
   errors: string[];
 }
 
@@ -43,38 +50,31 @@ interface TokenRow {
   expires_at: number;
 }
 
-// ─── Constants APS ────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const APS_BASE = "https://developer.api.autodesk.com";
-const APS_AUTH_URL = `${APS_BASE}/authentication/v2/token`;
+const APS_BASE         = "https://developer.api.autodesk.com";
+const APS_AUTH_URL     = `${APS_BASE}/authentication/v2/token`;
+const CARPETA_ARREL    = "besso-digital";
+const CARPETA_MODEL_BIM = "001_model-bim";
 
 // ─── Helpers de parseig ───────────────────────────────────────────────────────
 
-function parsejaNomCarpeta(nomCarpeta: string): string {
+function parsejaNomCarpetaSistema(nomCarpeta: string): string {
   return nomCarpeta.replace(/^\d+_/, "").replace(/-/g, " ").trim();
 }
 
-function parsejaNomFitxer(nomFitxer: string): { codi: string; nom: string } | null {
-  const sensExtensio = nomFitxer.replace(/\.[^.]+$/, "");
-  const idx = sensExtensio.indexOf("_");
+function parsejaNomCarpetaInstallacio(nomCarpeta: string): { codi: string; nom: string } | null {
+  const netejat = nomCarpeta.replace(/^\d+_/, "");
+  const idx = netejat.indexOf("_");
   if (idx === -1) return null;
-  const codi = sensExtensio.substring(0, idx);
-  const nom = sensExtensio.substring(idx + 1).replace(/-/g, " ").trim();
+  const codi = netejat.substring(0, idx);
+  const nom  = netejat.substring(idx + 1).replace(/-/g, " ").trim();
   if (!/^[A-Z]+\d+$/.test(codi)) return null;
   return { codi, nom };
 }
 
-function construeixEmbedUrlFallback(urn: string): string {
-  // URL de fallback basada en URN (viewer genèric d'Autodesk).
-  // Preferentment s'utilitza l'embed_url real de autodesk360.com.
-  return `https://viewer.autodesk.com/id/${urn}`;
-}
-
 // ─── Autenticació APS 3-legged OAuth ─────────────────────────────────────────
 
-// Mutex per evitar renovacions simultànies del token APS.
-// Si dues crides arriben alhora amb el token expirat, només una renova
-// i les altres esperen el resultat — evita l'error "invalid_grant".
 let renovacioEnCurs: Promise<string> | null = null;
 
 export async function obteToken3Legged(
@@ -84,21 +84,18 @@ export async function obteToken3Legged(
 ): Promise<string> {
   console.log("🔑 Obtenint token APS 3-legged des de Supabase...");
 
-  const { data: tokenRow, error } = await supabase
+  const { data: tokenRow } = await supabase
     .from("aps_tokens")
     .select("access_token, refresh_token, expires_at")
-    .eq("id", 1)
+    .order("id", { ascending: false })
+    .limit(1)
     .single();
 
-  if (error || !tokenRow) {
-    throw new Error(
-      "No s'ha trobat cap token APS a Supabase. Executa: npm run auth-setup"
-    );
-  }
+  if (!tokenRow) throw new Error("No hi ha token APS a Supabase. Executa /auth/login primer.");
 
   const row = tokenRow as TokenRow;
   const ara = Date.now();
-  const margeMs = 5 * 60 * 1000;
+  const margeMs = 5 * 60 * 1000; // 5 minuts de marge
 
   if (row.access_token && row.expires_at > ara + margeMs) {
     console.log(`✅ Token APS vàlid (expira en ${Math.round((row.expires_at - ara) / 60000)} min)`);
@@ -108,10 +105,9 @@ export async function obteToken3Legged(
   console.log("🔄 Token APS expirat, renovant amb refresh token...");
 
   if (!row.refresh_token) {
-    throw new Error("Refresh token no disponible. Executa: npm run auth-setup");
+    throw new Error("No hi ha refresh token. Executa /auth/login per autenticar-te de nou.");
   }
 
-  // Si ja hi ha una renovació en curs, esperem el seu resultat
   if (renovacioEnCurs) {
     console.log("⏳ Renovació ja en curs, esperant resultat...");
     return renovacioEnCurs;
@@ -129,22 +125,15 @@ async function _renovaToken(
   clientSecret: string,
   refreshToken: string
 ): Promise<string> {
-
-  const body = new URLSearchParams({
-    grant_type: "refresh_token",
-    refresh_token: refreshToken,
-    scope: "data:read viewables:read",
-  });
-
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
   const resp = await fetch(APS_AUTH_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${credentials}`,
-    },
-    body: body.toString(),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: clientId,
+      client_secret: clientSecret,
+    }).toString(),
   });
 
   if (!resp.ok) {
@@ -158,52 +147,47 @@ async function _renovaToken(
     expires_in: number;
   };
 
-  const nouExpiresAt = Date.now() + data.expires_in * 1000;
+  await supabase.from("aps_tokens").upsert({
+    id: 1,
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Date.now() + data.expires_in * 1000,
+  });
 
-  const { error: saveError } = await supabase
-    .from("aps_tokens")
-    .update({
-      access_token: data.access_token,
-      refresh_token: data.refresh_token,
-      expires_at: nouExpiresAt,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", 1);
-
-  if (saveError) {
-    console.error("⚠️  Error guardant nou token a Supabase:", saveError.message);
-  } else {
-    console.log(`✅ Token APS renovat (expira en ${Math.round(data.expires_in / 60)} min)`);
-  }
-
+  console.log(`✅ Token APS renovat (expira en ${Math.round(data.expires_in / 60)} min)`);
   return data.access_token;
 }
 
-// ─── APS Data Management API ──────────────────────────────────────────────────
+// ─── Autenticació 2-legged (per al Viewer SDK) ───────────────────────────────
 
-// Obté el versionId del "tip" (versió actual) d'un item.
-// Fusion Teams indexa els derivats per versionId (fs.file), no per lineage (dm.lineage).
-async function obteTipVersionId(projectId: string, itemId: string, token: string): Promise<string | null> {
-  try {
-    const url = `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/tip`;
-    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!resp.ok) return null;
-    const data = await resp.json() as any;
-    return data?.data?.id ?? null;
-  } catch {
-    return null;
+export async function obteToken2Legged(
+  clientId: string,
+  clientSecret: string,
+  scope: string = "viewables:read"
+): Promise<string> {
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const resp = await fetch(APS_AUTH_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Authorization": `Basic ${credentials}`,
+    },
+    body: new URLSearchParams({
+      grant_type: "client_credentials",
+      scope,
+    }).toString(),
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Error obtenint token 2-legged: ${resp.status} ${text}`);
   }
+
+  const data = await resp.json() as { access_token: string; expires_in: number };
+  return data.access_token;
 }
 
-async function llistaContingutCarpeta(projectId: string, carpetaId: string, token: string): Promise<any[]> {
-  const resp = await fetch(
-    `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!resp.ok) throw new Error(`Error llistant carpeta ${carpetaId}: ${resp.status}`);
-  const data = await resp.json() as { data: any[] };
-  return data.data;
-}
+// ─── Helpers de navegació Forma ──────────────────────────────────────────────
 
 async function obteArrelCarpetes(hubId: string, projectId: string, token: string): Promise<any[]> {
   const resp = await fetch(
@@ -211,140 +195,278 @@ async function obteArrelCarpetes(hubId: string, projectId: string, token: string
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!resp.ok) throw new Error(`Error obtenint carpetes arrel: ${resp.status}`);
-  const data = await resp.json() as { data: any[] };
-  return data.data;
+  const json = await resp.json() as { data: any[] };
+  return json.data ?? [];
+}
+
+async function obteContingutCarpeta(projectId: string, carpetaId: string, token: string): Promise<any[]> {
+  const resp = await fetch(
+    `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!resp.ok) return [];
+  const json = await resp.json() as { data: any[] };
+  return json.data ?? [];
 }
 
 async function trobaSubcarpeta(
-  projectId: string, carpetaParentId: string, nomObjectiu: string, token: string
+  projectId: string,
+  carpetaParentId: string,
+  nom: string,
+  token: string
 ): Promise<any | null> {
-  const contingut = await llistaContingutCarpeta(projectId, carpetaParentId, token);
+  const contingut = await obteContingutCarpeta(projectId, carpetaParentId, token);
   return contingut.find(
-    (item) => item.type === "folders" && item.attributes?.displayName === nomObjectiu
+    (item: any) =>
+      item.type === "folders" &&
+      item.attributes?.displayName?.toLowerCase() === nom.toLowerCase()
   ) ?? null;
 }
 
-// ─── Extreu sistemes via APS ──────────────────────────────────────────────────
+async function obteUrnFitxer(projectId: string, itemId: string, token: string): Promise<string | null> {
+  const resp = await fetch(
+    `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/tip`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!resp.ok) return null;
+  const json = await resp.json() as { data?: { relationships?: { derivatives?: { data?: { id?: string } } } } };
+  const urn = json.data?.relationships?.derivatives?.data?.id;
+  return urn ?? null;
+}
+
+// ─── Extracció de sistemes i instal·lacions de Forma ────────────────────────
 
 async function extrauSistemes(
-  hubId: string, projectId: string, token: string
+  hubId: string,
+  projectId: string,
+  token: string
 ): Promise<SistemaTrobat[]> {
-  console.log("📂 Navegant a WEB → 000_MODELS via APS...");
+  console.log(`📂 Navegant Forma: "${CARPETA_ARREL}" → sistemes → instal·lacions → "${CARPETA_MODEL_BIM}"...`);
 
   const carpetesArrel = await obteArrelCarpetes(hubId, projectId, token);
-  
 
-  const carpetaWEB = carpetesArrel.find(
-    (c: any) => c.type === "folders" && c.attributes?.displayName === "WEB"
-  );
-
-  let carpeta000Models: any = null;
-
-  if (carpetaWEB) {
-    
-    carpeta000Models = await trobaSubcarpeta(projectId, carpetaWEB.id, "000_MODELS", token);
-  } else {
-    console.warn("⚠️  Carpeta WEB no trobada, buscant 000_MODELS a l'arrel...");
-    for (const c of carpetesArrel) {
-      carpeta000Models = await trobaSubcarpeta(projectId, c.id, "000_MODELS", token);
-      if (carpeta000Models) break;
+  let carpetaBessoDig: any = null;
+  for (const arrel of carpetesArrel) {
+    carpetaBessoDig = await trobaSubcarpeta(projectId, arrel.id, CARPETA_ARREL, token);
+    if (carpetaBessoDig) {
+      console.log(`   ✅ "${CARPETA_ARREL}" trobat dins "${arrel.attributes?.displayName}"`);
+      break;
     }
   }
 
-  if (!carpeta000Models) throw new Error("No s'ha trobat la carpeta '000_MODELS'");
-  
+  if (!carpetaBessoDig) {
+    throw new Error(
+      `No s'ha trobat la carpeta "${CARPETA_ARREL}" al projecte Forma. ` +
+      `Comprova que APS_HUB_ID i APS_PROJECT_ID són correctes.`
+    );
+  }
 
-  const contingut000Models = await llistaContingutCarpeta(projectId, carpeta000Models.id, token);
-  const carpetesSistemes = contingut000Models.filter(
-    (item) => item.type === "folders" && /^\d+_/.test(item.attributes?.displayName ?? "")
-  );
-
-  console.log(`📁 Trobades ${carpetesSistemes.length} carpetes de sistema`);
+  const carpetesSistema = (await obteContingutCarpeta(projectId, carpetaBessoDig.id, token))
+    .filter((item: any) => item.type === "folders");
 
   const sistemes: SistemaTrobat[] = [];
 
-  for (const carpeta of carpetesSistemes) {
-    const nomCarpeta: string = carpeta.attributes?.displayName ?? "";
-    const nomSistema = parsejaNomCarpeta(nomCarpeta);
-    console.log(`\n📂 Processant sistema: ${nomCarpeta} → "${nomSistema}"`);
+  for (const carpetaSis of carpetesSistema) {
+    const nomCarpetaSistema = carpetaSis.attributes?.displayName ?? "";
+    const nomSistema = parsejaNomCarpetaSistema(nomCarpetaSistema);
 
-    const contingut = await llistaContingutCarpeta(projectId, carpeta.id, token);
-    const fitxersRvt = contingut.filter(
-      (item) => item.type === "items" && item.attributes?.displayName?.endsWith(".rvt")
-    );
-
-    console.log(`  📄 ${fitxersRvt.length} fitxers .rvt`);
+    const carpetesInstallacio = (await obteContingutCarpeta(projectId, carpetaSis.id, token))
+      .filter((item: any) => item.type === "folders");
 
     const installacions: InstallacioTrobada[] = [];
-    // Detectem duplicats: una instal·lació és duplicada si codi + nom coincideixen.
-    // Un codi amb noms DIFERENTS no és duplicat — és una instal·lació distinta amb el mateix codi,
-    // i s'importa igualment però es reporta com a avís.
-    const clauVistes = new Map<string, true>();        // "CODI|NOM" → true (duplicat real)
-    const codiVistos = new Map<string, string[]>();    // codi → noms vistos (per detectar codi compartit)
+    const duplicats: string[] = [];
+    const codisTrobats = new Map<string, number>();
 
-    for (const fitxer of fitxersRvt) {
-      const nomFitxer: string = fitxer.attributes?.displayName ?? "";
-      const parsed = parsejaNomFitxer(nomFitxer);
+    for (const carpetaInst of carpetesInstallacio) {
+      const nomCarpetaInst = carpetaInst.attributes?.displayName ?? "";
+      const parsed = parsejaNomCarpetaInstallacio(nomCarpetaInst);
       if (!parsed) {
-        console.warn(`  ⚠️  No s'ha pogut parsejar: ${nomFitxer}`);
+        console.warn(`  ⚠️  No s'ha pogut parsejar: "${nomCarpetaInst}"`);
         continue;
       }
 
-      // Registrem el nom per a aquest codi (per reportar codis compartits)
-      const nomsAnteriors = codiVistos.get(parsed.codi) ?? [];
-      if (!nomsAnteriors.includes(parsed.nom)) {
-        codiVistos.set(parsed.codi, [...nomsAnteriors, parsed.nom]);
-      }
-
-      // Duplicat real: mateixa clau codi+nom ja vista → saltem
-      const clau = `${parsed.codi}|${parsed.nom}`;
-      if (clauVistes.has(clau)) {
-        console.warn(`  ⚠️  Duplicat exacte ignorat (codi+nom): ${parsed.codi} - ${parsed.nom}`);
+      const carpetaModelBim = await trobaSubcarpeta(projectId, carpetaInst.id, CARPETA_MODEL_BIM, token);
+      if (!carpetaModelBim) {
+        console.warn(`  ⚠️  "${parsed.codi}": no s'ha trobat "${CARPETA_MODEL_BIM}"`);
         continue;
       }
-      clauVistes.set(clau, true);
 
-      const itemId: string = fitxer.id ?? "";
+      const contingutBim = await obteContingutCarpeta(projectId, carpetaModelBim.id, token);
+      const fitxersRvt = contingutBim.filter(
+        (item: any) =>
+          item.type === "items" &&
+          item.attributes?.displayName?.toLowerCase().endsWith(".rvt")
+      );
 
-      // Fusion Teams genera derivats per versionId (fs.file), no per lineage (dm.lineage).
-      // Obtenim el tipVersionId i l'usem com a base de l'URN pel Viewer SDK.
-      const tipVersionId = await obteTipVersionId(projectId, itemId, token);
-      const urnBase = tipVersionId ?? itemId;
-      const urn = Buffer.from(urnBase).toString("base64url");
-      const embedUrl = construeixEmbedUrlFallback(urn);
-
-      const lastModifiedTime: string =
-        fitxer.attributes?.lastModifiedTime ??
-        fitxer.attributes?.createTime ??
-        new Date().toISOString();
-
-      installacions.push({ ...parsed, embedUrl, urn, lastModifiedTime });
-
-      if (tipVersionId) {
-        console.log(`  ✅ ${parsed.codi} · ${parsed.nom}`);
-      } else {
-        console.warn(`  ⚠️  ${parsed.codi} · ${parsed.nom} — no s'ha pogut obtenir la versió, pot no funcionar al Viewer`);
+      if (fitxersRvt.length === 0) {
+        console.warn(`  ⚠️  "${parsed.codi}": cap fitxer .rvt a "${CARPETA_MODEL_BIM}"`);
+        continue;
       }
+
+      const count = (codisTrobats.get(parsed.codi) ?? 0) + 1;
+      codisTrobats.set(parsed.codi, count);
+      if (count > 1) {
+        duplicats.push(parsed.codi);
+        console.warn(`  ⚠️  Codi duplicat: "${parsed.codi}"`);
+      }
+
+      const fitxer = fitxersRvt[0];
+      const urn = await obteUrnFitxer(projectId, fitxer.id, token);
+      const embedUrl = urn
+        ? `https://autodesk360.com/viewer?urn=${urn}`
+        : "";
+      const lastModified = fitxer.attributes?.lastModifiedTime ?? new Date().toISOString();
+
+      installacions.push({
+        codi: parsed.codi,
+        nom: parsed.nom,
+        embedUrl,
+        urn: urn ?? "",
+        lastModifiedTime: lastModified,
+      });
     }
 
-    // Reportem codis que apareixen amb més d'un nom diferent (codi compartit entre instal·lacions distintes).
-    // Els duplicats exactes (codi+nom iguals) ja s'han saltat més amunt.
-    const duplicatsSistema = [...codiVistos.entries()]
-      .filter(([, noms]) => noms.length > 1)
-      .map(([codi, noms]) => `${codi} (${noms.map(n => `"${n}"`).join(", ")})`);
-
-    sistemes.push({ nom: nomSistema, installacions, duplicats: duplicatsSistema });
+    if (installacions.length > 0) {
+      sistemes.push({ nom: nomSistema, installacions, duplicats });
+    }
   }
 
+  console.log(`   ✅ ${sistemes.length} sistemes trobats`);
   return sistemes;
 }
 
-// ─── Sincronitza amb Supabase (amb detecció de canvis) ───────────────────────
+// ─── Sincronització amb Supabase ─────────────────────────────────────────────
 
-async function sincronitzaSupabase(
+async function sincronitzaAmbSupabase(
   supabase: SupabaseClient,
-  sistemesFusion: SistemaTrobat[]
-): Promise<ResultatSync> {
+  sistemesForma: SistemaTrobat[],
+  resultat: ResultatSync
+): Promise<void> {
+  const codesForma = new Set<string>();
+  const nomsSistemesForma = new Set<string>();
+
+  for (const s of sistemesForma) {
+    nomsSistemesForma.add(s.nom.toUpperCase());
+    for (const i of s.installacions) codesForma.add(i.codi);
+    if (s.duplicats?.length) {
+      resultat.codisDuplicats.push(...s.duplicats);
+    }
+  }
+
+  for (const [index, sistema] of sistemesForma.entries()) {
+    const { data: sistemaExistent } = await supabase
+      .from("visor3d_sistemes")
+      .select("id, nom")
+      .ilike("nom", sistema.nom)
+      .maybeSingle();
+
+    let sistemaId: number;
+
+    if (!sistemaExistent) {
+      const { data: nouSistema, error } = await supabase
+        .from("visor3d_sistemes")
+        .insert({ nom: sistema.nom, ordre: index + 1 })
+        .select("id")
+        .single();
+      if (error || !nouSistema) {
+        resultat.errors.push(`Error creant sistema "${sistema.nom}": ${error?.message}`);
+        continue;
+      }
+      sistemaId = nouSistema.id;
+      resultat.sistemesCreats.push(sistema.nom);
+      console.log(`  ✅ Sistema creat: "${sistema.nom}"`);
+    } else {
+      sistemaId = sistemaExistent.id;
+      resultat.sistemesActualitzats.push(sistema.nom);
+    }
+
+    for (const inst of sistema.installacions) {
+      const { data: instExistent } = await supabase
+        .from("visor3d_installacions")
+        .select("id, urn, embed_url, last_modified_time")
+        .eq("codi", inst.codi)
+        .maybeSingle();
+
+      if (!instExistent) {
+        const { error } = await supabase.from("visor3d_installacions").insert({
+          codi: inst.codi,
+          nom: inst.nom,
+          sistema_id: sistemaId,
+          urn: inst.urn,
+          embed_url: inst.embedUrl,
+          last_modified_time: inst.lastModifiedTime,
+        });
+        if (error) {
+          resultat.errors.push(`Error creant instal·lació "${inst.codi}": ${error.message}`);
+        } else {
+          resultat.installacionsCreades.push(inst.codi);
+          console.log(`    ✅ Instal·lació creada: ${inst.codi}`);
+        }
+      } else if (
+        instExistent.urn !== inst.urn ||
+        instExistent.embed_url !== inst.embedUrl ||
+        instExistent.last_modified_time !== inst.lastModifiedTime
+      ) {
+        const { error } = await supabase
+          .from("visor3d_installacions")
+          .update({
+            nom: inst.nom,
+            sistema_id: sistemaId,
+            urn: inst.urn,
+            embed_url: inst.embedUrl,
+            last_modified_time: inst.lastModifiedTime,
+          })
+          .eq("codi", inst.codi);
+        if (error) {
+          resultat.errors.push(`Error actualitzant "${inst.codi}": ${error.message}`);
+        } else {
+          resultat.installacionsActualitzades.push(inst.codi);
+          console.log(`    🔄 Instal·lació actualitzada: ${inst.codi}`);
+        }
+      } else {
+        resultat.installacionsSenseCanvis.push(inst.codi);
+      }
+    }
+  }
+
+  // Eliminar instal·lacions que ja no existeixen a Forma
+  const { data: totes } = await supabase
+    .from("visor3d_installacions")
+    .select("codi");
+
+  for (const row of totes ?? []) {
+    if (!codesForma.has(row.codi)) {
+      await supabase.from("visor3d_installacions").delete().eq("codi", row.codi);
+      resultat.installacionsEliminades.push(row.codi);
+      console.log(`    🗑️  Instal·lació eliminada: ${row.codi}`);
+    }
+  }
+
+  // Eliminar sistemes que ja no existeixen a Forma
+  const { data: totsS } = await supabase
+    .from("visor3d_sistemes")
+    .select("id, nom");
+
+  for (const s of totsS ?? []) {
+    if (!nomsSistemesForma.has(s.nom.toUpperCase())) {
+      const { data: instDelSistema } = await supabase
+        .from("visor3d_installacions")
+        .select("codi")
+        .eq("sistema_id", s.id);
+      if (!instDelSistema?.length) {
+        await supabase.from("visor3d_sistemes").delete().eq("id", s.id);
+        resultat.sistemesEliminats.push(s.nom);
+        console.log(`  🗑️  Sistema eliminat: "${s.nom}"`);
+      } else {
+        console.log(`  ⚠️  Sistema "${s.nom}" no és a Forma però té instal·lacions — no s'elimina`);
+      }
+    }
+  }
+}
+
+// ─── Punt d'entrada principal ─────────────────────────────────────────────────
+
+export async function executaAgent(): Promise<ResultatSync> {
   const resultat: ResultatSync = {
     sistemesCreats: [],
     sistemesActualitzats: [],
@@ -357,190 +479,8 @@ async function sincronitzaSupabase(
     errors: [],
   };
 
-  const { data: sistemesSupabase, error: errSis } = await supabase
-    .from("visor3d_sistemes")
-    .select("id, nom, ordre");
-  if (errSis) throw new Error(`Error llegint sistemes de Supabase: ${errSis.message}`);
-
-  const { data: installacionsSupabase, error: errInst } = await supabase
-    .from("visor3d_installacions")
-    .select("id, sistema_id, codi_installacio, nom, updated_at, embed_url, urn");
-  if (errInst) throw new Error(`Error llegint instal·lacions de Supabase: ${errInst.message}`);
-
-  const sistemaPerNom = new Map<string, { id: string; ordre: number }>();
-  for (const s of (sistemesSupabase ?? [])) {
-    sistemaPerNom.set(s.nom.toUpperCase(), { id: s.id, ordre: s.ordre });
-  }
-
-  // Ara que el constraint únic s'ha eliminat, pot haver-hi múltiples files amb el mateix codi.
-  // Usem un Map de codi → array per gestionar-ho correctament.
-  const instPerCodi = new Map<string, { id: string; nom: string; updated_at: string; sistema_id: string; embed_url?: string; urn?: string }[]>();
-  for (const i of (installacionsSupabase ?? [])) {
-    if (i.codi_installacio) {
-      const llista = instPerCodi.get(i.codi_installacio) ?? [];
-      llista.push(i);
-      instPerCodi.set(i.codi_installacio, llista);
-    }
-  }
-
-  const codisFusion = new Set<string>();
-  const nomsSistemesFusion = new Set<string>();
-
-  for (const s of sistemesFusion) {
-    nomsSistemesFusion.add(s.nom.toUpperCase());
-    for (const i of s.installacions) codisFusion.add(i.codi);
-  }
-
-  for (const [index, sistema] of sistemesFusion.entries()) {
-    try {
-      console.log(`\n💾 Sincronitzant sistema: ${sistema.nom}`);
-
-      const clauNom = sistema.nom.toUpperCase();
-      let sistemaId: string;
-
-      if (sistemaPerNom.has(clauNom)) {
-        // Ja existeix — no compta com a canvi
-        sistemaId = sistemaPerNom.get(clauNom)!.id;
-        
-      } else {
-        const maxOrdre = Math.max(0, ...(sistemesSupabase ?? []).map((s: any) => s.ordre ?? 0));
-        const { data: nouSistema, error } = await supabase
-          .from("visor3d_sistemes")
-          .insert({ nom: sistema.nom, color: colorPerOrdre(index), ordre: maxOrdre + 1 })
-          .select()
-          .single();
-        if (error) throw error;
-        sistemaId = nouSistema.id;
-        resultat.sistemesCreats.push(sistema.nom);
-        console.log(`  ✅ Sistema creat: ${sistema.nom}`);
-      }
-
-      for (const [instIndex, inst] of sistema.installacions.entries()) {
-        try {
-          // Identitat d'una instal·lació: codi + nom.
-          // Si coincideixen, es tracta de la mateixa instal·lació (pot tenir un URN nou
-          // si el fitxer .rvt ha canviat de versió a Fusion) → actualitzem l'URN.
-          // Si el codi existeix però amb un nom diferent → instal·lació distinta → inserim.
-          const existentsPerCodi = instPerCodi.get(inst.codi) ?? [];
-          const existent = existentsPerCodi.find(e => e.nom === inst.nom) ?? null;
-
-          if (!existent) {
-            // No existeix cap fila amb aquest codi+nom: inserim una nova instal·lació
-            await supabase.from("visor3d_installacions").insert({
-              sistema_id: sistemaId,
-              nom: inst.nom,
-              codi_installacio: inst.codi,
-              embed_url: inst.embedUrl,
-              urn: inst.urn,
-              ordre: instIndex,
-              updated_at: inst.lastModifiedTime,
-            });
-            resultat.installacionsCreades.push(`${inst.codi} - ${inst.nom}`);
-            console.log(`  ➕ Nova: ${inst.codi} - ${inst.nom}`);
-
-          } else {
-            // Ja existeix: comprovem si hi ha canvis reals
-            const urnCanviat      = existent.urn !== inst.urn;
-            const embedCanviat    = existent.embed_url !== inst.embedUrl;
-            const sistemaCanviat  = existent.sistema_id !== sistemaId;
-
-            if (urnCanviat || embedCanviat || sistemaCanviat) {
-              await supabase.from("visor3d_installacions")
-                .update({
-                  nom: inst.nom,
-                  embed_url: inst.embedUrl,
-                  urn: inst.urn,
-                  sistema_id: sistemaId,
-                  updated_at: inst.lastModifiedTime,
-                })
-                .eq("id", existent.id);
-              resultat.installacionsActualitzades.push(`${inst.codi} - ${inst.nom}`);
-              console.log(`  ✏️  Actualitzat: ${inst.codi} - ${inst.nom}${urnCanviat ? " (URN nou)" : ""}`);
-            } else {
-              // Sense canvis reals
-              resultat.installacionsSenseCanvis.push(`${inst.codi} - ${inst.nom}`);
-              console.log(`  ─  Sense canvis: ${inst.codi} - ${inst.nom}`);
-            }
-          }
-        } catch (err) {
-          const msg = `Error amb instal·lació ${inst.codi}: ${err}`;
-          resultat.errors.push(msg);
-          console.error(`  ❌ ${msg}`);
-        }
-      }
-    } catch (err) {
-      const msg = `Error amb sistema ${sistema.nom}: ${err}`;
-      resultat.errors.push(msg);
-      console.error(`❌ ${msg}`);
-    }
-  }
-
-  // Recollim tots els codis compartits (codi amb múltiples noms) de tots els sistemes
-  for (const s of sistemesFusion) {
-    if (s.duplicats?.length) {
-      resultat.codisDuplicats.push(...s.duplicats);
-      s.duplicats.forEach(d => console.warn(`  ⚠️  Codi compartit entre instal·lacions — ${d}`));
-    }
-  }
-
-  console.log("\n🗑️  Comprovant eliminacions d'instal·lacions...");
-  for (const [codi, instLlista] of instPerCodi.entries()) {
-    if (!codisFusion.has(codi)) {
-      // El codi ja no existeix a Fusion: eliminem totes les files d'aquest codi
-      for (const inst of instLlista) {
-        try {
-          await supabase.from("visor3d_installacions").delete().eq("id", inst.id);
-          resultat.installacionsEliminades.push(codi);
-          console.log(`  🗑️  Eliminada: ${codi}`);
-        } catch (err) {
-          const msg = `Error eliminant instal·lació ${codi}: ${err}`;
-          resultat.errors.push(msg);
-          console.error(`  ❌ ${msg}`);
-        }
-      }
-    }
-  }
-
-  console.log("🗑️  Comprovant eliminacions de sistemes...");
-  for (const s of (sistemesSupabase ?? [])) {
-    if (!nomsSistemesFusion.has(s.nom.toUpperCase())) {
-      try {
-        const { count } = await supabase
-          .from("visor3d_installacions")
-          .select("id", { count: "exact", head: true })
-          .eq("sistema_id", s.id);
-
-        if ((count ?? 0) === 0) {
-          await supabase.from("visor3d_sistemes").delete().eq("id", s.id);
-          resultat.sistemesEliminats.push(s.nom);
-          console.log(`  🗑️  Eliminat sistema buit: ${s.nom}`);
-        } else {
-          console.log(`  ⚠️  Sistema "${s.nom}" no és a Fusion però té instal·lacions — no s'elimina`);
-        }
-      } catch (err) {
-        const msg = `Error eliminant sistema ${s.nom}: ${err}`;
-        resultat.errors.push(msg);
-        console.error(`  ❌ ${msg}`);
-      }
-    }
-  }
-
-  return resultat;
-}
-
-// ─── Colors ───────────────────────────────────────────────────────────────────
-
-const COLORS = [
-  "#0099A8", "#6366F1", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6",
-  "#EC4899", "#F97316", "#06B6D4", "#84CC16", "#64748B", "#0EA5E9",
-];
-function colorPerOrdre(index: number): string { return COLORS[index % COLORS.length]; }
-
-// ─── Funció principal ─────────────────────────────────────────────────────────
-
-export async function executaAgent(): Promise<ResultatSync> {
-  console.log("🤖 Agent Visor3D (APS 3-legged + detecció canvis) iniciant...");
-  console.log(`🕐 ${new Date().toISOString()}`);
+  console.log(`\n🤖 Agent Visor3D · Autodesk Forma + 3-legged OAuth`);
+  console.log(`🕐 ${new Date().toISOString()}\n`);
 
   const supabaseUrl     = process.env.SUPABASE_URL;
   const supabaseKey     = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -549,93 +489,36 @@ export async function executaAgent(): Promise<ResultatSync> {
   const apsHubId        = process.env.APS_HUB_ID;
   const apsProjectId    = process.env.APS_PROJECT_ID;
 
-  if (!supabaseUrl || !supabaseKey) throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
+  if (!supabaseUrl || !supabaseKey)     throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
   if (!apsClientId || !apsClientSecret) throw new Error("Falten APS_CLIENT_ID o APS_CLIENT_SECRET");
-  if (!apsHubId || !apsProjectId) throw new Error("Falten APS_HUB_ID o APS_PROJECT_ID");
+  if (!apsHubId || !apsProjectId)       throw new Error("Falten APS_HUB_ID o APS_PROJECT_ID");
 
-  console.log(`\n📋 Configuració:`);
+  console.log(`📋 Configuració:`);
   console.log(`   APS_HUB_ID:     ${apsHubId}`);
   console.log(`   APS_PROJECT_ID: ${apsProjectId}`);
-  console.log(`   SUPABASE_URL:   ${supabaseUrl}`);
+  console.log(`   Carpeta arrel:  ${CARPETA_ARREL}`);
+  console.log(`   Subcarpeta BIM: ${CARPETA_MODEL_BIM}`);
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
-    global: { headers: {} },
-    realtime: { transport: WebSocket as any },
+    auth: { autoRefreshToken: false, persistSession: false },
   });
-
-  // Resultat buit per si l'agent falla abans d'arribar a sincronitzaSupabase
-  let resultat: ResultatSync = {
-    sistemesCreats: [],
-    sistemesActualitzats: [],
-    sistemesEliminats: [],
-    installacionsCreades: [],
-    installacionsActualitzades: [],
-    installacionsEliminades: [],
-    installacionsSenseCanvis: [],
-    codisDuplicats: [],
-    errors: [],
-  };
 
   try {
     const token = await obteToken3Legged(supabase, apsClientId, apsClientSecret);
-    const sistemesTrobats = await extrauSistemes(apsHubId, apsProjectId, token);
+    const sistemesTobrats = await extrauSistemes(apsHubId, apsProjectId, token);
 
-    console.log(`\n📊 Resum extracció de Fusion:`);
-    console.log(`  Sistemes: ${sistemesTrobats.length}`);
-    sistemesTrobats.forEach((s) =>
-      console.log(`  - ${s.nom}: ${s.installacions.length} instal·lació${s.installacions.length !== 1 ? "ns" : ""}`)
-    );
+    console.log(`\n📊 Resum extracció de Forma:`);
+    console.log(`   Sistemes: ${sistemesTobrats.length}`);
+    console.log(`   Instal·lacions: ${sistemesTobrats.reduce((a, s) => a + s.installacions.length, 0)}`);
 
-    resultat = await sincronitzaSupabase(supabase, sistemesTrobats);
+    await sincronitzaAmbSupabase(supabase, sistemesTobrats, resultat);
 
-    console.log("\n✅ Sincronització completada:");
-    console.log(`  ➕ Sistemes creats:             ${resultat.sistemesCreats.length}`);
-    console.log(`  ♻️  Sistemes actualitzats:        ${resultat.sistemesActualitzats.length}`);
-    console.log(`  🗑️  Sistemes eliminats:           ${resultat.sistemesEliminats.length}`);
-    console.log(`  ➕ Instal·lacions creades:       ${resultat.installacionsCreades.length}`);
-    console.log(`  ✏️  Instal·lacions actualitzades: ${resultat.installacionsActualitzades.length}`);
-    console.log(`  🗑️  Instal·lacions eliminades:    ${resultat.installacionsEliminades.length}`);
-    console.log(`  ─  Sense canvis:                ${resultat.installacionsSenseCanvis.length}`);
-    if (resultat.codisDuplicats.length > 0) {
-      console.log(`  ⚠️  Codis duplicats: ${resultat.codisDuplicats.length}`);
-      resultat.codisDuplicats.forEach((d) => console.warn(`    - ${d}`));
-    }
-    if (resultat.errors.length > 0) {
-      console.log(`  ⚠️  Errors: ${resultat.errors.length}`);
-      resultat.errors.forEach((e) => console.error(`    - ${e}`));
-    }
-  } catch (errFatal) {
-    // Error fatal (token, APS, Supabase estructural…) — el capturem i el
-    // guardem al resultat perquè quedi registrat al log de Supabase igualment.
-    const msg = errFatal instanceof Error ? errFatal.message : String(errFatal);
-    console.error("❌ Error fatal a l'agent:", msg);
+  } catch (err: any) {
+    const msg = err?.message ?? String(err);
+    console.error(`❌ Error fatal: ${msg}`);
     resultat.errors.push(`[FATAL] ${msg}`);
   }
 
-  // ── Sempre guardem el log a Supabase, tant si ha anat bé com si ha fallat ──
-  const { error: logError } = await supabase.from("visor3d_sync_log").insert({
-    executat_a: new Date().toISOString(),
-    sistemes_creats: resultat.sistemesCreats.length,
-    sistemes_actualitzats: resultat.sistemesActualitzats.length,
-    sistemes_eliminats: resultat.sistemesEliminats.length,
-    installacions_creades: resultat.installacionsCreades.length,
-    installacions_actualitzades: resultat.installacionsActualitzades.length,
-    installacions_eliminades: resultat.installacionsEliminades.length,
-    installacions_sense_canvis: resultat.installacionsSenseCanvis.length,
-    errors: resultat.errors.length,
-    detalls: resultat,
-  });
-
-  if (logError) {
-    console.error("❌ Error guardant el log a Supabase:", logError.message);
-  } else {
-    console.log("📝 Log guardat a visor3d_sync_log correctament.");
-  }
-
-  if (resultat.codisDuplicats.length > 0) {
-    console.warn(`\n⚠️  Hi ha ${resultat.codisDuplicats.length} codi(s) compartit(s) entre instal·lacions distintes — revisa els fitxers a Autodesk:`);
-    resultat.codisDuplicats.forEach(d => console.warn(`   · ${d}`));
-  }
-
+  console.log(`\n✅ Agent finalitzat:`, resultat);
   return resultat;
 }
