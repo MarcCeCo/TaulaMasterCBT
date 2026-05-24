@@ -1,0 +1,22 @@
+name: Debug - Llista Hubs APS (executar 1 cop)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Llista tots els hubs accessibles
+        run: |
+          echo "🔍 Consultant hubs accessibles amb el token actual..."
+          
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
+            "https://visor3d-agent.onrender.com/debug/hubs" \
+            -H "Authorization: Bearer ${{ secrets.AGENT_SECRET }}")
+          
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+          
+          echo "HTTP: $HTTP_CODE"
+          echo "Hubs: $BODY"
