@@ -7,10 +7,9 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Llista hubs accessibles
+      - name: Llista projectes del hub ACC
         run: |
           RESPONSE=$(curl -s \
-            "https://visor3d-agent.onrender.com/debug/hubs" \
+            "https://visor3d-agent.onrender.com/debug/hubs?hub=b.2dc15a2c-e075-4557-bf82-2933afa81268" \
             -H "Authorization: Bearer ${{ secrets.AGENT_SECRET }}")
-          echo "RESPOSTA COMPLETA:"
           echo "$RESPONSE" | python3 -m json.tool || echo "$RESPONSE"
