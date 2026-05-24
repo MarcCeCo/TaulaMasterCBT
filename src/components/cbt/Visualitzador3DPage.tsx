@@ -324,11 +324,19 @@ interface VistaModel {
   index: number;
 }
 
+// ─── Helper: normalitza URN a base64url ───────────────────────────────────────
+
+function normalitzaUrn(urn: string): string {
+  return urn.startsWith("urn:")
+    ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
+    : urn;
+}
+
 // ─── Hook useApsViewer ────────────────────────────────────────────────────────
 
 function useApsViewer(
   containerRef: React.RefObject<HTMLDivElement>,
-  urn: string | undefined,
+  installacio: Installacio | undefined,
   agentUrl: string | undefined
 ) {
   const [estat, setEstat]         = useState<ViewerEstat>("idle");
@@ -338,7 +346,7 @@ function useApsViewer(
   const [canviantVista, setCanviantVista] = useState(false);
 
   const viewerRef  = useRef<any>(null);
-  const docRef     = useRef<any>(null);   // Autodesk.Viewing.Document
+  const docRef     = useRef<any>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -353,7 +361,6 @@ function useApsViewer(
   }, []);
 
   const inicialitza = useCallback(async () => {
-    // Espera que el container del DOM estigui disponible (race condition amb Dialog Radix)
     if (!containerRef.current) {
       let waited = 0;
       await new Promise<void>((resolve) => {
@@ -364,14 +371,36 @@ function useApsViewer(
       });
     }
 
-    if (!containerRef.current || !urn) {
+    if (!containerRef.current || !installacio) {
+      setEstat("error");
+      setError("No hi ha instal·lació assignada.");
+      return;
+    }
+
+    // Recull els URNs disponibles (federat o individual).
+    // Els camps urnMep/urnEnt/urnEst poden contenir múltiples URNs separats per comes.
+    const splitUrns = (val?: string) =>
+      val ? val.split(",").map(u => u.trim()).filter(Boolean) : [];
+
+    const urnsPerDisciplina = [
+      ...splitUrns(installacio.urnMep),
+      ...splitUrns(installacio.urnEnt),
+      ...splitUrns(installacio.urnEst),
+    ];
+
+    // Fallback a URN únic si no n'hi ha cap de disciplina específica
+    const urns = urnsPerDisciplina.length > 0
+      ? urnsPerDisciplina
+      : splitUrns(installacio.urn);
+
+    if (urns.length === 0) {
       setEstat("error");
       setError("No hi ha URN assignat a aquesta instal·lació. Executa l'agent APS per sincronitzar.");
       return;
     }
+
     if (!mountedRef.current) return;
 
-    // Neteja viewer anterior
     if (viewerRef.current) {
       try { viewerRef.current.finish(); } catch { /* ignora */ }
       viewerRef.current = null;
@@ -398,11 +427,6 @@ function useApsViewer(
       setEstat("inicialitzant");
       const AV = window.Autodesk.Viewing;
 
-      // Normalitza URN → base64url sense padding
-      const urnB64 = urn.startsWith("urn:")
-        ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
-        : urn;
-
       await new Promise<void>((res) => {
         AV.Initializer(
           {
@@ -415,84 +439,117 @@ function useApsViewer(
       });
       if (!mountedRef.current) return;
 
-      const viewer = new AV.GuiViewer3D(containerRef.current);
-      viewer.start();
-      viewerRef.current = viewer;
-
       setEstat("carregant-model");
 
-      await new Promise<void>((res, rej) => {
-        AV.Document.load(
-          `urn:${urnB64}`,
-          (doc: any) => {
-            if (!mountedRef.current) { rej(new Error("_desmontat_")); return; }
-            docRef.current = doc;
+      if (urns.length === 1) {
+        // ── Mode individual (un sol URN) ──────────────────────────────────────
+        const viewer = new AV.GuiViewer3D(containerRef.current);
+        viewer.start();
+        viewerRef.current = viewer;
 
-            // Recull totes les vistes publicades (3D i 2D).
-            // Fusion Teams pot publicar geometries com a tipus "geometry" o "lmvdoc".
-            // Provem múltiples estratègies per trobar nodes carregables.
-            const root = doc.getRoot();
+        const urnB64 = normalitzaUrn(urns[0]);
 
-            const nodes3d: any[] = root.search({ type: "geometry", role: "3d" }) ?? [];
-            const nodes2d: any[] = root.search({ type: "geometry", role: "2d" }) ?? [];
+        await new Promise<void>((res, rej) => {
+          AV.Document.load(
+            `urn:${urnB64}`,
+            (doc: any) => {
+              if (!mountedRef.current) { rej(new Error("_desmontat_")); return; }
+              docRef.current = doc;
+              const root = doc.getRoot();
+              const nodes3d: any[] = root.search({ type: "geometry", role: "3d" }) ?? [];
+              const nodes2d: any[] = root.search({ type: "geometry", role: "2d" }) ?? [];
+              const toVista = (role: "3d" | "2d") => (node: any, i: number): VistaModel => ({
+                node, nom: node.name() || `Vista ${i + 1}`, rol: role, index: i,
+              });
+              const totes: VistaModel[] = [...nodes3d.map(toVista("3d")), ...nodes2d.map(toVista("2d"))];
+              const primerNode = totes[0]?.node ?? root.getDefaultGeometry(true) ?? root.getDefaultGeometry();
+              if (!primerNode) { rej(new Error("El model no té geometries disponibles.")); return; }
+              viewer.loadDocumentNode(doc, primerNode);
+              setVistes(totes);
+              setVistaActual(0);
+              setEstat("ok");
+              res();
+            },
+            (code: number, msg: string) => rej(new Error(`Error APS (codi ${code}): ${msg}`))
+          );
+        });
 
-            // Fallback 1: Fusion Teams de vegades usa "lmvdoc" com a tipus de geometry
-            const nodesLmv: any[] = (nodes3d.length === 0 && nodes2d.length === 0)
-              ? (root.search({ type: "resource", role: "graphics" }) ?? [])
-              : [];
+      } else {
+        // ── Mode federat (aggregatedView: MEP + ENT + EST) ────────────────────
+        const viewer = new AV.GuiViewer3D(containerRef.current, {
+          extensions: ["Autodesk.AggregatedView"],
+        });
+        viewer.start();
+        viewerRef.current = viewer;
 
-            console.log(`[Viewer] Nodes trobats — 3D: ${nodes3d.length}, 2D: ${nodes2d.length}, lmv/graphics: ${nodesLmv.length}`);
+        // AggregatedView: carrega múltiples models en un sol visor
+        const aggView = viewer.getExtension
+          ? await viewer.loadExtension("Autodesk.AggregatedView")
+          : null;
 
-            const toVista = (role: "3d" | "2d") => (node: any, i: number): VistaModel => ({
-              node,
-              nom: node.name() || node.guid() || `Vista ${i + 1}`,
-              rol: role,
-              index: i,
-            });
-            const toVistaLmv = (node: any, i: number): VistaModel => ({
-              node,
-              nom: node.name() || node.guid() || `Vista ${i + 1}`,
-              rol: "3d",
-              index: i,
-            });
+        const disciplineLabels: Record<string, string> = {};
+        if (installacio.urnMep) disciplineLabels[normalitzaUrn(installacio.urnMep)] = "MEP";
+        if (installacio.urnEnt) disciplineLabels[normalitzaUrn(installacio.urnEnt)] = "ENT";
+        if (installacio.urnEst) disciplineLabels[normalitzaUrn(installacio.urnEst)] = "EST";
 
-            const totes: VistaModel[] = [
-              ...nodes3d.map(toVista("3d")),
-              ...nodes2d.map(toVista("2d")),
-              ...nodesLmv.map(toVistaLmv),
-            ];
-
-            // Fallback 2: getDefaultGeometry amb el flag 'true' per incloure sheets 2D
-            // Fallback 3: primer fill del root (per manifests de Fusion amb estructura plana)
-            const primerNode: any =
-              totes[0]?.node
-              ?? root.getDefaultGeometry(true)
-              ?? root.getDefaultGeometry()
-              ?? (() => {
-                const fills = root.search({}) ?? [];
-                return fills.find((n: any) => n !== root) ?? null;
-              })();
-
-            if (!primerNode) {
-              console.error(`[Viewer] Cap node carregable trobat. URN: ${urnB64}`);
-              rej(new Error("El model no té geometries disponibles. Pot ser que la traducció APS no s'hagi completat, hagi fallat, o el manifest no contingui vistes 3D/2D."));
-              return;
-            }
-
-            console.log(`[Viewer] Carregant node: ${primerNode.name?.() ?? primerNode.guid?.() ?? "sense nom"}`);
-
-            viewer.loadDocumentNode(doc, primerNode);
-
-            setVistes(totes);
-            setVistaActual(0);
-            setEstat("ok");
-            res();
-          },
-          (code: number, msg: string) => {
-            rej(new Error(`Error APS (codi ${code}): ${msg}`));
-          }
+        const documents = await Promise.all(
+          urns.map((urn) =>
+            new Promise<any>((res, rej) => {
+              const urnB64 = normalitzaUrn(urn);
+              AV.Document.load(
+                `urn:${urnB64}`,
+                (doc: any) => res({ urnB64, doc }),
+                (code: number, msg: string) => {
+                  console.warn(`[Viewer] Error carregant URN ${urnB64}: ${code} ${msg}`);
+                  res(null); // no fem fail total si un dels models falla
+                }
+              );
+            })
+          )
         );
-      });
+
+        if (!mountedRef.current) return;
+
+        const docsVàlids = documents.filter(Boolean) as { urnB64: string; doc: any }[];
+        if (docsVàlids.length === 0) throw new Error("Cap dels models ha pogut carregar.");
+
+        const nodeModels: Array<{ node: any; data: any }> = [];
+
+        for (const { urnB64, doc } of docsVàlids) {
+          const root = doc.getRoot();
+          const node3d = (root.search({ type: "geometry", role: "3d" }) ?? [])[0]
+            ?? root.getDefaultGeometry(true)
+            ?? root.getDefaultGeometry();
+          if (node3d) {
+            nodeModels.push({ node: node3d, data: doc });
+          }
+        }
+
+        if (nodeModels.length === 0) throw new Error("Cap model té geometries disponibles.");
+
+        // Càrrega seqüencial: primer model inicia el viewer, els seguents s'afegeixen
+        let isFirst = true;
+        for (const { node, data } of nodeModels) {
+          if (isFirst) {
+            await viewer.loadDocumentNode(data, node, {
+              keepCurrentModels: false,
+              modelNameOverride: disciplineLabels[node.getDocument()?.getPath()?.split(":").pop() ?? ""] ?? undefined,
+            });
+            isFirst = false;
+          } else {
+            await viewer.loadDocumentNode(data, node, {
+              keepCurrentModels: true,
+              modelNameOverride: disciplineLabels[node.getDocument()?.getPath()?.split(":").pop() ?? ""] ?? undefined,
+            });
+          }
+        }
+
+        console.log(`[Viewer] Model federat carregat: ${nodeModels.length} discipline(s)`);
+        setVistes([]);
+        setVistaActual(0);
+        setEstat("ok");
+      }
+
     } catch (err) {
       if (!mountedRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -500,9 +557,8 @@ function useApsViewer(
       setError(msg);
       setEstat("error");
     }
-  }, [containerRef, urn, agentUrl]);
+  }, [containerRef, installacio, agentUrl]);
 
-  // Canvia a una vista concreta
   const carregaVista = useCallback(async (idx: number) => {
     const vista = vistes[idx];
     if (!vista || !viewerRef.current || !docRef.current || canviantVista) return;
@@ -510,7 +566,7 @@ function useApsViewer(
     try {
       await viewerRef.current.loadDocumentNode(docRef.current, vista.node);
       setVistaActual(idx);
-    } catch { /* ignora errors de transició */ }
+    } catch { /* ignora */ }
     finally { setCanviantVista(false); }
   }, [vistes, canviantVista]);
 
@@ -702,20 +758,20 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
   const containerRef = useRef<HTMLDivElement>(null);
   const agentUrl = (import.meta.env.VITE_AGENT_URL as string | undefined)?.trim();
 
-  // URN directe o fallback del viewer genèric (https://viewer.autodesk.com/id/URN)
-  const urn = installacio.urn ?? (() => {
-    if (!installacio.embedUrl) return undefined;
-    try {
-      const m = new URL(installacio.embedUrl).pathname.match(/\/id\/(.+)/);
-      return m ? decodeURIComponent(m[1]) : undefined;
-    } catch { return undefined; }
-  })();
+  const splitUrns = (val?: string) =>
+    val ? val.split(",").map(u => u.trim()).filter(Boolean) : [];
 
-  const {
+  const nMep = splitUrns(installacio.urnMep).length;
+  const nEnt = splitUrns(installacio.urnEnt).length;
+  const nEst = splitUrns(installacio.urnEst).length;
+  const esFederat = nMep + nEnt + nEst > 0;
+  const urnDisponible = esFederat || !!installacio.urn;
     estat, error, reintentar,
     vistes, vistaActual, carregaVista, canviantVista,
-  } = useApsViewer(containerRef, urn, agentUrl);
+  } = useApsViewer(containerRef, installacio, agentUrl);
   const carregant = estat !== "ok" && estat !== "error";
+
+  const urnDisponible = !!(installacio.urn || installacio.urnMep || installacio.urnEnt || installacio.urnEst);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -743,6 +799,26 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
                 <Badge className="bg-slate-100 text-slate-500 border-0 text-[10px] font-mono">
                   {installacio.codiInstallacio}
                 </Badge>
+              )}
+              {/* Badges de disciplines del model federat */}
+              {esFederat && (
+                <div className="flex items-center gap-1 ml-1">
+                  {nMep > 0 && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                      MEP{nMep > 1 ? ` ×${nMep}` : ""}
+                    </span>
+                  )}
+                  {nEnt > 0 && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                      ENT{nEnt > 1 ? ` ×${nEnt}` : ""}
+                    </span>
+                  )}
+                  {nEst > 0 && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
+                      EST{nEst > 1 ? ` ×${nEst}` : ""}
+                    </span>
+                  )}
+                </div>
               )}
             </div>
             {installacio.descripcio && (
@@ -799,13 +875,13 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
               <div>
                 <p className="font-semibold text-white text-sm">No s'ha pogut carregar el model 3D</p>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-sm">{error}</p>
-                {!urn && (
+                {!urnDisponible && (
                   <p className="text-xs text-amber-400 mt-2 leading-relaxed max-w-sm">
                     Executa l'agent APS per sincronitzar l'URN d'aquesta instal·lació.
                   </p>
                 )}
               </div>
-              {urn && (
+              {urnDisponible && (
                 <Button size="sm" variant="outline"
                   className="gap-1.5 border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white"
                   onClick={reintentar}>
@@ -943,8 +1019,8 @@ function SistemaGroup({
               <Button size="sm"
                 className="h-7 px-3 text-[11px] font-semibold gap-1.5 text-white disabled:opacity-40"
                 style={{ background: sistema.color }}
-                disabled={!inst.urn && !inst.embedUrl}
-                title={!inst.urn && !inst.embedUrl ? "Sense URN — executa l'agent APS" : undefined}
+                disabled={!inst.urn && !inst.urnMep && !inst.urnEnt && !inst.urnEst && !inst.embedUrl}
+                title={!inst.urn && !inst.urnMep && !inst.urnEnt && !inst.urnEst && !inst.embedUrl ? "Sense URN — executa l'agent APS" : undefined}
                 onClick={() => onVisualitzar(inst)}>
                 <Monitor className="h-3 w-3" /> Visualitzar
               </Button>
