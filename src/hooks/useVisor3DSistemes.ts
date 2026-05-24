@@ -15,9 +15,13 @@ import { supaFetch as supa } from "@/lib/supaFetch";
 export interface Installacio {
   id: string;
   nom: string;
+  descripcio?: string;
   codiInstallacio?: string;
   embedUrl: string;
   urn?: string;
+  urnMep?: string;
+  urnEnt?: string;
+  urnEst?: string;
 }
 
 export interface Sistema {
@@ -43,9 +47,13 @@ interface InstallacioRow {
   id: string;
   sistema_id: string;
   nom: string;
+  descripcio: string | null;
   codi_installacio: string | null;
   embed_url: string;
   urn: string | null;
+  urn_mep: string | null;
+  urn_ent: string | null;
+  urn_est: string | null;
   ordre: number;
   updated_at: string;
 }
@@ -56,9 +64,13 @@ function rowToInstallacio(row: InstallacioRow): Installacio {
   return {
     id: row.id,
     nom: row.nom,
+    descripcio: row.descripcio ?? undefined,
     codiInstallacio: row.codi_installacio ?? undefined,
     embedUrl: row.embed_url,
     urn: row.urn ?? undefined,
+    urnMep: row.urn_mep ?? undefined,
+    urnEnt: row.urn_ent ?? undefined,
+    urnEst: row.urn_est ?? undefined,
   };
 }
 
