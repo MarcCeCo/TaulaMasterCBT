@@ -386,6 +386,8 @@ async function extrauSistemes(
 
     if (installacions.length > 0) {
       sistemes.push({ nom: nomSistema, installacions, duplicats });
+    } else {
+      console.warn(`  ⚠️  Sistema "${nomSistema}" detectat però sense instal·lacions vàlides (${carpetesInstallacio.length} subcarpetes trobades)`);
     }
   }
 

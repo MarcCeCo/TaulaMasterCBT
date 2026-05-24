@@ -475,33 +475,30 @@ function useApsViewer(
         });
 
       } else {
-        // ── Mode federat (aggregatedView: MEP + ENT + EST) ────────────────────
-        const viewer = new AV.GuiViewer3D(containerRef.current, {
-          extensions: ["Autodesk.AggregatedView"],
-        });
+        // ── Mode federat (múltiples URNs: MEP + ENT + EST) ────────────────────
+        // El Viewer SDK 7.x suporta múltiples models nativament amb keepCurrentModels.
+        // NO cal cap extensió addicional.
+        const viewer = new AV.GuiViewer3D(containerRef.current);
         viewer.start();
         viewerRef.current = viewer;
 
-        // AggregatedView: carrega múltiples models en un sol visor
-        const aggView = viewer.getExtension
-          ? await viewer.loadExtension("Autodesk.AggregatedView")
-          : null;
-
         const disciplineLabels: Record<string, string> = {};
-        if (installacio.urnMep) disciplineLabels[normalitzaUrn(installacio.urnMep)] = "MEP";
-        if (installacio.urnEnt) disciplineLabels[normalitzaUrn(installacio.urnEnt)] = "ENT";
-        if (installacio.urnEst) disciplineLabels[normalitzaUrn(installacio.urnEst)] = "EST";
+        const splitUrnsLocal = (val?: string) =>
+          val ? val.split(",").map((u: string) => u.trim()).filter(Boolean) : [];
+        splitUrnsLocal(installacio.urnMep).forEach(u => disciplineLabels[normalitzaUrn(u)] = "MEP");
+        splitUrnsLocal(installacio.urnEnt).forEach(u => disciplineLabels[normalitzaUrn(u)] = "ENT");
+        splitUrnsLocal(installacio.urnEst).forEach(u => disciplineLabels[normalitzaUrn(u)] = "EST");
 
         const documents = await Promise.all(
           urns.map((urn) =>
-            new Promise<any>((res, rej) => {
+            new Promise<any>((res) => {
               const urnB64 = normalitzaUrn(urn);
               AV.Document.load(
                 `urn:${urnB64}`,
                 (doc: any) => res({ urnB64, doc }),
                 (code: number, msg: string) => {
                   console.warn(`[Viewer] Error carregant URN ${urnB64}: ${code} ${msg}`);
-                  res(null); // no fem fail total si un dels models falla
+                  res(null);
                 }
               );
             })
@@ -513,38 +510,23 @@ function useApsViewer(
         const docsVàlids = documents.filter(Boolean) as { urnB64: string; doc: any }[];
         if (docsVàlids.length === 0) throw new Error("Cap dels models ha pogut carregar.");
 
-        const nodeModels: Array<{ node: any; data: any }> = [];
-
-        for (const { urnB64, doc } of docsVàlids) {
+        let isFirst = true;
+        for (const { doc } of docsVàlids) {
           const root = doc.getRoot();
           const node3d = (root.search({ type: "geometry", role: "3d" }) ?? [])[0]
             ?? root.getDefaultGeometry(true)
             ?? root.getDefaultGeometry();
-          if (node3d) {
-            nodeModels.push({ node: node3d, data: doc });
-          }
+          if (!node3d) continue;
+
+          await viewer.loadDocumentNode(doc, node3d, {
+            keepCurrentModels: !isFirst,
+          });
+          isFirst = false;
         }
 
-        if (nodeModels.length === 0) throw new Error("Cap model té geometries disponibles.");
+        if (isFirst) throw new Error("Cap model té geometries disponibles.");
 
-        // Càrrega seqüencial: primer model inicia el viewer, els seguents s'afegeixen
-        let isFirst = true;
-        for (const { node, data } of nodeModels) {
-          if (isFirst) {
-            await viewer.loadDocumentNode(data, node, {
-              keepCurrentModels: false,
-              modelNameOverride: disciplineLabels[node.getDocument()?.getPath()?.split(":").pop() ?? ""] ?? undefined,
-            });
-            isFirst = false;
-          } else {
-            await viewer.loadDocumentNode(data, node, {
-              keepCurrentModels: true,
-              modelNameOverride: disciplineLabels[node.getDocument()?.getPath()?.split(":").pop() ?? ""] ?? undefined,
-            });
-          }
-        }
-
-        console.log(`[Viewer] Model federat carregat: ${nodeModels.length} discipline(s)`);
+        console.log(`[Viewer] Model federat carregat: ${docsVàlids.length} model(s)`);
         setVistes([]);
         setVistaActual(0);
         setEstat("ok");
