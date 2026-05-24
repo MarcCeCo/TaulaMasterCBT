@@ -54,8 +54,7 @@ interface TokenRow {
 
 const APS_BASE         = "https://developer.api.autodesk.com";
 const APS_AUTH_URL     = `${APS_BASE}/authentication/v2/token`;
-const CARPETA_ARREL    = "besso-digital";
-const CARPETA_MODEL_BIM = "001_model-bim";
+const CARPETA_MODEL_BIM = "001_MODEL-BIM";
 
 // ─── Helpers de parseig ───────────────────────────────────────────────────────
 
@@ -241,27 +240,24 @@ async function extrauSistemes(
   projectId: string,
   token: string
 ): Promise<SistemaTrobat[]> {
-  console.log(`📂 Navegant Forma: "${CARPETA_ARREL}" → sistemes → instal·lacions → "${CARPETA_MODEL_BIM}"...`);
+  console.log(`📂 Navegant Forma: sistemes → instal·lacions → "${CARPETA_MODEL_BIM}"...`);
 
+  // Forma: les carpetes de sistema estan directament a topFolders (Archivos de proyecto)
   const carpetesArrel = await obteArrelCarpetes(hubId, projectId, token);
+  
+  // Busca la carpeta "Archivos de proyecto" o usa la primera carpeta disponible
+  let carpetaArxius = carpetesArrel.find(
+    (c: any) => c.attributes?.displayName?.toLowerCase().includes("archivo") ||
+                c.attributes?.displayName?.toLowerCase().includes("project file")
+  ) ?? carpetesArrel[0];
 
-  let carpetaBessoDig: any = null;
-  for (const arrel of carpetesArrel) {
-    carpetaBessoDig = await trobaSubcarpeta(projectId, arrel.id, CARPETA_ARREL, token);
-    if (carpetaBessoDig) {
-      console.log(`   ✅ "${CARPETA_ARREL}" trobat dins "${arrel.attributes?.displayName}"`);
-      break;
-    }
+  if (!carpetaArxius) {
+    throw new Error("No s'ha trobat cap carpeta arrel al projecte Forma.");
   }
 
-  if (!carpetaBessoDig) {
-    throw new Error(
-      `No s'ha trobat la carpeta "${CARPETA_ARREL}" al projecte Forma. ` +
-      `Comprova que APS_HUB_ID i APS_PROJECT_ID són correctes.`
-    );
-  }
+  console.log(`   ✅ Carpeta arrel: "${carpetaArxius.attributes?.displayName}"`);
 
-  const carpetesSistema = (await obteContingutCarpeta(projectId, carpetaBessoDig.id, token))
+  const carpetesSistema = (await obteContingutCarpeta(projectId, carpetaArxius.id, token))
     .filter((item: any) => item.type === "folders");
 
   const sistemes: SistemaTrobat[] = [];
@@ -496,7 +492,6 @@ export async function executaAgent(): Promise<ResultatSync> {
   console.log(`📋 Configuració:`);
   console.log(`   APS_HUB_ID:     ${apsHubId}`);
   console.log(`   APS_PROJECT_ID: ${apsProjectId}`);
-  console.log(`   Carpeta arrel:  ${CARPETA_ARREL}`);
   console.log(`   Subcarpeta BIM: ${CARPETA_MODEL_BIM}`);
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
