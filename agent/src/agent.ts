@@ -379,13 +379,13 @@ async function sincronitzaAmbSupabase(
     for (const inst of sistema.installacions) {
       const { data: instExistent } = await supabase
         .from("visor3d_installacions")
-        .select("id, urn, embed_url, last_modified_time")
-        .eq("codi", inst.codi)
+        .select("id, urn, embed_url, last_modified_time, codi_installacio")
+        .eq("codi_installacio", inst.codi)
         .maybeSingle();
 
       if (!instExistent) {
         const { error } = await supabase.from("visor3d_installacions").insert({
-          codi: inst.codi,
+          codi_installacio: inst.codi,
           nom: inst.nom,
           sistema_id: sistemaId,
           urn: inst.urn,
@@ -412,7 +412,7 @@ async function sincronitzaAmbSupabase(
             embed_url: inst.embedUrl,
             last_modified_time: inst.lastModifiedTime,
           })
-          .eq("codi", inst.codi);
+          .eq("codi_installacio", inst.codi);
         if (error) {
           resultat.errors.push(`Error actualitzant "${inst.codi}": ${error.message}`);
         } else {
@@ -428,13 +428,13 @@ async function sincronitzaAmbSupabase(
   // Eliminar instal·lacions que ja no existeixen a Forma
   const { data: totes } = await supabase
     .from("visor3d_installacions")
-    .select("codi");
+    .select("codi_installacio");
 
   for (const row of totes ?? []) {
-    if (!codesForma.has(row.codi)) {
-      await supabase.from("visor3d_installacions").delete().eq("codi", row.codi);
-      resultat.installacionsEliminades.push(row.codi);
-      console.log(`    🗑️  Instal·lació eliminada: ${row.codi}`);
+    if (!codesForma.has(row.codi_installacio)) {
+      await supabase.from("visor3d_installacions").delete().eq("codi_installacio", row.codi_installacio);
+      resultat.installacionsEliminades.push(row.codi_installacio);
+      console.log(`    🗑️  Instal·lació eliminada: ${row.codi_installacio}`);
     }
   }
 
@@ -447,7 +447,7 @@ async function sincronitzaAmbSupabase(
     if (!nomsSistemesForma.has(s.nom.toUpperCase())) {
       const { data: instDelSistema } = await supabase
         .from("visor3d_installacions")
-        .select("codi")
+        .select("codi_installacio")
         .eq("sistema_id", s.id);
       if (!instDelSistema?.length) {
         await supabase.from("visor3d_sistemes").delete().eq("id", s.id);
