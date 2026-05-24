@@ -28,6 +28,7 @@ export interface Sistema {
   id: string;
   nom: string;
   codi?: string;
+  descripcio?: string;
   color: string;
   installacions: Installacio[];
 }
@@ -38,6 +39,7 @@ interface SistemaRow {
   id: string;
   nom: string;
   codi: string | null;
+  descripcio: string | null;
   color: string;
   ordre: number;
   updated_at: string;
@@ -84,6 +86,7 @@ function buildSistemes(
       id: s.id,
       nom: s.nom,
       codi: s.codi ?? undefined,
+      descripcio: s.descripcio ?? undefined,
       color: s.color,
       installacions: installacioRows
         .filter((i) => i.sistema_id === s.id)

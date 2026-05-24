@@ -335,7 +335,7 @@ function normalitzaUrn(urn: string): string {
 // ─── Hook useApsViewer ────────────────────────────────────────────────────────
 
 function useApsViewer(
-  containerRef: React.RefObject<HTMLDivElement>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
   installacio: Installacio | undefined,
   agentUrl: string | undefined
 ) {
@@ -766,12 +766,12 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
   const nEst = splitUrns(installacio.urnEst).length;
   const esFederat = nMep + nEnt + nEst > 0;
   const urnDisponible = esFederat || !!installacio.urn;
+
+  const {
     estat, error, reintentar,
     vistes, vistaActual, carregaVista, canviantVista,
   } = useApsViewer(containerRef, installacio, agentUrl);
   const carregant = estat !== "ok" && estat !== "error";
-
-  const urnDisponible = !!(installacio.urn || installacio.urnMep || installacio.urnEnt || installacio.urnEst);
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
