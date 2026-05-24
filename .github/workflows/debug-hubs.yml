@@ -7,20 +7,10 @@ jobs:
   debug:
     runs-on: ubuntu-latest
     steps:
-      - name: Obté token 3-legged i llista hubs
+      - name: Llista hubs accessibles
         run: |
           RESPONSE=$(curl -s \
             "https://visor3d-agent.onrender.com/debug/hubs" \
             -H "Authorization: Bearer ${{ secrets.AGENT_SECRET }}")
-          
-          echo "$RESPONSE" | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-hubs = data.get('data', [])
-print(f'Total hubs: {len(hubs)}')
-for h in hubs:
-    print(f'  ID: {h[\"id\"]}')
-    print(f'  Nom: {h[\"attributes\"][\"name\"]}')
-    print(f'  Tipus: {h[\"attributes\"].get(\"extension\", {}).get(\"type\", \"?\")}')
-    print()
-"
+          echo "RESPOSTA COMPLETA:"
+          echo "$RESPONSE" | python3 -m json.tool || echo "$RESPONSE"
