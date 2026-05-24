@@ -22,7 +22,10 @@ interface InstallacioTrobada {
   codi: string;
   nom: string;
   embedUrl: string;
-  urn: string;
+  urn: string;       // URN principal (primer RVT trobat, o MEP si existeix)
+  urnMep: string;    // URN del fitxer MEP (instal·lacions)
+  urnEnt: string;    // URN del fitxer ENT (arquitectura/entorn)
+  urnEst: string;    // URN del fitxer EST (estructura)
   lastModifiedTime: string;
 }
 
@@ -306,18 +309,77 @@ async function extrauSistemes(
         console.warn(`  ⚠️  Codi duplicat: "${parsed.codi}"`);
       }
 
-      const fitxer = fitxersRvt[0];
-      const urn = await obteUrnFitxer(projectId, fitxer.id, token);
-      const embedUrl = urn
-        ? `https://autodesk360.com/viewer?urn=${urn}`
+      // Cerca fitxers per disciplina.
+      // Convenció: el nom ha de contenir "_MEP", "_ENT" o "_EST" (case-insensitive),
+      // seguit de qualsevol caràcter (underscore, punt, número, etc.) o res.
+      // Ex: ED005_MEP.rvt, ED005_MEP_R24.rvt, ED005_MEP01.rvt → tots detectats com MEP.
+      const conteParaula = (nom: string, keyword: string): boolean => {
+        const upper = nom.toUpperCase();
+        const idx = upper.indexOf(`_${keyword}`);
+        if (idx === -1) return false;
+        // El caràcter que ve després de _KEYWORD ha de ser: res (final o .rvt), _, punt o dígit
+        const charAfter = upper[idx + keyword.length + 1];
+        return charAfter === undefined || charAfter === "_" || charAfter === "." || /\d/.test(charAfter);
+      };
+
+      const fitxersMep = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "MEP"));
+      const fitxersEnt = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "ENT"));
+      const fitxersEst = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "EST"));
+
+      // Fitxers que no encaixen en cap disciplina coneguda
+      const fitxersAltres = fitxersRvt.filter((f: any) => {
+        const nom = f.attributes?.displayName ?? "";
+        return !conteParaula(nom, "MEP") && !conteParaula(nom, "ENT") && !conteParaula(nom, "EST");
+      });
+
+      console.log(
+        `    📁 "${parsed.codi}": ${fitxersRvt.length} RVT(s) — ` +
+        `MEP:${fitxersMep.length} ENT:${fitxersEnt.length} EST:${fitxersEst.length} altres:${fitxersAltres.length}`
+      );
+
+      // Obté URN de tots els fitxers de cada disciplina en paral·lel.
+      // Si hi ha múltiples fitxers MEP/ENT/EST, es carreguen tots al model federat.
+      const obteUrns = async (fitxers: any[]): Promise<string[]> => {
+        const urns = await Promise.all(
+          fitxers.map((f: any) => obteUrnFitxer(projectId, f.id, token))
+        );
+        return urns.filter((u): u is string => !!u);
+      };
+
+      const [urnsMep, urnsEnt, urnsEst, urnsAltres] = await Promise.all([
+        obteUrns(fitxersMep),
+        obteUrns(fitxersEnt),
+        obteUrns(fitxersEst),
+        obteUrns(fitxersAltres),
+      ]);
+
+      // URN principal: primer MEP, si no ENT, si no EST, si no el primer altre
+      const urnPrincipal =
+        urnsMep[0] ?? urnsEnt[0] ?? urnsEst[0] ?? urnsAltres[0] ?? "";
+
+      // Per a la BD guardem el primer URN de cada disciplina (els addicionals
+      // s'inclouen al camp urn_mep/ent/est com a llista JSON separada per comes)
+      const joinUrns = (urns: string[]) => urns.join(",");
+
+      const embedUrl = urnPrincipal
+        ? `https://autodesk360.com/viewer?urn=${urnPrincipal}`
         : "";
-      const lastModified = fitxer.attributes?.lastModifiedTime ?? new Date().toISOString();
+
+      // lastModifiedTime: el més recent de tots els fitxers
+      const allFitxers = [...fitxersMep, ...fitxersEnt, ...fitxersEst, ...fitxersAltres];
+      const lastModified = allFitxers
+        .map((f: any) => f.attributes?.lastModifiedTime ?? "")
+        .sort()
+        .reverse()[0] ?? new Date().toISOString();
 
       installacions.push({
         codi: parsed.codi,
         nom: parsed.nom,
         embedUrl,
-        urn: urn ?? "",
+        urn: urnPrincipal,
+        urnMep: joinUrns(urnsMep),
+        urnEnt: joinUrns(urnsEnt),
+        urnEst: joinUrns(urnsEst),
         lastModifiedTime: lastModified,
       });
     }
@@ -389,6 +451,9 @@ async function sincronitzaAmbSupabase(
           nom: inst.nom,
           sistema_id: sistemaId,
           urn: inst.urn,
+          urn_mep: inst.urnMep,
+          urn_ent: inst.urnEnt,
+          urn_est: inst.urnEst,
           embed_url: inst.embedUrl,
           last_modified_time: inst.lastModifiedTime,
         });
@@ -409,6 +474,9 @@ async function sincronitzaAmbSupabase(
             nom: inst.nom,
             sistema_id: sistemaId,
             urn: inst.urn,
+            urn_mep: inst.urnMep,
+            urn_ent: inst.urnEnt,
+            urn_est: inst.urnEst,
             embed_url: inst.embedUrl,
             last_modified_time: inst.lastModifiedTime,
           })
