@@ -12,11 +12,5 @@
     "resolveJsonModule": true
   },
   "include": ["src/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "src/add-service-account.ts",
-    "src/discover-ids.ts",
-    "src/auth-setup.ts"
-  ]
+  "exclude": ["node_modules", "dist"]
 }
