@@ -61,8 +61,13 @@ const CARPETA_MODEL_BIM = "001_MODEL-BIM";
 
 // ─── Helpers de parseig ───────────────────────────────────────────────────────
 
-function parsejaNomCarpetaSistema(nomCarpeta: string): string {
-  return nomCarpeta.replace(/^\d+_/, "").replace(/-/g, " ").trim();
+function parsejaNomCarpetaSistema(nomCarpeta: string): string | null {
+  // Només accepta carpetes amb prefix numèric de 3 dígits >= 001 (ex: "001_GRANOLLERS", "008_CALDES-DE-MONTBUI")
+  const m = nomCarpeta.match(/^(\d{3})_(.+)$/);
+  if (!m) return null;
+  const prefix = parseInt(m[1], 10);
+  if (prefix < 1) return null; // descarta 000_
+  return m[2].replace(/-/g, " ").trim();
 }
 
 function parsejaNomCarpetaInstallacio(nomCarpeta: string): { codi: string; nom: string } | null {
@@ -268,6 +273,11 @@ async function extrauSistemes(
   for (const carpetaSis of carpetesSistema) {
     const nomCarpetaSistema = carpetaSis.attributes?.displayName ?? "";
     const nomSistema = parsejaNomCarpetaSistema(nomCarpetaSistema);
+
+    if (!nomSistema) {
+      console.warn(`  ⚠️  No s'ha pogut parsejar com a sistema: "${nomCarpetaSistema}"`);
+      continue;
+    }
 
     const carpetesInstallacio = (await obteContingutCarpeta(projectId, carpetaSis.id, token))
       .filter((item: any) => item.type === "folders");
