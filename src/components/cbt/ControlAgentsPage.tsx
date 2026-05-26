@@ -43,6 +43,7 @@ interface SyncLog {
     installacionsCreades?: string[];
     installacionsActualitzades?: string[];
     installacionsEliminades?: string[];
+    installacionsSenseCanvis?: string[];
     codisDuplicats?: string[];
     errors?: string[];
   };

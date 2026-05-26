@@ -319,8 +319,10 @@ type ViewerEstat = "idle" | "carregant-sdk" | "carregant-token" | "inicialitzant
 
 interface VistaModel {
   node: any;          // Autodesk.Viewing.BubbleNode
+  doc: any;           // Autodesk.Viewing.Document (necessari en mode federat)
   nom: string;
   rol: "3d" | "2d";
+  disciplina?: string; // "MEP" | "ENT" | "EST" | undefined
   index: number;
 }
 
@@ -459,7 +461,7 @@ function useApsViewer(
               const nodes3d: any[] = root.search({ type: "geometry", role: "3d" }) ?? [];
               const nodes2d: any[] = root.search({ type: "geometry", role: "2d" }) ?? [];
               const toVista = (role: "3d" | "2d") => (node: any, i: number): VistaModel => ({
-                node, nom: node.name() || `Vista ${i + 1}`, rol: role, index: i,
+                node, doc, nom: node.name() || `Vista ${i + 1}`, rol: role, index: i,
               });
               const totes: VistaModel[] = [...nodes3d.map(toVista("3d")), ...nodes2d.map(toVista("2d"))];
               const primerNode = totes[0]?.node ?? root.getDefaultGeometry(true) ?? root.getDefaultGeometry();
@@ -510,15 +512,31 @@ function useApsViewer(
         const docsVàlids = documents.filter(Boolean) as { urnB64: string; doc: any }[];
         if (docsVàlids.length === 0) throw new Error("Cap dels models ha pogut carregar.");
 
+        const tostesVistes: VistaModel[] = [];
         let isFirst = true;
-        for (const { doc } of docsVàlids) {
+        let globalIdx = 0;
+
+        for (const { urnB64, doc } of docsVàlids) {
           const root = doc.getRoot();
-          const node3d = (root.search({ type: "geometry", role: "3d" }) ?? [])[0]
+          const nodes3d: any[] = root.search({ type: "geometry", role: "3d" }) ?? [];
+          const nodes2d: any[] = root.search({ type: "geometry", role: "2d" }) ?? [];
+          const disciplina = disciplineLabels[urnB64] ?? undefined;
+
+          // Recull totes les vistes d'aquest document
+          for (const node of nodes3d) {
+            tostesVistes.push({ node, doc, nom: `${disciplina ? `[${disciplina}] ` : ""}${node.name() || `Vista ${globalIdx + 1}`}`, rol: "3d", disciplina, index: globalIdx++ });
+          }
+          for (const node of nodes2d) {
+            tostesVistes.push({ node, doc, nom: `${disciplina ? `[${disciplina}] ` : ""}${node.name() || `Plànol ${globalIdx + 1}`}`, rol: "2d", disciplina, index: globalIdx++ });
+          }
+
+          // Carrega el primer node 3D (o 2D com a fallback) d'aquest document
+          const primerNode = nodes3d[0] ?? nodes2d[0]
             ?? root.getDefaultGeometry(true)
             ?? root.getDefaultGeometry();
-          if (!node3d) continue;
+          if (!primerNode) continue;
 
-          await viewer.loadDocumentNode(doc, node3d, {
+          await viewer.loadDocumentNode(doc, primerNode, {
             keepCurrentModels: !isFirst,
           });
           isFirst = false;
@@ -526,8 +544,8 @@ function useApsViewer(
 
         if (isFirst) throw new Error("Cap model té geometries disponibles.");
 
-        console.log(`[Viewer] Model federat carregat: ${docsVàlids.length} model(s)`);
-        setVistes([]);
+        console.log(`[Viewer] Model federat: ${docsVàlids.length} model(s), ${tostesVistes.length} vistes totals`);
+        setVistes(tostesVistes);
         setVistaActual(0);
         setEstat("ok");
       }
@@ -543,10 +561,15 @@ function useApsViewer(
 
   const carregaVista = useCallback(async (idx: number) => {
     const vista = vistes[idx];
-    if (!vista || !viewerRef.current || !docRef.current || canviantVista) return;
+    if (!vista || !viewerRef.current || canviantVista) return;
     setCanviantVista(true);
     try {
-      await viewerRef.current.loadDocumentNode(docRef.current, vista.node);
+      // En mode federat cada vista té el seu propi doc; en mode individual usem docRef
+      const doc = vista.doc ?? docRef.current;
+      if (!doc) return;
+      await viewerRef.current.loadDocumentNode(doc, vista.node, {
+        keepCurrentModels: false, // en canviar vista, mostrem només aquesta
+      });
       setVistaActual(idx);
     } catch { /* ignora */ }
     finally { setCanviantVista(false); }
@@ -570,7 +593,6 @@ function SelectorVistes({ vistes, vistaActual, canviantVista, onSeleccionar, sis
   const [filtre, setFiltre] = useState("");
   const panellRef = useRef<HTMLDivElement>(null);
 
-  // Tanca el panell si es clica fora
   useEffect(() => {
     if (!obert) return;
     const handle = (e: MouseEvent) => {
@@ -582,16 +604,39 @@ function SelectorVistes({ vistes, vistaActual, canviantVista, onSeleccionar, sis
 
   if (vistes.length === 0) return null;
 
-  const vistes3d = vistes.filter(v => v.rol === "3d");
-  const vistes2d = vistes.filter(v => v.rol === "2d");
   const vistasel = vistes[vistaActual];
+  const filtrades = vistes.filter(v => v.nom.toLowerCase().includes(filtre.toLowerCase()));
 
-  const filtrades3d = vistes3d.filter(v => v.nom.toLowerCase().includes(filtre.toLowerCase()));
-  const filtrades2d = vistes2d.filter(v => v.nom.toLowerCase().includes(filtre.toLowerCase()));
+  // Agrupa per disciplina (mode federat) o per rol (mode individual)
+  const esFederat = vistes.some(v => v.disciplina);
+  const disciplineColors: Record<string, string> = { MEP: "#3b82f6", ENT: "#f59e0b", EST: "#22c55e" };
+
+  // Agrupa les vistes filtrades
+  type Grup = { label: string; color: string; icona: "3d" | "2d"; vistes: VistaModel[] };
+  const grups: Grup[] = [];
+
+  if (esFederat) {
+    const disciplines = ["MEP", "ENT", "EST", ...Array.from(new Set(vistes.map(v => v.disciplina).filter((d): d is string => !!d && !["MEP","ENT","EST"].includes(d))))];
+    for (const disc of disciplines) {
+      const vs = filtrades.filter(v => v.disciplina === disc && v.rol === "3d");
+      const vs2d = filtrades.filter(v => v.disciplina === disc && v.rol === "2d");
+      if (vs.length > 0) grups.push({ label: `${disc} — 3D`, color: disciplineColors[disc] ?? "#94a3b8", icona: "3d", vistes: vs });
+      if (vs2d.length > 0) grups.push({ label: `${disc} — Plànols`, color: disciplineColors[disc] ?? "#94a3b8", icona: "2d", vistes: vs2d });
+    }
+    // Vistes sense disciplina
+    const senseDisc3d = filtrades.filter(v => !v.disciplina && v.rol === "3d");
+    const senseDisc2d = filtrades.filter(v => !v.disciplina && v.rol === "2d");
+    if (senseDisc3d.length > 0) grups.push({ label: "3D", color: sistemaColor, icona: "3d", vistes: senseDisc3d });
+    if (senseDisc2d.length > 0) grups.push({ label: "Plànols", color: "#94a3b8", icona: "2d", vistes: senseDisc2d });
+  } else {
+    const vs3d = filtrades.filter(v => v.rol === "3d");
+    const vs2d = filtrades.filter(v => v.rol === "2d");
+    if (vs3d.length > 0) grups.push({ label: "3D", color: sistemaColor, icona: "3d", vistes: vs3d });
+    if (vs2d.length > 0) grups.push({ label: "Plànols i seccions", color: "#94a3b8", icona: "2d", vistes: vs2d });
+  }
 
   return (
     <div className="relative shrink-0" ref={panellRef}>
-      {/* Botó principal */}
       <button
         onClick={() => setObert(o => !o)}
         disabled={canviantVista}
@@ -618,13 +663,11 @@ function SelectorVistes({ vistes, vistaActual, canviantVista, onSeleccionar, sis
         <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform shrink-0", obert && "rotate-180")} />
       </button>
 
-      {/* Panell desplegable */}
       {obert && (
         <div className={cn(
           "absolute right-0 top-9 z-50 w-72 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl",
           "flex flex-col overflow-hidden"
         )}>
-          {/* Capçalera */}
           <div className="px-3 pt-3 pb-2 border-b border-slate-800">
             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
               Vistes publicades
@@ -643,84 +686,48 @@ function SelectorVistes({ vistes, vistaActual, canviantVista, onSeleccionar, sis
             )}
           </div>
 
-          {/* Llista de vistes */}
-          <div className="overflow-y-auto max-h-72 py-1.5 space-y-0.5 px-1.5">
-
-            {filtrades3d.length > 0 && (
-              <>
-                {vistes2d.length > 0 && (
-                  <p className="px-2 pt-1 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
-                    3D
-                  </p>
-                )}
-                {filtrades3d.map((v) => (
-                  <button
-                    key={v.index}
-                    onClick={() => { onSeleccionar(v.index); setObert(false); setFiltre(""); }}
-                    disabled={canviantVista}
-                    className={cn(
-                      "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all",
-                      vistaActual === v.index
-                        ? "text-white"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-white",
-                      canviantVista && "opacity-50 cursor-wait"
-                    )}
-                    style={vistaActual === v.index ? { background: `${sistemaColor}20` } : undefined}
-                  >
-                    <div
-                      className="h-5 w-5 rounded flex items-center justify-center shrink-0"
-                      style={vistaActual === v.index
-                        ? { background: `${sistemaColor}30`, color: sistemaColor }
-                        : { background: "#1e293b", color: "#64748b" }}
-                    >
-                      <Box className="h-2.5 w-2.5" />
-                    </div>
-                    <span className="text-[11px] font-medium truncate flex-1">{v.nom}</span>
-                    {vistaActual === v.index && (
-                      <Check className="h-3 w-3 shrink-0" style={{ color: sistemaColor }} />
-                    )}
-                  </button>
-                ))}
-              </>
-            )}
-
-            {filtrades2d.length > 0 && (
-              <>
-                <p className="px-2 pt-2 pb-0.5 text-[9px] font-bold uppercase tracking-widest text-slate-600">
-                  2D — Plantes i seccions
+          <div className="overflow-y-auto max-h-80 py-1.5 space-y-0.5 px-1.5">
+            {grups.map((grup) => (
+              <div key={grup.label}>
+                <p className="px-2 pt-2 pb-0.5 text-[9px] font-bold uppercase tracking-widest" style={{ color: grup.color }}>
+                  {grup.label}
                 </p>
-                {filtrades2d.map((v) => (
+                {grup.vistes.map((v) => (
                   <button
                     key={v.index}
                     onClick={() => { onSeleccionar(v.index); setObert(false); setFiltre(""); }}
                     disabled={canviantVista}
                     className={cn(
                       "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-left transition-all",
-                      vistaActual === v.index
-                        ? "text-white"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-white",
+                      vistaActual === v.index ? "text-white" : "text-slate-300 hover:bg-slate-800 hover:text-white",
                       canviantVista && "opacity-50 cursor-wait"
                     )}
-                    style={vistaActual === v.index ? { background: "#94a3b820" } : undefined}
+                    style={vistaActual === v.index ? { background: `${grup.color}20` } : undefined}
                   >
                     <div
                       className="h-5 w-5 rounded flex items-center justify-center shrink-0"
                       style={vistaActual === v.index
-                        ? { background: "#94a3b820", color: "#94a3b8" }
+                        ? { background: `${grup.color}30`, color: grup.color }
                         : { background: "#1e293b", color: "#64748b" }}
                     >
-                      <AlignLeft className="h-2.5 w-2.5" />
+                      {v.rol === "3d"
+                        ? <Box className="h-2.5 w-2.5" />
+                        : <AlignLeft className="h-2.5 w-2.5" />
+                      }
                     </div>
-                    <span className="text-[11px] font-medium truncate flex-1">{v.nom}</span>
+                    {/* Neteja el prefix [DISC] del nom per no repetir-lo */}
+                    <span className="text-[11px] font-medium truncate flex-1">
+                      {v.nom.replace(/^\[(MEP|ENT|EST)\]\s*/, "")}
+                    </span>
                     {vistaActual === v.index && (
-                      <Check className="h-3 w-3 shrink-0 text-slate-400" />
+                      <Check className="h-3 w-3 shrink-0" style={{ color: grup.color }} />
                     )}
                   </button>
                 ))}
-              </>
-            )}
+              </div>
+            ))}
 
-            {filtrades3d.length === 0 && filtrades2d.length === 0 && (
+            {grups.length === 0 && (
               <p className="px-3 py-4 text-center text-[11px] text-slate-500 italic">
                 Cap vista coincideix amb "{filtre}"
               </p>
