@@ -386,7 +386,7 @@ function useApsViewer(
     const splitUrns = (val?: string) =>
       val ? val.split(",").map(u => u.trim()).filter(Boolean) : [];
 
-    const urnsMaster = splitUrns((installacio as any).urnMaster);
+    const urnsMaster = splitUrns(installacio.urnMaster);
 
     let urns: string[];
     if (urnsMaster.length > 0) {
@@ -772,7 +772,7 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
   const nEnt = splitUrns(installacio.urnEnt).length;
   const nEst = splitUrns(installacio.urnEst).length;
   const esFederat = nMep + nEnt + nEst > 0;
-  const urnDisponible = esFederat || !!installacio.urn;
+  const urnDisponible = esFederat || !!installacio.urnMaster || !!installacio.urn;
 
   const {
     estat, error, reintentar,
@@ -1026,8 +1026,8 @@ function SistemaGroup({
               <Button size="sm"
                 className="h-7 px-3 text-[11px] font-semibold gap-1.5 text-white disabled:opacity-40"
                 style={{ background: sistema.color }}
-                disabled={!inst.urn && !inst.urnMep && !inst.urnEnt && !inst.urnEst && !inst.embedUrl}
-                title={!inst.urn && !inst.urnMep && !inst.urnEnt && !inst.urnEst && !inst.embedUrl ? "Sense URN — executa l'agent APS" : undefined}
+                disabled={!inst.urn && !inst.urnMaster && !inst.urnMep && !inst.urnEnt && !inst.urnEst && !inst.embedUrl}
+                title={!inst.urn && !inst.urnMaster && !inst.urnMep && !inst.urnEnt && !inst.urnEst && !inst.embedUrl ? "Sense URN — executa l'agent APS" : undefined}
                 onClick={() => onVisualitzar(inst)}>
                 <Monitor className="h-3 w-3" /> Visualitzar
               </Button>

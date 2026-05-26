@@ -19,6 +19,7 @@ export interface Installacio {
   codiInstallacio?: string;
   embedUrl: string;
   urn?: string;
+  urnMaster?: string;
   urnMep?: string;
   urnEnt?: string;
   urnEst?: string;
@@ -53,6 +54,7 @@ interface InstallacioRow {
   codi_installacio: string | null;
   embed_url: string;
   urn: string | null;
+  urn_master: string | null;
   urn_mep: string | null;
   urn_ent: string | null;
   urn_est: string | null;
@@ -70,6 +72,7 @@ function rowToInstallacio(row: InstallacioRow): Installacio {
     codiInstallacio: row.codi_installacio ?? undefined,
     embedUrl: row.embed_url,
     urn: row.urn ?? undefined,
+    urnMaster: row.urn_master ?? undefined,
     urnMep: row.urn_mep ?? undefined,
     urnEnt: row.urn_ent ?? undefined,
     urnEst: row.urn_est ?? undefined,

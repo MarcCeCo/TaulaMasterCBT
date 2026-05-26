@@ -3,6 +3,15 @@
 // Arquitectura multi-agent: llista a l'esquerra, detall a la dreta.
 // Afegir un nou agent = afegir una entrada a AGENTS_CONFIG.
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// FIX (2026-05-26):
+//   - Polling refactoritzat: usa un ref de dades (logsRef) en comptes de llegir
+//     l'estat dins el setInterval per evitar closures estales.
+//   - El botó "Actualitza" ara força sempre el fetch (elimina el guard loadingRef
+//     quan és una crida manual).
+//   - Polling per Supabase Realtime: subscripció a INSERT a visor3d_sync_log
+//     per rebre l'actualització en temps real quan l'agent finalitza.
+//   - Cleanup correcte de subscripcions i intervals.
 
 import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
@@ -55,18 +64,17 @@ interface ApsToken {
 }
 
 // ─── Configuració d'agents ────────────────────────────────────────────────────
-// Per afegir un nou agent, afegeix una entrada aquí.
 
 interface AgentConfig {
   id: string;
   nom: string;
   descripcio: string;
   cronSchedule: string;
-  logTable: string;         // taula de Supabase amb els logs
-  syncEndpoint: string;     // path de l'endpoint POST per disparar l'agent
-  tokenTable?: string;      // opcional: taula amb el token extern (per mostrar estat)
-  agentUrlEnv: string;      // nom de la variable d'entorn VITE_ amb la URL base
-  agentSecretEnv: string;   // nom de la variable d'entorn VITE_ amb el secret
+  logTable: string;
+  syncEndpoint: string;
+  tokenTable?: string;
+  agentUrlEnv: string;
+  agentSecretEnv: string;
 }
 
 const AGENTS_CONFIG: AgentConfig[] = [
@@ -81,17 +89,6 @@ const AGENTS_CONFIG: AgentConfig[] = [
     agentUrlEnv: "VITE_AGENT_URL",
     agentSecretEnv: "VITE_AGENT_SECRET",
   },
-  // Exemple per afegir un segon agent en el futur:
-  // {
-  //   id: "facturacio",
-  //   nom: "Agent Facturació",
-  //   descripcio: "Genera informes mensuals de facturació",
-  //   cronSchedule: "0 6 1 * *",
-  //   logTable: "facturacio_sync_log",
-  //   syncEndpoint: "/sync",
-  //   agentUrlEnv: "VITE_FACTURACIO_AGENT_URL",
-  //   agentSecretEnv: "VITE_FACTURACIO_AGENT_SECRET",
-  // },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -121,7 +118,6 @@ function nextCronDate(schedule: string): Date | null {
     const hour = parseInt(hourS);
     const dom  = parseInt(domS);
 
-    // Treballem sempre en UTC per reflectir l'hora real del cron
     const now = new Date();
     const candidate = new Date(Date.UTC(
       now.getUTCFullYear(),
@@ -135,7 +131,6 @@ function nextCronDate(schedule: string): Date | null {
 
     if (candidate <= now) {
       if (!isNaN(dom)) {
-        // Avancem un mes i tornem a posar el dia correcte
         candidate.setUTCMonth(candidate.getUTCMonth() + 1);
         candidate.setUTCDate(dom);
       } else {
@@ -390,7 +385,7 @@ function AgentDetail({
         {polling && (
           <div className="mt-3 flex items-center gap-2 text-[12px] px-3 py-2 rounded-lg bg-blue-50 text-blue-700">
             <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
-            Sincronització en curs — actualitzant cada 8 s fins que finalitzi…
+            Sincronització en curs — actualitzant en temps real fins que finalitzi…
           </div>
         )}
         {!agentUrl && (
@@ -436,8 +431,6 @@ function AgentDetail({
               <tbody>
                 {logs.map((log, i) => {
                   const isOk = !log.errors;
-                  // FIX: només compta canvis reals (creats + actualitzats + eliminats)
-                  // Les instal·lacions "sense canvis" (comprovades) no compten
                   const totalCanvis =
                     (log.sistemes_creats             ?? 0) +
                     (log.sistemes_eliminats          ?? 0) +
@@ -502,7 +495,7 @@ function AgentDetail({
                           )}
                         </td>
                       </tr>
-                      {/* Fila expandida d'errors — visible sempre que n'hi hagi */}
+                      {/* Fila expandida d'errors */}
                       {(d?.errors?.length ?? 0) > 0 && (
                         <tr className="border-b border-red-50 bg-red-50/40">
                           <td colSpan={4} className="px-5 py-2">
@@ -544,20 +537,24 @@ export function ControlAgentsPage() {
   const [triggering, setTriggering]         = useState(false);
   const [triggerMsg, setTriggerMsg]         = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Refs per a polling/realtime
   const loadingRef        = useRef(false);
   const needsReloadRef    = useRef(false);
   const pollRef           = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef    = useRef<ReturnType<typeof setTimeout>  | null>(null);
-  const pollAgentIdRef    = useRef<string>("");   // evita closure estale dins setInterval
-  const pollLastIdRef     = useRef<number>(0);    // id del log conegut en el moment de disparar
+  const pollAgentIdRef    = useRef<string>("");
+  // FIX: ref de dades per evitar closures estales dins setInterval
+  const logsRef           = useRef<Record<string, SyncLog[]>>({});
+  const pollLastIdRef     = useRef<number>(0);
   const [polling, setPolling] = useState(false);
 
   const selectedAgent = AGENTS_CONFIG.find(a => a.id === selectedAgentId) ?? AGENTS_CONFIG[0];
 
-  // ── Fetch dades de tots els agents ────────────────────────────────────────
+  // ── Fetch dades ──────────────────────────────────────────────────────────
+  // force=true: salta el guard loadingRef (útil per al botó "Actualitza" manual)
 
-  const fetchAll = useCallback(async () => {
-    if (loadingRef.current) return;
+  const fetchAll = useCallback(async (force = false) => {
+    if (!force && loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
 
@@ -603,12 +600,16 @@ export function ControlAgentsPage() {
         })
       );
 
-      const newLogs: Record<string, SyncLog[]>      = {};
+      const newLogs: Record<string, SyncLog[]>         = {};
       const newTokens: Record<string, ApsToken | null> = {};
       results.forEach(r => {
         newLogs[r.id]   = r.logs;
         newTokens[r.id] = r.token;
       });
+
+      // Actualitza el ref de dades ABANS de l'estat (el setInterval llegeix el ref)
+      logsRef.current = newLogs;
+
       setLogsPerAgent(newLogs);
       setTokenPerAgent(newTokens);
     } catch {
@@ -619,9 +620,61 @@ export function ControlAgentsPage() {
     }
   }, [getToken]);
 
+  // El botó "Actualitza" força sempre el fetch
+  const handleRefresh = useCallback(() => fetchAll(true), [fetchAll]);
+
+  // ── Càrrega inicial i auth listeners ──────────────────────────────────────
+
   useEffect(() => {
     if (!authLoading && user) fetchAll();
   }, [authLoading, user, fetchAll]);
+
+  // ── Subscripció Realtime a Supabase ───────────────────────────────────────
+  // Quan l'agent insereix un nou log, rebem l'event i actualitzem la UI
+  // sense haver d'esperar el polling.
+
+  useEffect(() => {
+    // Subscripció a INSERT de nous logs de l'agent Visor 3D
+    const channel = supabase
+      .channel("visor3d_sync_log_inserts")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "visor3d_sync_log" },
+        (payload) => {
+          const nouLog = payload.new as SyncLog;
+
+          // Si hi ha polling actiu i és per a l'agent Visor 3D, comprova si és nou
+          if (pollRef.current && pollAgentIdRef.current === "visor3d") {
+            if (nouLog.id !== pollLastIdRef.current) {
+              // Log nou detectat via Realtime — para el polling
+              if (pollRef.current)        { clearInterval(pollRef.current);  pollRef.current = null; }
+              if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
+              setPolling(false);
+              setTriggerMsg(
+                nouLog.errors
+                  ? { ok: false, text: `Execució finalitzada amb ${nouLog.errors} error(s). Revisa els detalls a l'historial.` }
+                  : { ok: true,  text: "Execució finalitzada correctament." }
+              );
+            }
+          }
+
+          // Actualitza l'estat afegint el nou log al capdamunt
+          setLogsPerAgent(prev => {
+            const prevLogs = prev["visor3d"] ?? [];
+            // Evita duplicats
+            if (prevLogs.some(l => l.id === nouLog.id)) return prev;
+            const updated = [nouLog, ...prevLogs].slice(0, 10);
+            logsRef.current = { ...logsRef.current, visor3d: updated };
+            return { ...prev, visor3d: updated };
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []); // cap dependència: es munta una sola vegada
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
@@ -633,6 +686,7 @@ export function ControlAgentsPage() {
       if (event === "SIGNED_OUT") {
         setLogsPerAgent({});
         setTokenPerAgent({});
+        logsRef.current = {};
         setLoading(false);
         loadingRef.current = false;
       }
@@ -669,17 +723,17 @@ export function ControlAgentsPage() {
       if (agentSecret) headers["Authorization"] = `Bearer ${agentSecret}`;
       const res = await fetch(`${agentUrl}${selectedAgent.syncEndpoint}`, { method: "POST", headers });
       if (res.ok) {
-        setTriggerMsg({ ok: true, text: "Agent iniciat. Esperant el resultat (pot trigar uns minuts)…" });
+        setTriggerMsg({ ok: true, text: "Agent iniciat. Esperant el resultat en temps real…" });
 
-        // Guardem l'id del darrer log conegut per detectar quan n'arriba un de nou
-        const lastKnownId = (logsPerAgent[selectedAgent.id] ?? [])[0]?.id ?? 0;
+        // Guardem l'id del darrer log conegut (llegim el ref, no l'estat)
+        const lastKnownId = (logsRef.current[selectedAgent.id] ?? [])[0]?.id ?? 0;
 
         // Neteja qualsevol polling anterior
         if (pollRef.current)        clearInterval(pollRef.current);
         if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
 
-        pollAgentIdRef.current  = selectedAgent.id;
-        pollLastIdRef.current   = lastKnownId;
+        pollAgentIdRef.current = selectedAgent.id;
+        pollLastIdRef.current  = lastKnownId;
         setPolling(true);
 
         const stopPolling = () => {
@@ -688,26 +742,23 @@ export function ControlAgentsPage() {
           setPolling(false);
         };
 
+        // Polling de fallback cada 8 s per si el Realtime falla
+        // (el Realtime hauria de parar-lo primer si tot va bé)
         pollRef.current = setInterval(async () => {
-          await fetchAll();
-          setLogsPerAgent(prev => {
-            // Usem els refs — no valors capturats pel closure
-            const agId   = pollAgentIdRef.current;
-            const lastId = pollLastIdRef.current;
-            const newest = (prev[agId] ?? [])[0];
-            if (newest && newest.id !== lastId) {
-              stopPolling();
-              setTriggerMsg(
-                newest.errors
-                  ? { ok: false, text: `Execució finalitzada amb ${newest.errors} error(s). Revisa els detalls a l'historial.` }
-                  : { ok: true,  text: "Execució finalitzada correctament." }
-              );
-            }
-            return prev;
-          });
+          await fetchAll(true);
+          // Llegim el ref — no l'estat (evita closures estales)
+          const newest = (logsRef.current[pollAgentIdRef.current] ?? [])[0];
+          if (newest && newest.id !== pollLastIdRef.current) {
+            stopPolling();
+            setTriggerMsg(
+              newest.errors
+                ? { ok: false, text: `Execució finalitzada amb ${newest.errors} error(s). Revisa els detalls a l'historial.` }
+                : { ok: true,  text: "Execució finalitzada correctament." }
+            );
+          }
         }, 8000);
 
-        // Para el polling com a molt als 10 min (l'agent pot haver fallat silenciosament)
+        // Timeout màxim de 10 min
         pollTimeoutRef.current = setTimeout(() => {
           stopPolling();
           setTriggerMsg({ ok: false, text: "Temps d'espera superat (>10 min). Comprova els logs manualment." });
@@ -753,7 +804,6 @@ export function ControlAgentsPage() {
                   selected={selectedAgentId === agent.id}
                   onClick={() => {
                     setSelectedAgentId(agent.id);
-                    // No neteges el missatge si hi ha polling en curs
                     if (!pollRef.current) setTriggerMsg(null);
                   }}
                 />
@@ -773,7 +823,7 @@ export function ControlAgentsPage() {
             polling={polling}
             triggerMsg={triggerMsg}
             onTrigger={handleTrigger}
-            onRefresh={fetchAll}
+            onRefresh={handleRefresh}
           />
         </div>
       </div>
