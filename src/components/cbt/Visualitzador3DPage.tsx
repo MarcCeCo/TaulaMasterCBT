@@ -1093,6 +1093,24 @@ export function Visualitzador3DPage() {
   const [sistemaDialeg, setSistemaDialeg] = useState<{ open: boolean; mode: "create" | "edit"; target?: Sistema }>({ open: false, mode: "create" });
   const [installacioDialeg, setInstallacioDialeg] = useState<{ open: boolean; mode: "create" | "edit"; sistema?: Sistema; target?: Installacio }>({ open: false, mode: "create" });
   const [deleteDialeg, setDeleteDialeg] = useState<{ open: boolean; type: "sistema" | "installacio"; id: string; sistemaId?: string; nom: string } | null>(null);
+  const [resetDialeg, setResetDialeg] = useState(false);
+
+  const handleResetAll = async () => {
+    setSaving(true);
+    setOpError(null);
+    try {
+      // Elimina tots els sistemes (les instal·lacions s'eliminen en cascada per FK a Supabase)
+      for (const s of sistemes) {
+        await deleteSistema(s.id);
+      }
+      setExpanded(new Set());
+      setResetDialeg(false);
+    } catch (e) {
+      setOpError(e instanceof Error ? e.message : "Error eliminant totes les dades.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const totalInstallacions = sistemes.reduce((acc, s) => acc + s.installacions.length, 0);
 
@@ -1201,6 +1219,13 @@ export function Visualitzador3DPage() {
             disabled={saving}
             className="gap-1.5 bg-[#0099A8] hover:bg-[#007a87] text-white h-8">
             <Plus className="h-3.5 w-3.5" /> Nou sistema
+          </Button>
+        )}
+        {modeAdmin && sistemes.length > 0 && (
+          <Button size="sm" variant="outline" onClick={() => setResetDialeg(true)}
+            disabled={saving}
+            className="gap-1.5 border-red-200 text-red-500 hover:bg-red-50 hover:border-red-300 h-8">
+            <Trash2 className="h-3.5 w-3.5" /> Esborrar tot
           </Button>
         )}
         <div className="ml-auto text-xs text-slate-400 self-center flex items-center gap-1.5">
@@ -1352,6 +1377,34 @@ export function Visualitzador3DPage() {
               }}>
               {saving ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : null}
               Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Diàleg confirmació RESET ─────────────────────────────────────── */}
+      <AlertDialog open={resetDialeg} onOpenChange={setResetDialeg}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-4 w-4" /> Esborrar tots els sistemes i instal·lacions
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Estàs a punt d'eliminar <strong>tots els {sistemes.length} sistemes</strong> i totes les seves instal·lacions ({totalInstallacions} en total).
+              <br /><br />
+              Aquesta acció <strong>no es pot desfer</strong>. Hauràs de tornar a executar l'agent APS per recuperar les dades.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Cancel·lar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-500 hover:bg-red-600 text-white"
+              disabled={saving}
+              onClick={handleResetAll}>
+              {saving
+                ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Esborrant…</>
+                : "Sí, esborrar tot"
+              }
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
