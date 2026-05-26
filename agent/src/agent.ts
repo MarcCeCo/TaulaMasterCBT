@@ -22,10 +22,11 @@ interface InstallacioTrobada {
   codi: string;
   nom: string;
   embedUrl: string;
-  urn: string;       // URN principal (primer RVT trobat, o MEP si existeix)
-  urnMep: string;    // URN del fitxer MEP (instal·lacions)
-  urnEnt: string;    // URN del fitxer ENT (arquitectura/entorn)
-  urnEst: string;    // URN del fitxer EST (estructura)
+  urn: string;        // URN principal: MASTER si existeix, sinó MEP/ENT/EST
+  urnMaster: string;  // URN del fitxer MASTER federat (conté tots els vincles)
+  urnMep: string;     // URN del fitxer MEP (instal·lacions)
+  urnEnt: string;     // URN del fitxer ENT (arquitectura/entorn)
+  urnEst: string;     // URN del fitxer EST (estructura)
   lastModifiedTime: string;
 }
 
@@ -229,11 +230,20 @@ async function trobaSubcarpeta(
   token: string
 ): Promise<any | null> {
   const contingut = await obteContingutCarpeta(projectId, carpetaParentId, token);
-  return contingut.find(
+  const carpetes = contingut.filter((item: any) => item.type === "folders");
+
+  const trobada = carpetes.find(
     (item: any) =>
-      item.type === "folders" &&
       item.attributes?.displayName?.toLowerCase() === nom.toLowerCase()
   ) ?? null;
+
+  if (!trobada && carpetes.length > 0) {
+    // Mostra les subcarpetes reals per ajudar a diagnosticar noms incorrectes
+    const noms = carpetes.map((c: any) => `"${c.attributes?.displayName ?? "(buit)"}"`)
+    console.warn(`     ↳ Subcarpetes trobades (${carpetes.length}): ${noms.join(", ")}`);
+  }
+
+  return trobada;
 }
 
 async function obteUrnFitxer(projectId: string, itemId: string, token: string): Promise<string | null> {
@@ -331,10 +341,13 @@ async function extrauSistemes(
         console.warn(`  ⚠️  Codi duplicat: "${parsed.codi}"`);
       }
 
-      // Cerca fitxers per disciplina.
-      // Convenció: el nom ha de contenir "_MEP", "_ENT" o "_EST" (case-insensitive),
-      // seguit de qualsevol caràcter (underscore, punt, número, etc.) o res.
-      // Ex: ED005_MEP.rvt, ED005_MEP_R24.rvt, ED005_MEP01.rvt → tots detectats com MEP.
+      // Cerca fitxers per disciplina i per fitxer MASTER federat.
+      // Convenció de noms (case-insensitive):
+      //   _MASTER → fitxer federat que conté tots els vincles publicats (prioritat màxima)
+      //   _MEP    → instal·lacions mecàniques/elèctriques/fontaneria
+      //   _ENT    → arquitectura / entorn
+      //   _EST    → estructura
+      // Ex: ED005_MASTER.rvt, ED005_MEP.rvt, ED005_ENT_R24.rvt → detectats correctament.
       const conteParaula = (nom: string, keyword: string): boolean => {
         const upper = nom.toUpperCase();
         const idx = upper.indexOf(`_${keyword}`);
@@ -344,23 +357,27 @@ async function extrauSistemes(
         return charAfter === undefined || charAfter === "_" || charAfter === "." || /\d/.test(charAfter);
       };
 
-      const fitxersMep = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "MEP"));
-      const fitxersEnt = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "ENT"));
-      const fitxersEst = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "EST"));
+      const fitxersMaster = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "MASTER"));
+      const fitxersMep    = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "MEP"));
+      const fitxersEnt    = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "ENT"));
+      const fitxersEst    = fitxersRvt.filter((f: any) => conteParaula(f.attributes?.displayName ?? "", "EST"));
 
       // Fitxers que no encaixen en cap disciplina coneguda
       const fitxersAltres = fitxersRvt.filter((f: any) => {
         const nom = f.attributes?.displayName ?? "";
-        return !conteParaula(nom, "MEP") && !conteParaula(nom, "ENT") && !conteParaula(nom, "EST");
+        return !conteParaula(nom, "MASTER") && !conteParaula(nom, "MEP") &&
+               !conteParaula(nom, "ENT")    && !conteParaula(nom, "EST");
       });
 
       console.log(
         `    📁 "${parsed.codi}": ${fitxersRvt.length} RVT(s) — ` +
-        `MEP:${fitxersMep.length} ENT:${fitxersEnt.length} EST:${fitxersEst.length} altres:${fitxersAltres.length}`
+        `MASTER:${fitxersMaster.length} MEP:${fitxersMep.length} ENT:${fitxersEnt.length} EST:${fitxersEst.length} altres:${fitxersAltres.length}`
       );
+      if (fitxersMaster.length > 0) {
+        console.log(`    ✅ Mode MASTER: el Viewer carregarà els vincles automàticament`);
+      }
 
       // Obté URN de tots els fitxers de cada disciplina en paral·lel.
-      // Si hi ha múltiples fitxers MEP/ENT/EST, es carreguen tots al model federat.
       const obteUrns = async (fitxers: any[]): Promise<string[]> => {
         const urns = await Promise.all(
           fitxers.map((f: any) => obteUrnFitxer(projectId, f.id, token))
@@ -368,19 +385,18 @@ async function extrauSistemes(
         return urns.filter((u): u is string => !!u);
       };
 
-      const [urnsMep, urnsEnt, urnsEst, urnsAltres] = await Promise.all([
+      const [urnsMaster, urnsMep, urnsEnt, urnsEst] = await Promise.all([
+        obteUrns(fitxersMaster),
         obteUrns(fitxersMep),
         obteUrns(fitxersEnt),
         obteUrns(fitxersEst),
-        obteUrns(fitxersAltres),
       ]);
 
-      // URN principal: primer MEP, si no ENT, si no EST, si no el primer altre
+      // URN principal: MASTER té prioritat absoluta.
+      // Si no hi ha MASTER, fallback als URNs individuals per disciplina.
       const urnPrincipal =
-        urnsMep[0] ?? urnsEnt[0] ?? urnsEst[0] ?? urnsAltres[0] ?? "";
+        urnsMaster[0] ?? urnsMep[0] ?? urnsEnt[0] ?? urnsEst[0] ?? "";
 
-      // Per a la BD guardem el primer URN de cada disciplina (els addicionals
-      // s'inclouen al camp urn_mep/ent/est com a llista JSON separada per comes)
       const joinUrns = (urns: string[]) => urns.join(",");
 
       const embedUrl = urnPrincipal
@@ -388,7 +404,7 @@ async function extrauSistemes(
         : "";
 
       // lastModifiedTime: el més recent de tots els fitxers
-      const allFitxers = [...fitxersMep, ...fitxersEnt, ...fitxersEst, ...fitxersAltres];
+      const allFitxers = [...fitxersMaster, ...fitxersMep, ...fitxersEnt, ...fitxersEst, ...fitxersAltres];
       const lastModified = allFitxers
         .map((f: any) => f.attributes?.lastModifiedTime ?? "")
         .sort()
@@ -399,6 +415,7 @@ async function extrauSistemes(
         nom: parsed.nom,
         embedUrl,
         urn: urnPrincipal,
+        urnMaster: joinUrns(urnsMaster),
         urnMep: joinUrns(urnsMep),
         urnEnt: joinUrns(urnsEnt),
         urnEst: joinUrns(urnsEst),
@@ -475,6 +492,7 @@ async function sincronitzaAmbSupabase(
           nom: inst.nom,
           sistema_id: sistemaId,
           urn: inst.urn,
+          urn_master: inst.urnMaster,
           urn_mep: inst.urnMep,
           urn_ent: inst.urnEnt,
           urn_est: inst.urnEst,
@@ -498,6 +516,7 @@ async function sincronitzaAmbSupabase(
             nom: inst.nom,
             sistema_id: sistemaId,
             urn: inst.urn,
+            urn_master: inst.urnMaster,
             urn_mep: inst.urnMep,
             urn_ent: inst.urnEnt,
             urn_est: inst.urnEst,

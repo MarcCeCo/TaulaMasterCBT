@@ -379,21 +379,32 @@ function useApsViewer(
       return;
     }
 
-    // Recull els URNs disponibles (federat o individual).
-    // Els camps urnMep/urnEnt/urnEst poden contenir múltiples URNs separats per comes.
+    // Selecció d'URNs a carregar:
+    //  1. Si hi ha URN MASTER → carrega només aquest (mode individual, vincles inclosos)
+    //  2. Si no → carrega MEP + ENT + EST per separat (mode federat fallback)
+    //  3. Fallback final → URN principal genèric
     const splitUrns = (val?: string) =>
       val ? val.split(",").map(u => u.trim()).filter(Boolean) : [];
 
-    const urnsPerDisciplina = [
-      ...splitUrns(installacio.urnMep),
-      ...splitUrns(installacio.urnEnt),
-      ...splitUrns(installacio.urnEst),
-    ];
+    const urnsMaster = splitUrns((installacio as any).urnMaster);
 
-    // Fallback a URN únic si no n'hi ha cap de disciplina específica
-    const urns = urnsPerDisciplina.length > 0
-      ? urnsPerDisciplina
-      : splitUrns(installacio.urn);
+    let urns: string[];
+    if (urnsMaster.length > 0) {
+      // Mode MASTER: un sol URN que conté tots els vincles publicats des de Revit.
+      // El Viewer SDK els carrega automàticament sense necessitat de globalOffset manual.
+      console.log(`[Viewer] Mode MASTER detectat: ${urnsMaster[0]}`);
+      urns = urnsMaster;
+    } else {
+      // Mode fallback: URNs individuals per disciplina
+      const urnsPerDisciplina = [
+        ...splitUrns(installacio.urnMep),
+        ...splitUrns(installacio.urnEnt),
+        ...splitUrns(installacio.urnEst),
+      ];
+      urns = urnsPerDisciplina.length > 0
+        ? urnsPerDisciplina
+        : splitUrns(installacio.urn);
+    }
 
     if (urns.length === 0) {
       setEstat("error");
@@ -478,8 +489,11 @@ function useApsViewer(
 
       } else {
         // ── Mode federat (múltiples URNs: MEP + ENT + EST) ────────────────────
-        // El Viewer SDK 7.x suporta múltiples models nativament amb keepCurrentModels.
-        // NO cal cap extensió addicional.
+        // Usem keepCurrentModels + globalOffset compartit per alinear els models.
+        // NOTA: Si existeix un URN MASTER (fitxer Revit federat amb vincles publicats),
+        // l'agent ja l'haurà posat com a urns[0] i el flux entra al mode "individual"
+        // de dalt, que carrega tot automàticament. Aquest bloc és el fallback quan
+        // no hi ha MASTER i cal carregar cada disciplina per separat.
         const viewer = new AV.GuiViewer3D(containerRef.current);
         viewer.start();
         viewerRef.current = viewer;
@@ -536,20 +550,19 @@ function useApsViewer(
             ?? root.getDefaultGeometry();
           if (!primerNode) continue;
 
-          // applyScaling=true + preserveView=false garanteix que tots els models
-          // s'apliquen al mateix sistema de coordenades globals (globalOffset).
-          // Això és equivalent a "Auto - By Shared Coordinates" de Revit.
+          // applyScaling + preserveView garanteix que tots els models
+          // s'apliquen al mateix sistema de coordenades globals.
           await viewer.loadDocumentNode(doc, primerNode, {
             keepCurrentModels: !isFirst,
-            applyScaling: "m",          // unitats metres (RVT exporta en peus per defecte → APS converteix)
-            preserveView: false,        // no recentra la càmera per a cada model addicional
+            applyScaling: "m",     // RVT exporta en peus → APS converteix a metres
+            preserveView: false,   // no recentra la càmera per a cada model addicional
           });
           isFirst = false;
         }
 
         if (isFirst) throw new Error("Cap model té geometries disponibles.");
 
-        console.log(`[Viewer] Model federat: ${docsVàlids.length} model(s), ${tostesVistes.length} vistes totals`);
+        console.log(`[Viewer] Mode fallback federat: ${docsVàlids.length} model(s), ${tostesVistes.length} vistes totals`);
         setVistes(tostesVistes);
         setVistaActual(0);
         setEstat("ok");
