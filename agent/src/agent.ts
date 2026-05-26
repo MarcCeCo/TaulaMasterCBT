@@ -207,13 +207,19 @@ async function obteArrelCarpetes(hubId: string, projectId: string, token: string
 }
 
 async function obteContingutCarpeta(projectId: string, carpetaId: string, token: string): Promise<any[]> {
-  const resp = await fetch(
-    `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!resp.ok) return [];
-  const json = await resp.json() as { data: any[] };
-  return json.data ?? [];
+  const tots: any[] = [];
+  let url: string | null =
+    `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents?page[limit]=200`;
+
+  while (url) {
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) break;
+    const json = await resp.json() as { data: any[]; links?: { next?: { href: string } } };
+    tots.push(...(json.data ?? []));
+    url = json.links?.next?.href ?? null;
+  }
+
+  return tots;
 }
 
 async function trobaSubcarpeta(
