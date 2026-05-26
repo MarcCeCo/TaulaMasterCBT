@@ -288,6 +288,12 @@ async function extrauSistemes(
     const carpetesInstallacio = (await obteContingutCarpeta(projectId, carpetaSis.id, token))
       .filter((item: any) => item.type === "folders");
 
+    // LOG DE DIAGNÒSTIC: llista totes les subcarpetes trobades per a aquest sistema
+    console.log(`  🔎 Sistema "${nomSistema}" (${nomCarpetaSistema}) → ${carpetesInstallacio.length} subcarpeta(es):`);
+    carpetesInstallacio.forEach((c: any) =>
+      console.log(`     - "${c.attributes?.displayName ?? "(sense nom)"}" [id: ${c.id}]`)
+    );
+
     const installacions: InstallacioTrobada[] = [];
     const duplicats: string[] = [];
     const codisTrobats = new Map<string, number>();
@@ -296,13 +302,13 @@ async function extrauSistemes(
       const nomCarpetaInst = carpetaInst.attributes?.displayName ?? "";
       const parsed = parsejaNomCarpetaInstallacio(nomCarpetaInst);
       if (!parsed) {
-        console.warn(`  ⚠️  No s'ha pogut parsejar: "${nomCarpetaInst}"`);
+        console.warn(`  ⚠️  No s'ha pogut parsejar com a instal·lació: "${nomCarpetaInst}" [id: ${carpetaInst.id}]`);
         continue;
       }
 
       const carpetaModelBim = await trobaSubcarpeta(projectId, carpetaInst.id, CARPETA_MODEL_BIM, token);
       if (!carpetaModelBim) {
-        console.warn(`  ⚠️  "${parsed.codi}": no s'ha trobat "${CARPETA_MODEL_BIM}"`);
+        console.warn(`  ⚠️  "${parsed.codi}": no s'ha trobat la subcarpeta "${CARPETA_MODEL_BIM}" [installació id: ${carpetaInst.id}]`);
         continue;
       }
 
