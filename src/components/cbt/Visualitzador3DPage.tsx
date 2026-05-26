@@ -536,8 +536,13 @@ function useApsViewer(
             ?? root.getDefaultGeometry();
           if (!primerNode) continue;
 
+          // applyScaling=true + preserveView=false garanteix que tots els models
+          // s'apliquen al mateix sistema de coordenades globals (globalOffset).
+          // Això és equivalent a "Auto - By Shared Coordinates" de Revit.
           await viewer.loadDocumentNode(doc, primerNode, {
             keepCurrentModels: !isFirst,
+            applyScaling: "m",          // unitats metres (RVT exporta en peus per defecte → APS converteix)
+            preserveView: false,        // no recentra la càmera per a cada model addicional
           });
           isFirst = false;
         }

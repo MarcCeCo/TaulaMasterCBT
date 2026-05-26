@@ -76,12 +76,24 @@ function rowToInstallacio(row: InstallacioRow): Installacio {
   };
 }
 
+function codiSort(a: string | null | undefined, b: string | null | undefined): number {
+  // Extreu la part numèrica del codi per ordenar numèricament: "ED004" < "ED010"
+  const parse = (c: string) => {
+    const m = c.match(/^([A-Za-z]+)(\d+)$/);
+    return m ? { prefix: m[1].toUpperCase(), num: parseInt(m[2], 10) } : { prefix: c.toUpperCase(), num: 0 };
+  };
+  const pa = parse(a ?? "");
+  const pb = parse(b ?? "");
+  if (pa.prefix !== pb.prefix) return pa.prefix.localeCompare(pb.prefix);
+  return pa.num - pb.num;
+}
+
 function buildSistemes(
   sistemeRows: SistemaRow[],
   installacioRows: InstallacioRow[]
 ): Sistema[] {
-  return sistemeRows
-    .sort((a, b) => a.ordre - b.ordre)
+  return [...sistemeRows]
+    .sort((a, b) => codiSort(a.codi, b.codi))
     .map((s) => ({
       id: s.id,
       nom: s.nom,
@@ -90,7 +102,7 @@ function buildSistemes(
       color: s.color,
       installacions: installacioRows
         .filter((i) => i.sistema_id === s.id)
-        .sort((a, b) => a.ordre - b.ordre)
+        .sort((a, b) => codiSort(a.codi_installacio, b.codi_installacio))
         .map(rowToInstallacio),
     }));
 }
