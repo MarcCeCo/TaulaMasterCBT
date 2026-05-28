@@ -392,12 +392,21 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
     else if (opcio === "pujar-masters") {
       if (!cfg.usbPath) {
         throw new Error(
-          "BIM_USB_PATH no està configurada. " +
-          "Afegeix la variable d'entorn apuntant al directori BIM_WORK del USB."
+          "La variable d'entorn BIM_USB_PATH no està configurada a l'agent. " +
+          "Obre el panell de l'agent (Render / servidor local) i afegeix " +
+          "BIM_USB_PATH apuntant a la carpeta BIM_WORK del USB, " +
+          "per exemple: D:\\BIM_WORK o /mnt/usb/BIM_WORK"
         );
       }
-      if (!fs.existsSync(cfg.usbPath)) {
-        throw new Error(`El directori USB no existeix: ${cfg.usbPath}`);
+      // Normalitza la ruta (suporta tant Windows \ com Unix /)
+      const usbPathNorm = cfg.usbPath.replace(/\\/g, path.sep).replace(/\//g, path.sep);
+      if (!fs.existsSync(usbPathNorm)) {
+        throw new Error(
+          `El directori USB no existeix o no és accessible: ${usbPathNorm} | ` +
+          `Comprova: 1) el USB està connectat, ` +
+          `2) BIM_USB_PATH és correcta (actual: ${cfg.usbPath}), ` +
+          `3) l'agent corre en mode LOCAL (no cloud/Render).`
+        );
       }
 
       const ctx = await obteHubIProjecte(token);

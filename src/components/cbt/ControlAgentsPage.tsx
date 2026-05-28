@@ -474,6 +474,28 @@ function BimSyncPanel({
         </div>
       </Card>
 
+      {/* Avís de configuració USB */}
+      <Card className="p-4 border-amber-200 bg-amber-50 rounded-2xl">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-[12px] text-amber-800 space-y-1.5 leading-relaxed">
+            <p className="font-semibold text-amber-900">Requisit: Agent local + USB connectat</p>
+            <p>
+              L'opció <strong>Pujar MASTERs</strong> requereix que l'agent s'executi a l'ordinador
+              on tens el USB connectat (no a Render/cloud). Configura la variable d'entorn:
+            </p>
+            <div className="font-mono bg-amber-100 rounded-lg px-3 py-1.5 text-[11px] text-amber-900 border border-amber-200">
+              <span className="text-amber-600">BIM_USB_PATH</span> = <span className="text-amber-800">F:\BIM_WORK</span>
+            </div>
+            <p className="text-amber-700">
+              Si veus l'error <em>"El directori USB no existeix"</em>, comprova que el USB
+              està connectat i que la lletra/ruta de <Code>BIM_USB_PATH</Code> és correcta
+              al fitxer <Code>.env</Code> de l'agent local.
+            </p>
+          </div>
+        </div>
+      </Card>
+
       {/* Instruccions d'ús */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
         <div className="flex items-center gap-2 mb-4">
@@ -587,9 +609,9 @@ function CrearMastersPanel() {
   const [copied, setCopied] = useState(false);
 
   function handleDownload() {
-    // L'script es serveix des de /public/scripts/crear_masters.py
+    // L'script es serveix des de /public/scripts/script.py
     const a = document.createElement("a");
-    a.href = "/scripts/crear_masters.py";
+    a.href = "/scripts/script.py";
     a.download = "script.py";
     a.click();
   }
