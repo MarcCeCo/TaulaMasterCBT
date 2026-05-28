@@ -99,6 +99,8 @@ export interface UserProfile {
   id: string;
   email: string;
   full_name: string | null;
+  /** Organització a la qual pertany l'usuari. Lliure, text libre. */
+  organisation: string | null;
   // "admin" té accés complet; "user" té els permisos definits a section_permissions
   role: UserPermissionLevel;
   // Guardat com a JSON al camp allowed_views de Supabase.

@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: "Necessites permisos d'administrador" });
   }
 
-  const { user_id, role, allowed_views } = req.body;
+  const { user_id, role, allowed_views, organisation, full_name } = req.body;
 
   if (!user_id) return res.status(400).json({ error: "user_id és obligatori" });
   // Ara el rol només pot ser "user" o "admin"
@@ -56,8 +56,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .from("user_profiles")
     .update({
       role,
-      // null = accés complet (admin); objecte = permisos per secció (user)
+      full_name:     full_name ?? undefined,
       allowed_views: role === "admin" ? null : (allowed_views ?? null),
+      organisation:  organisation ?? null,
     })
     .eq("id", user_id);
 

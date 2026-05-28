@@ -1,5 +1,5 @@
 // src/components/auth/UserManagerPage.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
@@ -8,7 +8,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -32,9 +31,12 @@ import {
 import {
   Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X,
   Info, Users, Eye, EyeOff, Shield, ChevronDown, ChevronUp,
+  Building2, Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const LEVEL_LABELS: Record<UserPermissionLevel, string> = {
   user:  "Usuari",
@@ -42,28 +44,28 @@ const LEVEL_LABELS: Record<UserPermissionLevel, string> = {
 };
 
 const LEVEL_COLORS: Record<UserPermissionLevel, string> = {
-  user:  "bg-slate-100 text-slate-600",
-  admin: "bg-violet-100 text-violet-700",
+  user:  "bg-slate-100 text-slate-600 border-slate-200",
+  admin: "bg-violet-100 text-violet-700 border-violet-200",
 };
 
 const SECTION_ROLE_CONFIG: Record<SectionRole, { label: string; color: string; icon: React.ReactNode }> = {
-  none:   { label: "Sense accés",  color: "bg-slate-100 text-slate-400 border-slate-200",        icon: <EyeOff className="h-3 w-3" /> },
+  none:   { label: "Sense accés",   color: "bg-slate-100 text-slate-400 border-slate-200",       icon: <EyeOff className="h-3 w-3" /> },
   viewer: { label: "Visualitzador", color: "bg-emerald-50 text-emerald-700 border-emerald-200",  icon: <Eye className="h-3 w-3" /> },
-  editor: { label: "Editor",        color: "bg-blue-50 text-blue-700 border-blue-200",            icon: <Pencil className="h-3 w-3" /> },
+  editor: { label: "Editor",        color: "bg-blue-50 text-blue-700 border-blue-200",           icon: <Pencil className="h-3 w-3" /> },
 };
 
-// Cicle: none → viewer → editor → none
+const NO_ORG_KEY = "__sense_organitzacio__";
+
 function cycleSectionRole(current: SectionRole): SectionRole {
   if (current === "none")   return "viewer";
   if (current === "viewer") return "editor";
   return "none";
 }
 
-// ── Pill clicable per una secció ─────────────────────────────────────────────
+// ─── SectionRolePill ──────────────────────────────────────────────────────────
+
 function SectionRolePill({
-  role,
-  onClick,
-  disabled = false,
+  role, onClick, disabled = false,
 }: {
   role: SectionRole | "admin";
   onClick?: () => void;
@@ -86,7 +88,7 @@ function SectionRolePill({
         "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border transition-all",
         cfg.color,
         !disabled && "hover:opacity-80 cursor-pointer",
-        disabled && "cursor-default"
+        disabled && "cursor-default opacity-70"
       )}
       title={disabled ? undefined : `Clic per canviar (${cfg.label})`}
     >
@@ -95,11 +97,10 @@ function SectionRolePill({
   );
 }
 
-// ── Matriu de permisos per a un usuari ───────────────────────────────────────
+// ─── PermissionsMatrix ────────────────────────────────────────────────────────
+
 function PermissionsMatrix({
-  permissions,
-  isAdmin,
-  onChange,
+  permissions, isAdmin, onChange,
 }: {
   permissions: SectionPermissions;
   isAdmin: boolean;
@@ -113,48 +114,29 @@ function PermissionsMatrix({
 
   return (
     <div className="space-y-3">
-      {/* Botons ràpids */}
       {!isAdmin && (
         <div className="flex gap-2 flex-wrap">
           <span className="text-[11px] text-slate-400 self-center mr-1">Assignar tot:</span>
-          <button
-            type="button"
-            onClick={() => setAll("none")}
-            className="text-[11px] px-2 py-0.5 rounded border border-slate-200 text-slate-500 hover:bg-slate-50"
-          >
-            Sense accés
-          </button>
-          <button
-            type="button"
-            onClick={() => setAll("viewer")}
-            className="text-[11px] px-2 py-0.5 rounded border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-          >
-            Tot visualitzador
-          </button>
-          <button
-            type="button"
-            onClick={() => setAll("editor")}
-            className="text-[11px] px-2 py-0.5 rounded border border-blue-200 text-blue-700 hover:bg-blue-50"
-          >
-            Tot editor
-          </button>
+          {(["none", "viewer", "editor"] as SectionRole[]).map((r) => {
+            const cfg = SECTION_ROLE_CONFIG[r];
+            return (
+              <button key={r} type="button" onClick={() => setAll(r)}
+                className={cn("text-[11px] px-2 py-0.5 rounded border transition-colors", cfg.color, "hover:opacity-80")}>
+                {cfg.label}
+              </button>
+            );
+          })}
         </div>
       )}
 
-      {/* Grups de seccions */}
       {VIEW_GROUPS.map((group) => (
         <div key={group.label}>
-          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">
-            {group.label}
-          </p>
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">{group.label}</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {group.views.map((view) => {
               const current = isAdmin ? "admin" : (permissions[view] ?? "none");
               return (
-                <div
-                  key={view}
-                  className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100"
-                >
+                <div key={view} className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
                   <span className="text-xs text-slate-600 flex items-center gap-1.5">
                     <span>{VIEW_ICONS[view]}</span>
                     {VIEW_LABELS[view]}
@@ -176,24 +158,22 @@ function PermissionsMatrix({
       ))}
 
       {isAdmin && (
-        <p className="text-[11px] text-slate-400 italic">
-          Els administradors tenen accés complet a totes les seccions.
-        </p>
+        <p className="text-[11px] text-slate-400 italic">Els administradors tenen accés complet a totes les seccions.</p>
       )}
     </div>
   );
 }
 
-// ── Resum compacte de permisos (mode lectura) ────────────────────────────────
-function PermissionsSummary({ profile }: { profile: UserProfile }) {
+// ─── PermissionsSummaryPills ──────────────────────────────────────────────────
+
+function PermissionsSummaryPills({ profile }: { profile: UserProfile }) {
   if (profile.role === "admin") {
     return (
-      <span className="text-[11px] text-violet-600 italic flex items-center gap-1">
+      <span className="inline-flex items-center gap-1 text-[11px] text-violet-600 italic">
         <Shield className="h-3 w-3" /> Accés complet
       </span>
     );
   }
-
   const perms = profile.section_permissions;
   if (!perms) return <span className="text-[11px] text-slate-400 italic">Accés complet</span>;
 
@@ -204,7 +184,6 @@ function PermissionsSummary({ profile }: { profile: UserProfile }) {
   if (noneCount === ALL_VIEWS.length) {
     return <span className="text-[11px] text-slate-400 italic">Sense accés a cap secció</span>;
   }
-
   return (
     <div className="flex flex-wrap gap-1">
       {editors.map((v) => (
@@ -221,30 +200,36 @@ function PermissionsSummary({ profile }: { profile: UserProfile }) {
   );
 }
 
-// ── Component principal ──────────────────────────────────────────────────────
+// ─── Component principal ──────────────────────────────────────────────────────
+
 export function UserManagerPage() {
   const { profile: myProfile, getToken } = useAuth();
-  const [users, setUsers]       = useState<UserProfile[]>([]);
-  const [loading, setLoading]   = useState(false);
+  const [users, setUsers]     = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [search, setSearch]   = useState("");
 
   // Formulari nou usuari
-  const [email, setEmail]       = useState("");
-  const [fullName, setFullName] = useState("");
-  const [level, setLevel]       = useState<UserPermissionLevel>("user");
-  const [newPerms, setNewPerms] = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
+  const [email, setEmail]           = useState("");
+  const [fullName, setFullName]     = useState("");
+  const [organisation, setOrg]      = useState("");
+  const [level, setLevel]           = useState<UserPermissionLevel>("user");
+  const [newPerms, setNewPerms]     = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
   const [submitting, setSubmitting] = useState(false);
+  const [showInviteForm, setShowInviteForm] = useState(false);
 
   // Edició usuari existent
-  const [editingId, setEditingId]   = useState<string | null>(null);
-  const [editLevel, setEditLevel]   = useState<UserPermissionLevel>("user");
-  const [editPerms, setEditPerms]   = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
+  const [editingId, setEditingId]     = useState<string | null>(null);
+  const [editLevel, setEditLevel]     = useState<UserPermissionLevel>("user");
+  const [editPerms, setEditPerms]     = useState<SectionPermissions>({ ...DEFAULT_SECTION_PERMISSIONS });
+  const [editOrg, setEditOrg]         = useState("");
+  const [editFullName, setEditFullName] = useState("");
+
+  // ── Càrrega ───────────────────────────────────────────────────────────────
 
   const fetchUsers = async () => {
-    // FIX: No fer cap crida a l'API si no hi ha token vàlid (p. ex. durant el signOut)
     const token = getToken();
     if (!token) return;
-
     setLoading(true);
     try {
       let usedApi = false;
@@ -259,43 +244,33 @@ export function UserManagerPage() {
             ...u,
             role: parseUserPermissionLevel(u.role),
             section_permissions: parseSectionPermissions(u.allowed_views ?? u.section_permissions),
+            organisation: u.organisation ?? null,
           }));
           setUsers(raw);
           usedApi = true;
         } else {
-          // L'API ha respost però amb error — mostra el missatge del servidor
           const json = await res.json().catch(() => ({}));
-          console.error("API /list-users error:", res.status, json.error);
           toast.error(`Error de l'API: ${json.error ?? res.statusText}`);
         }
       } catch (apiErr: any) {
-        // L'API no és accessible (dev local sense Vercel, o error de xarxa)
-        // → intentem llegir directament des del client Supabase
         console.warn("API /list-users no disponible, fallback a Supabase directe:", apiErr.message);
       }
       if (!usedApi) {
-        // Fallback: lectura directa. Funciona si l'usuari té permisos RLS adequats
-        // o si la taula user_profiles és accessible amb la clau anon.
         const { data, error } = await supabase
           .from("user_profiles")
-          .select("id, email, full_name, role, allowed_views")
+          .select("id, email, full_name, role, allowed_views, organisation")
+          .order("organisation", { nullsFirst: true })
           .order("email");
         if (!error && data) {
           setUsers(data.map((u: any) => ({
             ...u,
-            // Fallback: si no hi ha email al perfil, deixem buit (no podem
-            // consultar auth.users des del client sense service role)
             email:               u.email ?? "",
             role:                parseUserPermissionLevel(u.role),
             section_permissions: parseSectionPermissions(u.allowed_views),
+            organisation:        u.organisation ?? null,
           })));
         } else {
-          console.error("Error Supabase directe:", error);
-          toast.error(
-            error?.code === "42703"
-              ? "La taula user_profiles no té totes les columnes esperades. Revisa l'esquema de Supabase."
-              : `Error carregant usuaris: ${error?.message ?? "error desconegut"}`
-          );
+          toast.error(`Error carregant usuaris: ${error?.message ?? "error desconegut"}`);
         }
       }
     } catch {
@@ -305,11 +280,11 @@ export function UserManagerPage() {
     }
   };
 
-  // FIX: Dependre de myProfile en lloc d'executar-se cegament al muntar.
-  // Quan myProfile és null (sessió tancada o no iniciada) no es fa cap fetch.
   useEffect(() => {
     if (myProfile) fetchUsers();
   }, [myProfile]);
+
+  // ── Invitar ───────────────────────────────────────────────────────────────
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -325,14 +300,16 @@ export function UserManagerPage() {
           email:         email.trim(),
           full_name:     fullName.trim(),
           role:          level,
+          organisation:  organisation.trim() || null,
           allowed_views: level === "admin" ? null : newPerms,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error convidant usuari");
       toast.success(`Invitació enviada a ${email}`);
-      setEmail(""); setFullName(""); setLevel("user");
+      setEmail(""); setFullName(""); setOrg(""); setLevel("user");
       setNewPerms({ ...DEFAULT_SECTION_PERMISSIONS });
+      setShowInviteForm(false);
       await fetchUsers();
     } catch (err: any) {
       if (err.name === "AbortError" || err.name === "TimeoutError") {
@@ -345,10 +322,14 @@ export function UserManagerPage() {
     }
   };
 
+  // ── Editar ────────────────────────────────────────────────────────────────
+
   const startEditing = (u: UserProfile) => {
     setEditingId(u.id);
     setEditLevel(u.role);
     setEditPerms(u.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
+    setEditOrg(u.organisation ?? "");
+    setEditFullName(u.full_name ?? "");
     setExpanded(u.id);
   };
 
@@ -361,6 +342,8 @@ export function UserManagerPage() {
         body: JSON.stringify({
           user_id:       userId,
           role:          editLevel,
+          full_name:     editFullName.trim() || null,
+          organisation:  editOrg.trim() || null,
           allowed_views: editLevel === "admin" ? null : editPerms,
         }),
       });
@@ -374,6 +357,8 @@ export function UserManagerPage() {
       toast.error(err.message ?? "Error actualitzant usuari");
     }
   };
+
+  // ── Eliminar ──────────────────────────────────────────────────────────────
 
   const handleDelete = async (userId: string, userEmail: string) => {
     try {
@@ -392,253 +377,381 @@ export function UserManagerPage() {
     }
   };
 
+  // ── Agrupació per organització ────────────────────────────────────────────
+
+  const filteredUsers = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    if (!q) return users;
+    return users.filter(u =>
+      (u.full_name ?? "").toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q) ||
+      (u.organisation ?? "").toLowerCase().includes(q)
+    );
+  }, [users, search]);
+
+  const groupedUsers = useMemo(() => {
+    const map = new Map<string, UserProfile[]>();
+    for (const u of filteredUsers) {
+      const key = u.organisation?.trim() || NO_ORG_KEY;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(u);
+    }
+    // Ordenem: organitzacions amb nom primer (alfab.), sense organització al final
+    const entries = [...map.entries()].sort(([a], [b]) => {
+      if (a === NO_ORG_KEY) return 1;
+      if (b === NO_ORG_KEY) return -1;
+      return a.localeCompare(b, "ca");
+    });
+    return entries;
+  }, [filteredUsers]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
+
   return (
-    <div className="space-y-6 max-w-4xl">
-      {/* Capçalera */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
-          <Users className="h-6 w-6 text-[#0099A8]" />
-          Gestió d'usuaris
-        </h1>
-        <p className="text-sm text-slate-500 mt-1">
-          Administra els usuaris i configura els permisos per cada finestra
-        </p>
-      </div>
+    <div className="space-y-5 w-full">
 
-      {/* Llegenda */}
-      <div className="flex flex-wrap gap-3 text-[11px]">
-        {(["none", "viewer", "editor"] as SectionRole[]).map((r) => {
-          const cfg = SECTION_ROLE_CONFIG[r];
-          return (
-            <span key={r} className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-full border font-medium", cfg.color)}>
-              {cfg.icon} {cfg.label}
-            </span>
-          );
-        })}
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full border font-medium bg-violet-50 text-violet-700 border-violet-200">
-          <Shield className="h-3 w-3" /> Administrador (accés complet)
-        </span>
-        <span className="text-slate-400 self-center ml-1">· Clica les pastilles per canviar el permís</span>
-      </div>
-
-      {/* Formulari invitació */}
-      <Card className="p-5 border-0 shadow-sm bg-white">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="h-8 w-8 rounded-lg bg-[#0099A8]/10 flex items-center justify-center">
-            <UserPlus className="h-4 w-4 text-[#0099A8]" />
-          </div>
-          <p className="text-sm font-semibold text-[#006E7A]">Convidar nou usuari</p>
-        </div>
-
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-[#0099A8]/5 border border-[#0099A8]/15 text-xs text-[#006E7A] mb-4">
-          <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
-          L'usuari rebrà un correu d'invitació per establir la seva pròpia contrasenya.
-        </div>
-
-        <form onSubmit={handleInvite} className="space-y-4">
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="space-y-1 flex-1 min-w-[200px]">
-              <label className="text-xs font-medium text-slate-700">Correu electrònic *</label>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                placeholder="usuari@example.com" required className="h-9" />
-            </div>
-            <div className="space-y-1 flex-1 min-w-[160px]">
-              <label className="text-xs font-medium text-slate-700">Nom complet</label>
-              <Input value={fullName} onChange={(e) => setFullName(e.target.value)}
-                placeholder="Nom i cognoms" className="h-9" />
-            </div>
-            <div className="space-y-1 w-52">
-              <label className="text-xs font-medium text-slate-700">Tipus d'accés</label>
-              <Select value={level} onValueChange={(v) => setLevel(v as UserPermissionLevel)}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
-                  <SelectItem value="admin">Administrador (accés complet)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Matriu de permisos per al nou usuari */}
-          <div className="border border-slate-100 rounded-xl p-4 bg-slate-50/50">
-            <p className="text-xs font-semibold text-slate-600 mb-3">Permisos per finestra</p>
-            <PermissionsMatrix
-              permissions={newPerms}
-              isAdmin={level === "admin"}
-              onChange={setNewPerms}
-            />
-          </div>
-
-          <div className="flex justify-end pt-1">
-            <Button type="submit" disabled={submitting}
-              className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5">
-              <Send className="h-4 w-4" />
-              {submitting ? "Enviant invitació…" : "Envia invitació"}
-            </Button>
-          </div>
-        </form>
-      </Card>
-
-      {/* Llistat d'usuaris */}
-      <Card className="border-0 shadow-sm bg-white overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <p className="text-sm font-semibold text-slate-700">
-            {users.length} usuari{users.length !== 1 ? "s" : ""}
+      {/* ── Capçalera ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2">
+            <Users className="h-6 w-6 text-[#0099A8]" />
+            Gestió d'usuaris
+          </h1>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {users.length} usuari{users.length !== 1 ? "s" : ""} · agrupats per organització
           </p>
-          <Button variant="ghost" size="sm" onClick={fetchUsers} disabled={loading} className="gap-1.5 text-xs">
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={fetchUsers} disabled={loading} className="gap-1.5 text-xs text-slate-500">
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
             Actualitza
           </Button>
+          <Button
+            size="sm"
+            className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5"
+            onClick={() => setShowInviteForm(v => !v)}
+          >
+            <UserPlus className="h-4 w-4" />
+            {showInviteForm ? "Tancar formulari" : "Convidar usuari"}
+          </Button>
         </div>
+      </div>
 
-        <div className="divide-y divide-slate-50">
-          {users.map((u) => {
-            const isMe      = u.id === myProfile?.id;
-            const isEditing = editingId === u.id;
-            const isOpen    = expanded === u.id;
-
-            return (
-              <div key={u.id} className={cn("transition-colors", isMe && "bg-[#0099A8]/3")}>
-                {/* Fila principal */}
-                <div className="flex items-center gap-3 px-5 py-3">
-                  {/* Avatar */}
-                  <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
-                    {((u.full_name || u.email || "?")[0]).toUpperCase()}
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-slate-700 truncate">
-                        {u.full_name || u.email}
-                      </span>
-                      {isMe && (
-                        <Badge className="text-[10px] px-1.5 py-0 bg-[#0099A8] text-white border-0">Jo</Badge>
-                      )}
-                      <Badge className={cn("text-[10px] px-1.5 py-0 border-0 font-normal", LEVEL_COLORS[u.role])}>
-                        {u.role === "admin" && <Shield className="h-2.5 w-2.5 mr-0.5 inline" />}
-                        {LEVEL_LABELS[u.role]}
-                      </Badge>
-                    </div>
-                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">{u.email}</p>
-                  </div>
-
-                  {/* Resum permisos */}
-                  <div className="hidden md:block flex-1 min-w-0">
-                    <PermissionsSummary profile={u} />
-                  </div>
-
-                  {/* Accions */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    {!isMe && (
-                      <>
-                        <Button
-                          size="icon" variant="ghost" className="h-7 w-7"
-                          onClick={() => {
-                            if (isEditing) { setEditingId(null); setExpanded(null); }
-                            else startEditing(u);
-                          }}
-                          title={isEditing ? "Cancel·la" : "Edita permisos"}
-                        >
-                          {isEditing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600" title="Elimina">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                S'eliminarà <strong>{u.email}</strong> de forma permanent.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                              <AlertDialogAction
-                                className="bg-destructive hover:bg-destructive/90"
-                                onClick={() => handleDelete(u.id, u.email)}
-                              >
-                                Elimina
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    )}
-                    <button
-                      className="h-7 w-7 flex items-center justify-center text-slate-400 hover:text-slate-600"
-                      onClick={() => setExpanded(isOpen ? null : u.id)}
-                      title={isOpen ? "Amaga permisos" : "Mostra permisos"}
-                    >
-                      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Panell expandible amb la matriu */}
-                {isOpen && (
-                  <div className="px-5 pb-5 pt-1 border-t border-slate-50 bg-slate-50/40">
-                    {isEditing ? (
-                      <div className="space-y-4">
-                        {/* Selector d'accés admin/usuari */}
-                        <div className="space-y-1 w-52">
-                          <label className="text-xs font-medium text-slate-600">Tipus d'accés</label>
-                          <Select value={editLevel} onValueChange={(v) => setEditLevel(v as UserPermissionLevel)}>
-                            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
-                              <SelectItem value="admin">Administrador (accés complet)</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        <PermissionsMatrix
-                          permissions={editPerms}
-                          isAdmin={editLevel === "admin"}
-                          onChange={setEditPerms}
-                        />
-
-                        <div className="flex gap-2 pt-1">
-                          <Button
-                            size="sm"
-                            className="bg-[#0099A8] hover:bg-[#006E7A] gap-1"
-                            onClick={() => handleUpdateUser(u.id)}
-                          >
-                            <Check className="h-3.5 w-3.5" /> Desa canvis
-                          </Button>
-                          <Button
-                            size="sm" variant="outline" className="gap-1"
-                            onClick={() => { setEditingId(null); setExpanded(null); }}
-                          >
-                            <X className="h-3.5 w-3.5" /> Cancel·la
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="pt-2">
-                        <PermissionsMatrix
-                          permissions={u.section_permissions ?? { equips: "editor", gubimclass: "editor", fields: "editor", revit: "editor", projectes: "editor", rosmiman: "editor" }}
-                          isAdmin={u.role === "admin"}
-                          onChange={() => {}}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {users.length === 0 && !loading && (
-            <div className="px-5 py-12 text-center text-slate-400 text-sm">
-              Cap usuari trobat
+      {/* ── Formulari invitació (desplegable) ─────────────────────────── */}
+      {showInviteForm && (
+        <div className="rounded-xl border border-[#0099A8]/20 bg-[#0099A8]/3 p-5 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="h-7 w-7 rounded-lg bg-[#0099A8]/10 flex items-center justify-center">
+              <UserPlus className="h-4 w-4 text-[#0099A8]" />
             </div>
-          )}
+            <p className="text-sm font-semibold text-[#006E7A]">Convidar nou usuari</p>
+          </div>
+
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-[#0099A8]/8 border border-[#0099A8]/15 text-xs text-[#006E7A]">
+            <Info className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+            L'usuari rebrà un correu d'invitació per establir la seva pròpia contrasenya.
+          </div>
+
+          <form onSubmit={handleInvite} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Correu electrònic *</label>
+                <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="usuari@example.com" required className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Nom complet</label>
+                <Input value={fullName} onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Nom i cognoms" className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700 flex items-center gap-1">
+                  <Building2 className="h-3 w-3" /> Organització
+                </label>
+                <Input value={organisation} onChange={(e) => setOrg(e.target.value)}
+                  placeholder="Nom de l'empresa o dept." className="h-9" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-slate-700">Tipus d'accés</label>
+                <Select value={level} onValueChange={(v) => setLevel(v as UserPermissionLevel)}>
+                  <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
+                    <SelectItem value="admin">Administrador (accés complet)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="border border-slate-200 rounded-xl p-4 bg-white/60">
+              <p className="text-xs font-semibold text-slate-600 mb-3">Permisos per finestra</p>
+              <PermissionsMatrix permissions={newPerms} isAdmin={level === "admin"} onChange={setNewPerms} />
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setShowInviteForm(false)}>
+                Cancel·la
+              </Button>
+              <Button type="submit" disabled={submitting} className="bg-[#0099A8] hover:bg-[#006E7A] gap-1.5">
+                <Send className="h-4 w-4" />
+                {submitting ? "Enviant invitació…" : "Envia invitació"}
+              </Button>
+            </div>
+          </form>
         </div>
-      </Card>
+      )}
+
+      {/* ── Cerca ─────────────────────────────────────────────────────── */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Cerca per nom, correu o organització…"
+          className="pl-9 h-9 bg-white border-slate-200"
+        />
+        {search && (
+          <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* ── Taula principal ───────────────────────────────────────────── */}
+      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm w-full">
+
+        {/* Capçalera de la taula */}
+        <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_2fr_auto] gap-0 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Usuari</span>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Correu</span>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1">
+            <Building2 className="h-3 w-3" /> Organització
+          </span>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Rol</span>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Permisos</span>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right">Accions</span>
+        </div>
+
+        {/* Grups per organització */}
+        {groupedUsers.length === 0 && !loading && (
+          <div className="px-5 py-14 text-center text-slate-400 text-sm">
+            {search ? "Cap usuari coincideix amb la cerca" : "Cap usuari trobat"}
+          </div>
+        )}
+
+        {loading && (
+          <div className="px-5 py-14 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin" /> Carregant usuaris…
+          </div>
+        )}
+
+        {!loading && groupedUsers.map(([orgKey, orgUsers]) => {
+          const isNoOrg = orgKey === NO_ORG_KEY;
+          return (
+            <div key={orgKey}>
+              {/* Capçalera de grup */}
+              <div className={cn(
+                "flex items-center gap-2 px-4 py-2 border-b border-t border-slate-100",
+                isNoOrg ? "bg-slate-50/50" : "bg-[#0099A8]/4"
+              )}>
+                <Building2 className={cn("h-3.5 w-3.5", isNoOrg ? "text-slate-400" : "text-[#0099A8]")} />
+                <span className={cn(
+                  "text-xs font-semibold",
+                  isNoOrg ? "text-slate-400 italic" : "text-[#006E7A]"
+                )}>
+                  {isNoOrg ? "Sense organització" : orgKey}
+                </span>
+                <span className="ml-1 text-[10px] text-slate-400">
+                  ({orgUsers.length} usuari{orgUsers.length !== 1 ? "s" : ""})
+                </span>
+              </div>
+
+              {/* Files d'usuaris */}
+              {orgUsers.map((u) => {
+                const isMe      = u.id === myProfile?.id;
+                const isEditing = editingId === u.id;
+                const isOpen    = expanded === u.id;
+
+                return (
+                  <div key={u.id} className={cn(
+                    "border-b border-slate-50 last:border-b-0 transition-colors",
+                    isMe && "bg-[#0099A8]/3",
+                    isEditing && "bg-blue-50/30"
+                  )}>
+                    {/* Fila principal */}
+                    <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_2fr_auto] gap-0 items-center px-4 py-3">
+
+                      {/* Columna: Nom */}
+                      <div className="flex items-center gap-2.5 min-w-0 pr-3">
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center shrink-0 text-xs font-bold text-slate-600 border border-slate-200">
+                          {((u.full_name || u.email || "?")[0]).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-medium text-slate-700 truncate">
+                              {u.full_name || <span className="text-slate-400 italic">Sense nom</span>}
+                            </span>
+                            {isMe && (
+                              <Badge className="text-[9px] px-1 py-0 bg-[#0099A8] text-white border-0 h-4">Jo</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Columna: Correu */}
+                      <div className="min-w-0 pr-3">
+                        <p className="text-xs text-slate-500 font-mono truncate">{u.email}</p>
+                      </div>
+
+                      {/* Columna: Organització */}
+                      <div className="min-w-0 pr-3">
+                        {u.organisation ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-[#006E7A] bg-[#0099A8]/8 border border-[#0099A8]/15 px-2 py-0.5 rounded-full truncate max-w-full">
+                            <Building2 className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{u.organisation}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-300 italic">—</span>
+                        )}
+                      </div>
+
+                      {/* Columna: Rol global */}
+                      <div className="pr-3">
+                        <span className={cn(
+                          "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                          LEVEL_COLORS[u.role]
+                        )}>
+                          {u.role === "admin" && <Shield className="h-2.5 w-2.5" />}
+                          {LEVEL_LABELS[u.role]}
+                        </span>
+                      </div>
+
+                      {/* Columna: Permisos */}
+                      <div className="min-w-0 pr-3">
+                        <PermissionsSummaryPills profile={u} />
+                      </div>
+
+                      {/* Columna: Accions */}
+                      <div className="flex items-center gap-0.5 justify-end shrink-0">
+                        {!isMe && (
+                          <>
+                            <Button
+                              size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                              onClick={() => {
+                                if (isEditing) { setEditingId(null); setExpanded(null); }
+                                else startEditing(u);
+                              }}
+                              title={isEditing ? "Cancel·la edició" : "Edita"}
+                            >
+                              {isEditing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-red-600" title="Elimina">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    S'eliminarà <strong>{u.email}</strong> de forma permanent.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    className="bg-destructive hover:bg-destructive/90"
+                                    onClick={() => handleDelete(u.id, u.email)}
+                                  >
+                                    Elimina
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </>
+                        )}
+                        <button
+                          className="h-7 w-7 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+                          onClick={() => setExpanded(isOpen && !isEditing ? null : u.id)}
+                          title={isOpen ? "Amaga permisos" : "Mostra/edita permisos"}
+                        >
+                          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Panell expandible */}
+                    {isOpen && (
+                      <div className="px-4 pb-5 pt-2 border-t border-slate-100 bg-slate-50/50">
+                        {isEditing ? (
+                          <div className="space-y-4 max-w-2xl">
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">Nom complet</label>
+                                <Input value={editFullName} onChange={(e) => setEditFullName(e.target.value)}
+                                  placeholder="Nom i cognoms" className="h-8 text-xs" />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                                  <Building2 className="h-3 w-3" /> Organització
+                                </label>
+                                <Input value={editOrg} onChange={(e) => setEditOrg(e.target.value)}
+                                  placeholder="Empresa o departament" className="h-8 text-xs" />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs font-medium text-slate-600">Tipus d'accés</label>
+                                <Select value={editLevel} onValueChange={(v) => setEditLevel(v as UserPermissionLevel)}>
+                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
+                                    <SelectItem value="admin">Administrador (accés complet)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            <PermissionsMatrix
+                              permissions={editPerms}
+                              isAdmin={editLevel === "admin"}
+                              onChange={setEditPerms}
+                            />
+
+                            <div className="flex gap-2 pt-1">
+                              <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A] gap-1" onClick={() => handleUpdateUser(u.id)}>
+                                <Check className="h-3.5 w-3.5" /> Desa canvis
+                              </Button>
+                              <Button size="sm" variant="outline" className="gap-1"
+                                onClick={() => { setEditingId(null); setExpanded(null); }}>
+                                <X className="h-3.5 w-3.5" /> Cancel·la
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="pt-1 max-w-2xl">
+                            <PermissionsMatrix
+                              permissions={u.section_permissions ?? { equips: "editor", gubimclass: "editor", fields: "editor", revit: "editor", projectes: "editor", rosmiman: "editor", visor3d: "editor" }}
+                              isAdmin={u.role === "admin"}
+                              onChange={() => {}}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* SQL migration hint */}
+      <p className="text-[10px] text-slate-300 text-center">
+        Columna <code>organisation TEXT</code> necessària a la taula <code>user_profiles</code> de Supabase
+      </p>
     </div>
   );
 }

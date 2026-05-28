@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: "Necessites permisos d'administrador" });
   }
 
-  const { email, full_name, role, allowed_views } = req.body;
+  const { email, full_name, role, allowed_views, organisation } = req.body;
 
   if (!email || !role) {
     return res.status(400).json({ error: "El correu i el rol són obligatoris" });
@@ -89,6 +89,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           full_name:     full_name ?? null,
           created_by:    user.id,
           allowed_views: allowed_views ?? null,
+          organisation:  organisation ?? null,
         })
         .eq("id", newUserId);
       profileError = error ?? null;
@@ -103,6 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           full_name:     full_name ?? null,
           created_by:    user.id,
           allowed_views: allowed_views ?? null,
+          organisation:  organisation ?? null,
         });
       profileError = error ?? null;
     }

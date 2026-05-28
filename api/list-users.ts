@@ -42,7 +42,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Obtenir tots els perfils
   const { data: profiles, error: profilesError } = await supabaseAdmin
     .from("user_profiles")
-    .select("id, email, full_name, role, allowed_views")
+    .select("id, email, full_name, role, allowed_views, organisation")
+    .order("organisation", { nullsFirst: true })
     .order("email");
 
   if (profilesError) return res.status(500).json({ error: profilesError.message });
@@ -77,6 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     full_name:     p.full_name ?? null,
     role:          p.role,
     allowed_views: p.allowed_views ?? null,
+    organisation:  p.organisation ?? null,
   }));
 
   return res.status(200).json({ users });
