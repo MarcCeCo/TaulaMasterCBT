@@ -7,6 +7,13 @@ import type { User } from "@supabase/supabase-js";
 // això s'configura finestra per finestra mitjançant SectionPermissions.
 export type UserPermissionLevel = "user" | "admin";
 
+// Rol dins d'un projecte concret (assignat per l'admin al diàleg d'usuaris del projecte)
+// - viewer:        només pot visualitzar el projecte i els seus tags
+// - editor:        pot crear tags, editar equips, omplir camps, validar tags
+// - editor_caracteristiques: només pot omplir els camps de característiques tècniques
+//                  dels tags que ja han estat validats
+export type ProjectRole = "viewer" | "editor_global" | "editor_caracteristiques";
+
 // Rol per secció individual
 export type SectionRole = "none" | "viewer" | "editor";
 

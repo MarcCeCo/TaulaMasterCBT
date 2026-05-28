@@ -20,6 +20,7 @@ import {
 } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/lib/auth";
+import type { ProjectRole } from "@/lib/auth";
 import { uid } from "@/lib/storage";
 import { supaFetch as supa } from "@/lib/supaFetch";
 
@@ -27,6 +28,12 @@ import { supaFetch as supa } from "@/lib/supaFetch";
 
 export type ProjectStatus = "actiu" | "arxivat";
 export type TagStatus = "pendent" | "validat" | "rebutjat";
+
+/** Assignació d'un usuari a un projecte amb un rol concret */
+export interface ProjectUserAccess {
+  userId: string;
+  role: ProjectRole;
+}
 
 export interface RosmimanEquip {
   id: string;
@@ -69,7 +76,14 @@ export interface Projecte {
   status: ProjectStatus;
   tags: ProjectTag[];
   createdAt: number;
-  // Llista blanca d'IDs d'usuari amb accés. null = accés per a tothom (admins sempre accedeixen)
+  /**
+   * Llista d'usuaris amb accés al projecte i el seu rol.
+   * null = accés obert per a tothom (admins sempre accedeixen).
+   * Format guardat a BD: array d'objectes {userId, role} al camp allowed_users.
+   * Format llegacy (array de strings d'IDs): es migra automàticament a role "editor_global".
+   */
+  projectUsers: ProjectUserAccess[] | null;
+  /** @deprecated Usa projectUsers. Calculat per compatibilitat. */
   allowedUsers: string[] | null;
 }
 
@@ -107,6 +121,34 @@ const tagToRow = (t: ProjectTag) => ({
   created_at:       t.createdAt,
 });
 
+/**
+ * Parseja el camp allowed_users de la BD.
+ * Suporta:
+ *  - null → accés obert
+ *  - array de strings (format antic) → migra a ProjectUserAccess[] amb role "editor_global"
+ *  - array d'objectes {userId, role} (format nou)
+ */
+function parseAllowedUsers(raw: any): { projectUsers: ProjectUserAccess[] | null; allowedUsers: string[] | null } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { projectUsers: null, allowedUsers: null };
+  }
+  const projectUsers: ProjectUserAccess[] = raw.map((item: any) => {
+    // Format nou: {userId, role}
+    if (typeof item === "object" && item !== null && item.userId) {
+      const role: ProjectRole = ["viewer", "editor_global", "editor_caracteristiques"].includes(item.role)
+        ? item.role as ProjectRole
+        : "editor_global";
+      return { userId: item.userId, role };
+    }
+    // Format antic: string (userId directe) → rol "editor_global" per compatibilitat
+    return { userId: String(item), role: "editor_global" as ProjectRole };
+  });
+  return {
+    projectUsers,
+    allowedUsers: projectUsers.map(u => u.userId),
+  };
+}
+
 const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
   // Suporta tant array (nou format) com string (format antic)
   const rawCodis = row.codis_installacio;
@@ -135,7 +177,7 @@ const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
     status:           row.status           ?? "actiu",
     tags:             tags.filter(t => t.projecteId === row.id),
     createdAt:        row.created_at       ?? Date.now(),
-    allowedUsers:     Array.isArray(row.allowed_users) ? row.allowed_users : null,
+    ...parseAllowedUsers(row.allowed_users),
   };
 };
 
@@ -148,7 +190,7 @@ const projecteToRow = (p: Projecte) => ({
   codis_installacio: p.codisInstallacio,
   status:           p.status,
   created_at:       p.createdAt,
-  allowed_users:    p.allowedUsers ?? null,
+  allowed_users:    p.projectUsers ?? null,
 });
 
 const toRosmimanEquip = (row: any): RosmimanEquip => ({
@@ -171,7 +213,7 @@ export interface ProjectesValue {
   // Projectes CRUD
   createProjecte: (data: Omit<Projecte, "id" | "tags" | "createdAt">) => Promise<void>;
   updateProjecte: (id: string, patch: Partial<Omit<Projecte, "id" | "tags">>) => Promise<void>;
-  updateProjecteUsers: (id: string, userIds: string[] | null) => Promise<void>;
+  updateProjecteUsers: (id: string, projectUsers: ProjectUserAccess[] | null) => Promise<void>;
   deleteProjecte: (id: string) => Promise<void>;
   toggleArxivar:  (id: string) => Promise<void>;
 
@@ -287,6 +329,8 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
   const createProjecte = useCallback(async (data: Omit<Projecte, "id" | "tags" | "createdAt">) => {
     const token = getToken();
     const nou: Projecte = { ...data, id: uid(), tags: [], createdAt: Date.now() };
+    if (!("projectUsers" in nou)) (nou as any).projectUsers = null;
+    if (!("allowedUsers" in nou)) (nou as any).allowedUsers = null;
     await supa(token, "POST", "projectes", projecteToRow(nou), { "Prefer": "return=minimal" });
     setProjectes(prev => [nou, ...prev]);
   }, [getToken]);
@@ -332,13 +376,20 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     await updateProjecte(id, { status: nouStatus });
   }, [projectes, updateProjecte]);
 
-  const updateProjecteUsers = useCallback(async (id: string, userIds: string[] | null) => {
+  const updateProjecteUsers = useCallback(async (id: string, projectUsers: ProjectUserAccess[] | null) => {
     const token = getToken();
     await supa(token, "PATCH", `projectes?id=eq.${id}`,
-      { allowed_users: userIds },
+      { allowed_users: projectUsers ?? null },
       { "Prefer": "return=minimal" }
     );
-    setProjectes(prev => prev.map(p => p.id === id ? { ...p, allowedUsers: userIds } : p));
+    setProjectes(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      return {
+        ...p,
+        projectUsers,
+        allowedUsers: projectUsers ? projectUsers.map(u => u.userId) : null,
+      };
+    }));
   }, [getToken]);
 
   // ── Mutacions tags ────────────────────────────────────────────────────────
