@@ -84,7 +84,7 @@ async function obteHubIProjecte(token: string): Promise<{ hubId: string; project
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!rHubs.ok) throw new Error(`Error obtenint hubs: ${rHubs.status}`);
-  const hubs = (await rHubs.json()).data ?? [];
+  const hubs = (await rHubs.json() as any).data ?? [];
   if (!hubs.length) return null;
   const hubId = hubs[0].id;
 
@@ -94,7 +94,7 @@ async function obteHubIProjecte(token: string): Promise<{ hubId: string; project
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!rProj.ok) throw new Error(`Error obtenint projectes: ${rProj.status}`);
-  const projectes = (await rProj.json()).data ?? [];
+  const projectes = (await rProj.json() as any).data ?? [];
   if (!projectes.length) return null;
   const projectId = projectes[0].id;
 
@@ -104,7 +104,7 @@ async function obteHubIProjecte(token: string): Promise<{ hubId: string; project
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!rFolders.ok) throw new Error(`Error obtenint carpetes: ${rFolders.status}`);
-  const folders = (await rFolders.json()).data ?? [];
+  const folders = (await rFolders.json() as any).data ?? [];
 
   const carpeta = folders.find((f: any) =>
     cfg.accCarpetaMasters.toLowerCase() === (f.attributes?.name ?? "").toLowerCase()
@@ -124,7 +124,7 @@ async function obteContingutCarpeta(token: string, projectId: string, folderId: 
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!resp.ok) throw new Error(`Error llegint carpeta: ${resp.status}`);
-  return (await resp.json()).data ?? [];
+  return (await resp.json() as any).data ?? [];
 }
 
 async function obteVersionIdPerNom(
@@ -143,7 +143,7 @@ async function obteVersionIdPerNom(
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!resp.ok) return null;
-  return (await resp.json()).data?.id ?? null;
+  return (await resp.json() as any).data?.id ?? null;
 }
 
 // ─── Puja fitxer a ACC ────────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ async function pujaFitxerACC(
     }
   );
   if (!rStorage.ok) throw new Error(`Error storage: ${rStorage.status}`);
-  const objectId  = (await rStorage.json()).data.id as string;
+  const objectId  = (await rStorage.json() as any).data.id as string;
   const parts     = objectId.replace("urn:adsk.objects:os.object:", "");
   const bucket    = parts.split("/")[0];
   const objKey    = parts.split("/").slice(1).join("/");
@@ -183,7 +183,7 @@ async function pujaFitxerACC(
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!rSign.ok) throw new Error(`Error signed URL: ${rSign.status}`);
-  const signData  = await rSign.json();
+  const signData  = await rSign.json() as any;
   const uploadUrl = signData.urls[0];
   const uploadKey = signData.uploadKey ?? "";
 
@@ -229,7 +229,7 @@ async function pujaFitxerACC(
       }
     );
     if (!rVer.ok) throw new Error(`Error versió: ${rVer.status}`);
-    const d = await rVer.json();
+    const d = await rVer.json() as any;
     return { objectId, itemId: itemExistent, versionId: d.data.id };
   } else {
     const rItem = await fetch(
@@ -256,7 +256,7 @@ async function pujaFitxerACC(
       }
     );
     if (!rItem.ok) throw new Error(`Error item: ${rItem.status}`);
-    const d = await rItem.json();
+    const d = await rItem.json() as any;
     return { objectId, itemId: d.data.id, versionId: d.included?.[0]?.id ?? "" };
   }
 }
@@ -294,7 +294,7 @@ async function registraXRefs(
     }
   );
   if (!resp.ok) return null;
-  return (await resp.json()).data?.id ?? null;
+  return (await resp.json() as any).data?.id ?? null;
 }
 
 // ─── Cerca fitxers al USB ─────────────────────────────────────────────────────
