@@ -16,13 +16,13 @@ import {
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
-import type { ProjectTag, Projecte, ProjectStatus, TagStatus, InstallacioItem } from "@/lib/useProjectes";
+import type { ProjectTag, Projecte, ProjectStatus, TagStatus, InstallacioItem, ProjectUserAccess } from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
-import type { UserProfile } from "@/lib/auth";
+import type { UserProfile, ProjectRole } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -114,6 +114,20 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const { canEditView, canSeeView, isAdmin, profile: myProfile, getToken } = useAuth();
   const canEdit = canEditView("projectes");
   const canSeeRosmiman = canSeeView("rosmiman");
+
+  /**
+   * Retorna el rol de l'usuari actual dins d'un projecte concret.
+   * - Admins i usuaris amb permís global "editor_global" a la secció → "editor_global"
+   * - Usuaris sense rol assignat al projecte però que el veuen → "viewer"
+   */
+  const getProjectRole = (projecte: Projecte): ProjectRole => {
+    if (isAdmin) return "editor_global";
+    if (!myProfile) return "viewer";
+    if (!projecte.projectUsers) return canEdit ? "editor_global" : "viewer";
+    const entry = projecte.projectUsers.find(u => u.userId === myProfile.id);
+    if (!entry) return "viewer";
+    return entry.role;
+  };
   const [tabActiva, setTabActivaInternal] = useState<"projectes" | "rosmiman">(initialTab);
   const [rosmimanOpen, setRosmimanOpen] = useState(initialTab === "rosmiman");
 
@@ -150,7 +164,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [dialogUsuaris, setDialogUsuaris] = useState<string | null>(null); // id projecte
   const [allUsers, setAllUsers]           = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers]   = useState(false);
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([]);
+  const [selectedProjectUsers, setSelectedProjectUsers] = useState<ProjectUserAccess[]>([]);
 
   // Filtre
   const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("tots");
@@ -211,10 +225,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         // Admins veuen tots els projectes
         if (isAdmin) return true;
         // Usuaris amb rol viewer/editor: només veuen els projectes on estan assignats.
-        // Si allowedUsers és null (accés obert) o un array, cal estar-hi explícitament.
+        // Si projectUsers és null (accés obert) tothom el veu.
+        // Si hi ha assignacions, cal estar-hi amb qualsevol rol.
         if (!myProfile) return false;
-        if (!p.allowedUsers) return false; // null = no assignat a ningú → viewer no el veu
-        return p.allowedUsers.includes(myProfile.id);
+        if (!p.projectUsers) return true; // accés obert
+        return p.projectUsers.some(u => u.userId === myProfile.id);
       })
       .sort((a, b) => b.createdAt - a.createdAt),
     [projectes, filtreStatus, isAdmin, myProfile]
@@ -224,6 +239,23 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     projectes.find(p => p.id === projecteActiu) ?? null,
     [projectes, projecteActiu]
   );
+
+  /**
+   * Rol de l'usuari actual dins el projecte seleccionat.
+   * "editor_global"          → pot crear tags nous, editar equips, omplir camps tècnics i validar tags
+   * "editor_caracteristiques"→ pot omplir els camps de característiques tècniques dels tags ja validats
+   * "viewer"                 → només visualització, sense cap acció d'edició
+   */
+  const projecteRol: ProjectRole = useMemo(() =>
+    projecteSeleccionat ? getProjectRole(projecteSeleccionat) : "viewer",
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projecteSeleccionat, isAdmin, myProfile, canEdit]
+  );
+
+  /** Pot fer totes les operacions d'edició al projecte (crear tags, editar, validar) */
+  const canEditProjecte = projecteRol === "editor_global";
+  /** Pot omplir camps tècnics dels tags validats (però no crear ni validar) */
+  const canEditValidats = projecteRol === "editor_global" || projecteRol === "editor_caracteristiques";
 
   const equipMap = useMemo(() => new Map(equipments.map(e => [e.id, e])), [equipments]);
 
@@ -284,7 +316,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const obrirDialogUsuaris = async (id: string) => {
     const p = projectes.find(px => px.id === id);
     if (!p) return;
-    setSelectedUsers(p.allowedUsers ?? []);
+    setSelectedProjectUsers(p.projectUsers ?? []);
     setDialogUsuaris(id);
     setLoadingUsers(true);
     try {
@@ -310,10 +342,20 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const guardarUsuaris = async () => {
     if (!dialogUsuaris) return;
     // null = sense restriccions; array buit = ningú (excepte admins)
-    const value = selectedUsers.length === 0 ? null : selectedUsers;
+    const value = selectedProjectUsers.length === 0 ? null : selectedProjectUsers;
     await updateProjecteUsers(dialogUsuaris, value);
     toast.success("Permisos del projecte actualitzats");
     setDialogUsuaris(null);
+  };
+
+  /** Helper per canviar el rol d'un usuari a la selecció del diàleg */
+  const setUserProjectRole = (userId: string, role: ProjectRole | null) => {
+    setSelectedProjectUsers(prev => {
+      if (role === null) return prev.filter(u => u.userId !== userId);
+      const existing = prev.find(u => u.userId === userId);
+      if (existing) return prev.map(u => u.userId === userId ? { ...u, role } : u);
+      return [...prev, { userId, role }];
+    });
   };
 
   function obrirEditProjecte(id: string) {
@@ -692,7 +734,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 <Plus className="h-3.5 w-3.5" /> Nou projecte
               </Button>
             )}
-            {vista === "detail" && canEdit && (
+            {vista === "detail" && canEditProjecte && (
               <>
                 <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40" onClick={() => obrirEditProjecte(projecteActiu!)}>
                   <Pencil className="h-3.5 w-3.5" /> Edita projecte
@@ -799,8 +841,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                             <Button variant="outline" size="sm"
                               className="h-7 text-[11px] border-slate-200 text-slate-600"
                               onClick={() => obrirDialogUsuaris(p.id)}
-                              title={p.allowedUsers ? "Accés restringit · Gestionar usuaris" : "Accés obert · Gestionar usuaris"}>
-                              {p.allowedUsers ? <Lock className="h-3 w-3 text-amber-500" /> : <LockOpen className="h-3 w-3" />}
+                              title={p.projectUsers ? "Accés restringit · Gestionar usuaris" : "Accés obert · Gestionar usuaris"}>
+                              {p.projectUsers ? <Lock className="h-3 w-3 text-amber-500" /> : <LockOpen className="h-3 w-3" />}
                             </Button>
                           )}
                           <Button variant="outline" size="sm" className="h-7 text-[11px] flex-1 border-slate-200"
@@ -824,6 +866,26 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         {/* ── VISTA: DETALL PROJECTE ──────────────────────────────────────── */}
         {vista === "detail" && projecteSeleccionat && (
           <div className="space-y-4">
+            {/* Indicador de rol dins el projecte (per a no-admins) */}
+            {!isAdmin && (
+              <div className="flex items-center gap-2">
+                {projecteRol === "editor_global" && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-blue-50 border border-blue-200 text-blue-700">
+                    <Pencil className="h-2.5 w-2.5" /> Editor global — pots crear tags nous, editar equips, omplir camps tècnics i validar tags
+                  </span>
+                )}
+                {projecteRol === "editor_caracteristiques" && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-amber-50 border border-amber-200 text-amber-700">
+                    <ClipboardCheck className="h-2.5 w-2.5" /> Editor de característiques — pots omplir els camps tècnics dels tags ja validats
+                  </span>
+                )}
+                {projecteRol === "viewer" && (
+                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-slate-50 border border-slate-200 text-slate-500">
+                    <Eye className="h-2.5 w-2.5" /> Visualitzador — accés de només lectura, sense cap edició
+                  </span>
+                )}
+              </div>
+            )}
             {/* Resum ràpid */}
             <div className="grid grid-cols-3 gap-3">
               {[
@@ -853,7 +915,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     <span className="text-xs font-semibold text-[#006E7A]">
                       {selectedTagIds.size} tag{selectedTagIds.size !== 1 ? "s" : ""} seleccionat{selectedTagIds.size !== 1 ? "s" : ""}
                     </span>
-                    {canEdit && (
+                    {canEditValidats && (
                     <Button
                       size="sm"
                       className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] text-white gap-1.5"
@@ -995,7 +1057,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                   </Tooltip>
                                 )}
                                 {/* Validar */}
-                                {canEdit && tag.status !== "validat" && (
+                                {canEditProjecte && tag.status !== "validat" && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-emerald-600"
@@ -1007,7 +1069,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                   </Tooltip>
                                 )}
                                 {/* Editar */}
-                                {canEdit && projecteSeleccionat.status === "actiu" && tag.status !== "validat" && (
+                                {canEditProjecte && projecteSeleccionat.status === "actiu" && tag.status !== "validat" && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
@@ -1019,7 +1081,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                   </Tooltip>
                                 )}
                                 {/* Eliminar */}
-                                {canEdit && projecteSeleccionat.status === "actiu" && (
+                                {canEditProjecte && projecteSeleccionat.status === "actiu" && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500"
@@ -1634,7 +1696,14 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             if (detallTag) { obrirEditTag(detallTag); }
             setDetallEquip(null);
           }}
-          canEditValues={detallTag?.status === "validat"}
+          canEditValues={
+            // editor_global: pot omplir camps de tags en qualsevol estat
+            // editor_caracteristiques: només pot omplir camps de tags ja validats
+            // viewer: no pot omplir res
+            canEditProjecte
+              ? true
+              : (canEditValidats && detallTag?.status === "validat")
+          }
           fieldValues={detallTag?.fieldValues ?? {}}
           onSaveValues={(vals) => detallTag && saveFieldValues(detallTag.id, vals)}
         />
@@ -1651,7 +1720,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               fieldMap={fieldMap}
               fields={fields}
               onEdit={() => {}}
-              canEditValues={true}
+              canEditValues={canEditValidats}
               fieldValues={{}}
               onSaveValues={saveMultiFieldValues}
               multiSelectCount={selectedTagIds.size}
@@ -1674,7 +1743,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         />
         {/* ── DIÀLEG: GESTIÓ D'ACCÉS PER USUARI (només admins) ──────────── */}
         <Dialog open={!!dialogUsuaris} onOpenChange={(b) => { if (!b) setDialogUsuaris(null); }}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#0099A8]" />
@@ -1683,37 +1752,114 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             </DialogHeader>
             <div className="space-y-4 py-2">
               <p className="text-xs text-slate-500">
-                Selecciona els usuaris que poden veure aquest projecte. Si no en selecciones cap, el projecte serà visible per a tots els usuaris amb accés a Projectes. Els administradors sempre hi tenen accés.
+                Assigna un nivell d'accés a cada usuari per a aquest projecte. Si no n'assignes cap, el projecte serà visible per a tots. Els administradors sempre hi tenen accés complet.
               </p>
+
+              {/* Llegenda de rols */}
+              <div className="grid grid-cols-3 gap-2 text-[10px]">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                  <Eye className="h-3 w-3 text-slate-400 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-slate-600">Visualitzador</p>
+                    <p className="text-slate-400 leading-tight">Veu projecte i tags. Sense cap edició.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
+                  <Pencil className="h-3 w-3 text-blue-500 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-blue-700">Editor global</p>
+                    <p className="text-blue-400 leading-tight">Crea tags, edita equips, omple camps i valida.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
+                  <ClipboardCheck className="h-3 w-3 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-amber-700">Ed. Característiques</p>
+                    <p className="text-amber-400 leading-tight">Omple camps tècnics només dels tags validats.</p>
+                  </div>
+                </div>
+              </div>
+
               {loadingUsers ? (
                 <p className="text-sm text-slate-400 text-center py-4">Carregant usuaris…</p>
               ) : (
                 <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
                   {allUsers.filter(u => u.role !== "admin").map(u => {
-                    const checked = selectedUsers.includes(u.id);
+                    const entry = selectedProjectUsers.find(x => x.userId === u.id);
+                    const currentRole: ProjectRole | null = entry?.role ?? null;
                     return (
-                      <label key={u.id} className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-colors",
-                        checked ? "bg-[#0099A8]/8 border-[#0099A8]/30" : "bg-slate-50 border-slate-100 hover:border-slate-200"
+                      <div key={u.id} className={cn(
+                        "flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors",
+                        currentRole ? "bg-[#0099A8]/5 border-[#0099A8]/25" : "bg-slate-50 border-slate-100"
                       )}>
-                        <input
-                          type="checkbox"
-                          className="accent-[#0099A8]"
-                          checked={checked}
-                          onChange={() => {
-                            setSelectedUsers(prev =>
-                              checked ? prev.filter(id => id !== u.id) : [...prev, u.id]
-                            );
-                          }}
-                        />
+                        {/* Avatar */}
+                        <div className="h-7 w-7 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
+                          {((u.full_name || u.email || "?")[0]).toUpperCase()}
+                        </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-slate-700 truncate">{u.full_name || u.email}</p>
+                          <p className="text-xs font-medium text-slate-700 truncate">{u.full_name || u.email}</p>
                           <p className="text-[10px] text-slate-400 font-mono">{u.email}</p>
                         </div>
-                        <span className={cn("text-[10px] px-1.5 py-0.5 rounded-full font-medium",
-                          u.role === "admin" ? "bg-violet-100 text-violet-700" : "bg-slate-100 text-slate-500"
-                        )}>{u.role}</span>
-                      </label>
+                        {/* Selector de rol */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {/* Sense accés */}
+                          <button
+                            type="button"
+                            title="Sense accés"
+                            onClick={() => setUserProjectRole(u.id, null)}
+                            className={cn(
+                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors",
+                              currentRole === null
+                                ? "bg-slate-200 border-slate-300 text-slate-700"
+                                : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
+                            )}
+                          >
+                            —
+                          </button>
+                          {/* Visualitzador */}
+                          <button
+                            type="button"
+                            title="Visualitzador"
+                            onClick={() => setUserProjectRole(u.id, "viewer")}
+                            className={cn(
+                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1",
+                              currentRole === "viewer"
+                                ? "bg-slate-600 border-slate-700 text-white"
+                                : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
+                            )}
+                          >
+                            <Eye className="h-2.5 w-2.5" /> Vis.
+                          </button>
+                          {/* Editor global */}
+                          <button
+                            type="button"
+                            title="Editor global — pot crear tags, editar equips, omplir camps tècnics i validar tags"
+                            onClick={() => setUserProjectRole(u.id, "editor_global")}
+                            className={cn(
+                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1",
+                              currentRole === "editor_global"
+                                ? "bg-blue-600 border-blue-700 text-white"
+                                : "bg-white border-slate-200 text-slate-400 hover:bg-blue-50"
+                            )}
+                          >
+                            <Pencil className="h-2.5 w-2.5" /> Editor
+                          </button>
+                          {/* Editor característiques */}
+                          <button
+                            type="button"
+                            title="Editor de característiques — pot omplir camps tècnics dels tags ja validats"
+                            onClick={() => setUserProjectRole(u.id, "editor_caracteristiques")}
+                            className={cn(
+                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1",
+                              currentRole === "editor_caracteristiques"
+                                ? "bg-amber-500 border-amber-600 text-white"
+                                : "bg-white border-slate-200 text-slate-400 hover:bg-amber-50"
+                            )}
+                          >
+                            <ClipboardCheck className="h-2.5 w-2.5" /> Caracts.
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                   {allUsers.filter(u => u.role !== "admin").length === 0 && (
@@ -1721,13 +1867,13 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                   )}
                 </div>
               )}
-              {selectedUsers.length > 0 && (
+              {selectedProjectUsers.length > 0 && (
                 <p className="text-xs text-[#006E7A] font-medium">
-                  {selectedUsers.length} usuari{selectedUsers.length !== 1 ? "s" : ""} seleccionat{selectedUsers.length !== 1 ? "s" : ""}
+                  {selectedProjectUsers.length} usuari{selectedProjectUsers.length !== 1 ? "s" : ""} assignat{selectedProjectUsers.length !== 1 ? "s" : ""}
                 </p>
               )}
-              {selectedUsers.length === 0 && !loadingUsers && (
-                <p className="text-xs text-slate-400 italic">Sense selecció = accés obert per a tots</p>
+              {selectedProjectUsers.length === 0 && !loadingUsers && (
+                <p className="text-xs text-slate-400 italic">Sense assignació = accés obert per a tots</p>
               )}
             </div>
             <DialogFooter>
