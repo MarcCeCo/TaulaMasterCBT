@@ -320,9 +320,72 @@ const server = http.createServer(async (req, res) => {
 
   // ── API: token APS 2-legged per al Viewer SDK ─────────────────────────────
   if (url.pathname === "/api/aps-token" && req.method === "GET") {
-    // reutilitza la implementació existent
-    res.writeHead(501, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Implementació al fitxer api/aps-token.ts" }));
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
+    const supabaseUrl   = process.env.SUPABASE_URL;
+    const supabaseKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const clientId      = process.env.APS_CLIENT_ID;
+    const clientSecret  = process.env.APS_CLIENT_SECRET;
+
+    if (!supabaseUrl || !supabaseKey || !clientId || !clientSecret) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Variables d\'entorn no configurades" }));
+      return;
+    }
+
+    try {
+      const supabase = createClient(supabaseUrl, supabaseKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+
+      const { data: row, error: dbError } = await supabase
+        .from("aps_tokens")
+        .select("access_token, refresh_token, expires_at")
+        .eq("id", 1)
+        .single();
+
+      if (dbError || !row) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Token APS no disponible. Executa l\'agent primer." }));
+        return;
+      }
+
+      const ara = Date.now();
+      const MARGE_MS = 5 * 60 * 1000;
+
+      let accessToken: string;
+      let expiresIn: number;
+
+      if (row.access_token && row.expires_at > ara + MARGE_MS) {
+        accessToken = row.access_token;
+        expiresIn = Math.round((row.expires_at - ara) / 1000);
+      } else if (row.refresh_token) {
+        accessToken = await obteToken3Legged(supabase, clientId, clientSecret);
+        const { data: rowNou } = await supabase
+          .from("aps_tokens")
+          .select("expires_at")
+          .eq("id", 1)
+          .single();
+        expiresIn = rowNou ? Math.round((rowNou.expires_at - Date.now()) / 1000) : 3600;
+      } else {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Refresh token no disponible. Executa l\'agent primer." }));
+        return;
+      }
+
+      const maxAge = Math.max(0, expiresIn - 60);
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": `private, max-age=${maxAge}`,
+      });
+      res.end(JSON.stringify({ access_token: accessToken, expires_in: expiresIn }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
     return;
   }
 
