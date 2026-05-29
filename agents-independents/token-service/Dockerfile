@@ -1,14 +1,17 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Copia shared i el servei concret
-COPY shared/ ./shared/
-COPY token-service/package*.json ./token-service/
-RUN cd token-service && npm install
+# Copia package.json arrel (dependències compartides) i instal·la
+COPY package.json ./
+RUN npm install
 
+# Copia shared i l'agent concret
+COPY shared/ ./shared/
 COPY token-service/ ./token-service/
-RUN cd token-service && npm run build
+
+# Compila des de la carpeta de l'agent
+WORKDIR /app/token-service
+RUN ../node_modules/.bin/tsc
 
 EXPOSE 3001
-WORKDIR /app/token-service
 CMD ["node", "dist/src/server.js"]

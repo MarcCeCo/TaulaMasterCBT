@@ -1,14 +1,17 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Copia shared i el servei concret
-COPY shared/ ./shared/
-COPY visor3d/package*.json ./visor3d/
-RUN cd visor3d && npm install
+# Copia package.json arrel (dependències compartides) i instal·la
+COPY package.json ./
+RUN npm install
 
+# Copia shared i l'agent concret
+COPY shared/ ./shared/
 COPY visor3d/ ./visor3d/
-RUN cd visor3d && npm run build
+
+# Compila des de la carpeta de l'agent
+WORKDIR /app/visor3d
+RUN ../node_modules/.bin/tsc
 
 EXPOSE 3002
-WORKDIR /app/visor3d
 CMD ["node", "dist/src/server.js"]

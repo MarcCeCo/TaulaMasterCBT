@@ -1,14 +1,17 @@
 FROM node:20-alpine
 WORKDIR /app
 
-# Copia shared i el servei concret
-COPY shared/ ./shared/
-COPY bim-sync/package*.json ./bim-sync/
-RUN cd bim-sync && npm install
+# Copia package.json arrel (dependències compartides) i instal·la
+COPY package.json ./
+RUN npm install
 
+# Copia shared i l'agent concret
+COPY shared/ ./shared/
 COPY bim-sync/ ./bim-sync/
-RUN cd bim-sync && npm run build
+
+# Compila des de la carpeta de l'agent
+WORKDIR /app/bim-sync
+RUN ../node_modules/.bin/tsc
 
 EXPOSE 3003
-WORKDIR /app/bim-sync
 CMD ["node", "dist/src/server.js"]

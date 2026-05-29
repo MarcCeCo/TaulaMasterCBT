@@ -1,0 +1,16 @@
+{
+  "name": "taulamaster-agents",
+  "version": "1.0.0",
+  "description": "Dependències compartides pels agents independents TaulaMaster CBT",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.43.0",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  }
+}

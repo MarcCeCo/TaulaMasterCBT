@@ -10,6 +10,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "typeRoots": ["../node_modules/@types"],
     "paths": {}
   },
   "include": ["src/**/*", "../shared/**/*"],
