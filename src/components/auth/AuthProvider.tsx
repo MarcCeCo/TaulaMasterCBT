@@ -21,7 +21,10 @@ import {
 // es desmunta durant la crida.
 
 async function prefetchApsToken(): Promise<void> {
-  const agentUrl = (import.meta.env.VITE_AGENT_URL as string | undefined)?.trim();
+  const agentUrl = (
+    (import.meta.env.VITE_TOKEN_SERVICE_URL as string | undefined) ??
+    (import.meta.env.VITE_AGENT_URL as string | undefined)
+  )?.trim();
   if (!agentUrl) return; // agent no configurat → no fem res
   try {
     await fetch(`${agentUrl}/api/aps-token`, {
