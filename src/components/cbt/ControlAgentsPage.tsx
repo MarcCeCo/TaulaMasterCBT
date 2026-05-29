@@ -40,7 +40,7 @@ import {
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
 interface SyncLog {
-  id: number;
+  id: string;
   executat_a: string;
   sistemes_creats?: number;
   sistemes_actualitzats?: number;
@@ -805,7 +805,7 @@ export function ControlAgentsPage() {
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout>  | null>(null);
   const pollAgentIdRef = useRef<string>("");
   const logsRef        = useRef<Record<string, SyncLog[]>>({});
-  const pollLastIdRef  = useRef<number>(0);
+  const pollLastIdRef  = useRef<string>("");
 
   const selectedAgent = AGENTS_CONFIG.find(a => a.id === selectedAgentId) ?? AGENTS_CONFIG[0];
 
@@ -939,7 +939,7 @@ export function ControlAgentsPage() {
       });
       if (res.ok) {
         setTriggerMsg({ ok: true, text: "Agent iniciat. Esperant el resultat en temps real…" });
-        const lastKnownId = (logsRef.current[agent.id] ?? [])[0]?.id ?? 0;
+        const lastKnownId = (logsRef.current[agent.id] ?? [])[0]?.id ?? "";
         if (pollRef.current)        clearInterval(pollRef.current);
         if (pollTimeoutRef.current) clearTimeout(pollTimeoutRef.current);
         pollAgentIdRef.current = agent.id;
