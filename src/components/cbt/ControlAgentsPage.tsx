@@ -317,10 +317,11 @@ interface Visor3DPanelProps {
   triggerMsg: { ok: boolean; text: string } | null;
   onTrigger:  () => void;
   onRefresh:  () => void;
+  nomInstallacions: Record<string, string>;
 }
 
 function Visor3DPanel({
-  agent, logs, token, loading, triggering, polling, triggerMsg, onTrigger, onRefresh,
+  agent, logs, token, loading, triggering, polling, triggerMsg, onTrigger, onRefresh, nomInstallacions,
 }: Visor3DPanelProps) {
   const nextRun = nextCronDate(agent.cronSchedule);
   const lastLog = logs[0] ?? null;
@@ -408,7 +409,7 @@ function Visor3DPanel({
         )}
       </Card>
 
-      <LogsTable agent={agent} logs={logs} loading={loading} />
+      <LogsTable agent={agent} logs={logs} loading={loading} nomInstallacions={nomInstallacions} />
     </div>
   );
 }
@@ -669,7 +670,12 @@ function BimLocalPanel({ logs, loading, onRefresh }: BimLocalPanelProps) {
 // TAULA DE LOGS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog[]; loading: boolean }) {
+function LogsTable({ agent, logs, loading, nomInstallacions }: {
+  agent: AgentConfig;
+  logs: SyncLog[];
+  loading: boolean;
+  nomInstallacions?: Record<string, string>;
+}) {
   const [expandit, setExpandit] = useState<Set<string>>(new Set());
 
   const toggleExpandit = (id: string) =>
@@ -678,6 +684,15 @@ function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog
       n.has(id) ? n.delete(id) : n.add(id);
       return n;
     });
+
+  // Resol l'etiqueta d'una entrada del log:
+  // - Nous logs ja guarden "CODI – Nom"   → es mostra tal qual
+  // - Logs antics guarden només "CODI"    → lookup al mapa
+  const resolNom = (entrada: string): string => {
+    if (entrada.includes(" – ")) return entrada;
+    const nom = nomInstallacions?.[entrada];
+    return nom ? `${entrada} – ${nom}` : entrada;
+  };
 
   return (
     <Card className="border-slate-100 shadow-sm bg-white rounded-2xl overflow-hidden">
@@ -804,25 +819,25 @@ function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog
                                 </tr>
                               </thead>
                               <tbody>
-                                {(d?.installacionsCreades ?? []).map((nom, ci) => (
+                                {(d?.installacionsCreades ?? []).map((entrada, ci) => (
                                   <tr key={`c-${ci}`} className="border-t border-slate-100 hover:bg-emerald-50/40">
-                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{nom}</td>
+                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{resolNom(entrada)}</td>
                                     <td className="px-3 py-1.5">
                                       <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Nova</Badge>
                                     </td>
                                   </tr>
                                 ))}
-                                {(d?.installacionsActualitzades ?? []).map((nom, ci) => (
+                                {(d?.installacionsActualitzades ?? []).map((entrada, ci) => (
                                   <tr key={`a-${ci}`} className="border-t border-slate-100 hover:bg-blue-50/40">
-                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{nom}</td>
+                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{resolNom(entrada)}</td>
                                     <td className="px-3 py-1.5">
                                       <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">Actualitzada</Badge>
                                     </td>
                                   </tr>
                                 ))}
-                                {(d?.installacionsEliminades ?? []).map((nom, ci) => (
+                                {(d?.installacionsEliminades ?? []).map((entrada, ci) => (
                                   <tr key={`e-${ci}`} className="border-t border-slate-100 hover:bg-red-50/40">
-                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{nom}</td>
+                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{resolNom(entrada)}</td>
                                     <td className="px-3 py-1.5">
                                       <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">Eliminada</Badge>
                                     </td>
@@ -860,6 +875,7 @@ export function ControlAgentsPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string>("visor3d");
   const [logsPerAgent, setLogsPerAgent]     = useState<Record<string, SyncLog[]>>({});
   const [tokenPerAgent, setTokenPerAgent]   = useState<Record<string, ApsToken | null>>({});
+  const [nomInstallacions, setNomInstallacions] = useState<Record<string, string>>({});
   const [loading, setLoading]               = useState(true);
 
   const [triggering, setTriggering]         = useState<string | null>(null);
@@ -922,6 +938,16 @@ export function ControlAgentsPage() {
       logsRef.current = newLogs;
       setLogsPerAgent(newLogs);
       setTokenPerAgent(newTokens);
+
+      // Mapa codi → nom per enriquir logs antics que només guardaven el codi
+      const instData = await supa(tok!, "GET",
+        "visor3d_installacions?select=codi_installacio,nom"
+      ).catch(() => []);
+      const nomMap: Record<string, string> = {};
+      for (const row of instData as { codi_installacio: string; nom: string }[]) {
+        nomMap[row.codi_installacio] = row.nom;
+      }
+      setNomInstallacions(nomMap);
     } catch { /* silent */ } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -1101,6 +1127,7 @@ export function ControlAgentsPage() {
               triggerMsg={triggerMsg}
               onTrigger={executaAgentVisor3D}
               onRefresh={handleRefresh}
+              nomInstallacions={nomInstallacions}
             />
           )}
           {selectedAgent.id === "bimLocal" && (
