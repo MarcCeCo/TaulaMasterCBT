@@ -874,18 +874,7 @@ export function ControlAgentsPage() {
           { event: "INSERT", schema: "public", table: agent.logTable! },
           (payload) => {
             const nouLog = payload.new as SyncLog;
-            if (pollRef.current && pollAgentIdRef.current === agent.id) {
-              if (nouLog.id !== pollLastIdRef.current) {
-                if (pollRef.current)        { clearInterval(pollRef.current);  pollRef.current = null; }
-                if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
-                setPolling(false);
-                setTriggerMsg(
-                  nouLog.errors
-                    ? { ok: false, text: `Execució finalitzada amb ${nouLog.errors} error(s). Revisa l'historial.` }
-                    : { ok: true,  text: "Execució finalitzada correctament." }
-                );
-              }
-            }
+            // Actualitza l'estat local immediatament amb el nou log
             setLogsPerAgent(prev => {
               const prevLogs = prev[agent.id] ?? [];
               if (prevLogs.some(l => l.id === nouLog.id)) return prev;
@@ -893,6 +882,20 @@ export function ControlAgentsPage() {
               logsRef.current = { ...logsRef.current, [agent.id]: updated };
               return { ...prev, [agent.id]: updated };
             });
+
+            // Si estàvem esperant el resultat d'una execució manual, atura el polling
+            // (eliminem el guard pollRef.current per capturar l'event fins i tot si el Realtime
+            // arriba abans que el setInterval dispari la primera iteració)
+            if (pollAgentIdRef.current === agent.id && nouLog.id !== pollLastIdRef.current) {
+              if (pollRef.current)        { clearInterval(pollRef.current);  pollRef.current = null; }
+              if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
+              setPolling(false);
+              setTriggerMsg(
+                nouLog.errors
+                  ? { ok: false, text: `Execució finalitzada amb ${nouLog.errors} error(s). Revisa l'historial.` }
+                  : { ok: true,  text: "Execució finalitzada correctament." }
+              );
+            }
           })
         .subscribe()
     );
@@ -948,18 +951,32 @@ export function ControlAgentsPage() {
           if (pollTimeoutRef.current) { clearTimeout(pollTimeoutRef.current); pollTimeoutRef.current = null; }
           setPolling(false);
         };
-        pollRef.current = setInterval(async () => {
-          await fetchAll(true);
-          const newest = (logsRef.current[pollAgentIdRef.current] ?? [])[0];
-          if (newest && newest.id !== pollLastIdRef.current) {
-            stopPolling();
-            setTriggerMsg(newest.errors
-              ? { ok: false, text: `Execució finalitzada amb ${newest.errors} error(s). Revisa l'historial.` }
-              : { ok: true,  text: "Execució finalitzada correctament." });
+
+        let isFetchingPoll = false;
+        const checkForNewLog = async () => {
+          if (isFetchingPoll) return;
+          isFetchingPoll = true;
+          try {
+            await fetchAll(true);
+            const newest = (logsRef.current[pollAgentIdRef.current] ?? [])[0];
+            if (newest && newest.id !== pollLastIdRef.current) {
+              stopPolling();
+              setTriggerMsg(newest.errors
+                ? { ok: false, text: `Execució finalitzada amb ${newest.errors} error(s). Revisa l'historial.` }
+                : { ok: true,  text: "Execució finalitzada correctament." });
+            }
+          } finally {
+            isFetchingPoll = false;
           }
-        }, 8000);
-        pollTimeoutRef.current = setTimeout(() => {
+        };
+
+        // Primera comprovació immediata (per agents que acaben ràpid, < 5s)
+        setTimeout(checkForNewLog, 2000);
+        // Polling cada 5s
+        pollRef.current = setInterval(checkForNewLog, 5000);
+        pollTimeoutRef.current = setTimeout(async () => {
           stopPolling();
+          await fetchAll(true);
           setTriggerMsg({ ok: false, text: "Temps d'espera superat (>10 min). Comprova els logs manualment." });
         }, 10 * 60 * 1000);
       } else {
