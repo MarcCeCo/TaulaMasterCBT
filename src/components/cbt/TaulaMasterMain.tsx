@@ -157,7 +157,7 @@ function TaulaMasterPage() {
 }
 
 export function TaulaMasterMain() {
-  const { canSeeView, profile, user, isAdmin } = useAuth();
+  const { canSeeView, profile, user, isAdmin, loading: authLoading } = useAuth();
 
   const VALID_SECTIONS = [
     "dashboard","equips","revit-bim","visualitzador-3d",
@@ -177,6 +177,16 @@ export function TaulaMasterMain() {
     try { sessionStorage.setItem("cbt_active_section", section); } catch {}
     setActiveSectionState(section);
   };
+
+  // Mentre l'autenticació s'està resolent, mostrem el skeleton pur
+  // sense renderitzar cap contingut — evita el flash del dashboard
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--sand-100, #F3F4F2)" }}>
+        <PageSkeleton />
+      </div>
+    );
+  }
 
   const profileLoaded = !!profile || !user;
   const noAccessAtAll =
