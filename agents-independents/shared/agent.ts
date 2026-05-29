@@ -502,7 +502,7 @@ async function sincronitzaAmbSupabase(
         if (error) {
           resultat.errors.push(`Error creant instal·lació "${inst.codi}": ${error.message}`);
         } else {
-          resultat.installacionsCreades.push(inst.codi);
+          resultat.installacionsCreades.push(`${inst.codi} – ${inst.nom}`);
           console.log(`    ✅ Instal·lació creada: ${inst.codi}`);
         }
       } else if (
@@ -527,7 +527,7 @@ async function sincronitzaAmbSupabase(
         if (error) {
           resultat.errors.push(`Error actualitzant "${inst.codi}": ${error.message}`);
         } else {
-          resultat.installacionsActualitzades.push(inst.codi);
+          resultat.installacionsActualitzades.push(`${inst.codi} – ${inst.nom}`);
           console.log(`    🔄 Instal·lació actualitzada: ${inst.codi}`);
         }
       } else {
@@ -539,12 +539,12 @@ async function sincronitzaAmbSupabase(
   // Eliminar instal·lacions que ja no existeixen a Forma
   const { data: totes } = await supabase
     .from("visor3d_installacions")
-    .select("codi_installacio");
+    .select("codi_installacio, nom");
 
   for (const row of totes ?? []) {
     if (!codesForma.has(row.codi_installacio)) {
       await supabase.from("visor3d_installacions").delete().eq("codi_installacio", row.codi_installacio);
-      resultat.installacionsEliminades.push(row.codi_installacio);
+      resultat.installacionsEliminades.push(`${row.codi_installacio} – ${row.nom ?? row.codi_installacio}`);
       console.log(`    🗑️  Instal·lació eliminada: ${row.codi_installacio}`);
     }
   }

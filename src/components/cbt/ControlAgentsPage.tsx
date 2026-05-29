@@ -670,10 +670,19 @@ function BimLocalPanel({ logs, loading, onRefresh }: BimLocalPanelProps) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog[]; loading: boolean }) {
+  const [expandit, setExpandit] = useState<Set<string>>(new Set());
+
+  const toggleExpandit = (id: string) =>
+    setExpandit(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+
   return (
     <Card className="border-slate-100 shadow-sm bg-white rounded-2xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-50">
-        <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">
+      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50">
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
           Historial ({logs.length})
         </p>
       </div>
@@ -683,51 +692,78 @@ function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog
         <div className="px-5 py-8 text-center text-sm text-slate-400">Cap execució registrada</div>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-50">
-                <th className="px-5 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Data</th>
-                <th className="px-5 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Estat</th>
-                <th className="px-5 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 hidden md:table-cell">Canvis</th>
-                <th className="px-5 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 hidden lg:table-cell">Detall</th>
+          <table className="w-full text-sm" style={{ minWidth: 640 }}>
+            <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+              <tr className="text-left">
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-5" />
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Data</th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Estat</th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Resum</th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Canvis</th>
               </tr>
             </thead>
             <tbody>
               {logs.map((log, i) => {
-                const isOk  = !log.errors;
-                const d     = log.detalls;
-                const parts: string[] = [];
+                const isOk = (log.errors ?? 0) === 0;
+                const d    = log.detalls;
+                const expanded = expandit.has(log.id);
+
+                // ── Resum textual ──────────────────────────────────────────
+                const resumParts: string[] = [];
                 let totalCanvis = 0;
 
                 if (agent.id === "visor3d") {
                   totalCanvis =
-                    (log.sistemes_creats ?? 0) + (log.sistemes_eliminats ?? 0) +
+                    (log.sistemes_creats    ?? 0) + (log.sistemes_eliminats     ?? 0) +
                     (log.installacions_creades ?? 0) + (log.installacions_actualitzades ?? 0) +
                     (log.installacions_eliminades ?? 0);
-                  if (d?.sistemesCreats?.length)            parts.push(`✚ ${d.sistemesCreats.length} sistemes nous`);
-                  if (d?.sistemesActualitzats?.length)       parts.push(`✓ ${d.sistemesActualitzats.length} sistemes`);
-                  if (d?.sistemesEliminats?.length)          parts.push(`✕ ${d.sistemesEliminats.length} sistemes eliminats`);
-                  if (d?.installacionsCreades?.length)       parts.push(`✚ ${d.installacionsCreades.length} inst. noves`);
-                  if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst. actualitzades`);
-                  if (d?.installacionsEliminades?.length)    parts.push(`✕ ${d.installacionsEliminades.length} inst. eliminades`);
-                  if (d?.installacionsSenseCanvis?.length)   parts.push(`✓ ${d.installacionsSenseCanvis.length} sense canvis`);
+                  if (log.sistemes_creats)              resumParts.push(`${log.sistemes_creats} sist. nous`);
+                  if (log.sistemes_eliminats)           resumParts.push(`${log.sistemes_eliminats} sist. eliminats`);
+                  if (log.installacions_creades)        resumParts.push(`${log.installacions_creades} inst. noves`);
+                  if (log.installacions_actualitzades)  resumParts.push(`${log.installacions_actualitzades} inst. actualitzades`);
+                  if (log.installacions_eliminades)     resumParts.push(`${log.installacions_eliminades} inst. eliminades`);
+                  if (log.installacions_sense_canvis)   resumParts.push(`${log.installacions_sense_canvis} sense canvis`);
                 } else {
                   totalCanvis = (log.fitxers_pujats ?? 0) + (log.fitxers_copiats ?? 0);
-                  if (log.opcio)                  parts.push(`Opció: ${log.opcio}`);
-                  if (log.fitxers_copiats)        parts.push(`→ ${log.fitxers_copiats} fitxers copiats`);
-                  if (log.fitxers_pujats)         parts.push(`↑ ${log.fitxers_pujats} pujats a ACC`);
-                  if (log.xrefs_registrats)       parts.push(`🔗 ${log.xrefs_registrats} xRefs`);
-                  if (d?.fitxersAmbError?.length) parts.push(`⚠ ${d.fitxersAmbError.length} errors`);
+                  if (log.opcio)             resumParts.push(`Opció: ${log.opcio}`);
+                  if (log.fitxers_copiats)   resumParts.push(`${log.fitxers_copiats} fitxers copiats`);
+                  if (log.fitxers_pujats)    resumParts.push(`${log.fitxers_pujats} pujats a ACC`);
+                  if (log.xrefs_registrats)  resumParts.push(`${log.xrefs_registrats} xRefs`);
                 }
+
+                // ── Té detall expandible? ──────────────────────────────────
+                const teDetall = agent.id === "visor3d" && (
+                  (d?.installacionsActualitzades?.length ?? 0) > 0 ||
+                  (d?.installacionsCreades?.length        ?? 0) > 0 ||
+                  (d?.installacionsEliminades?.length     ?? 0) > 0 ||
+                  (d?.errors?.length                      ?? 0) > 0
+                );
 
                 return (
                   <Fragment key={log.id}>
-                    <tr className={`border-b border-slate-50 hover:bg-slate-50/60 transition-colors ${i === 0 ? "bg-slate-50/40" : ""}`}>
-                      <td className="px-5 py-3 font-medium text-slate-700 whitespace-nowrap">
-                        {formatDate(log.executat_a)}
-                        <span className="ml-2 text-slate-400 font-normal text-xs">{timeAgo(log.executat_a)}</span>
+                    {/* ── Fila principal ──────────────────────────────────── */}
+                    <tr
+                      className={`border-t border-slate-100 transition-colors
+                        ${teDetall ? "cursor-pointer hover:bg-slate-50/70" : ""}
+                        ${i === 0 ? "bg-slate-50/40" : ""}
+                        ${expanded ? "bg-slate-50" : ""}`}
+                      onClick={() => teDetall && toggleExpandit(log.id)}
+                    >
+                      {/* chevron */}
+                      <td className="px-3 py-2 w-5">
+                        {teDetall && (
+                          <ChevronRight className={`h-3.5 w-3.5 text-slate-300 transition-transform ${expanded ? "rotate-90" : ""}`} />
+                        )}
                       </td>
-                      <td className="px-5 py-3">
+
+                      {/* data */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className="font-medium text-[13px] text-slate-700">{formatDate(log.executat_a)}</span>
+                        <span className="ml-2 text-xs text-slate-400">{timeAgo(log.executat_a)}</span>
+                      </td>
+
+                      {/* estat */}
+                      <td className="px-3 py-2">
                         <div className="flex flex-wrap gap-1">
                           {isOk
                             ? <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] gap-1"><CheckCircle2 className="h-3 w-3" /> OK</Badge>
@@ -737,38 +773,69 @@ function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog
                               <AlertTriangle className="h-3 w-3" /> {d!.codisDuplicats!.length} dup.
                             </Badge>
                           )}
-                          {log.opcio && (
-                            <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-[10px]">{log.opcio}</Badge>
-                          )}
                         </div>
                       </td>
-                      <td className="px-5 py-3 text-slate-500 hidden md:table-cell">
-                        {totalCanvis > 0
-                          ? <span className="font-medium text-slate-700">{totalCanvis} canvis</span>
-                          : <span className="text-slate-400">Sense canvis</span>}
+
+                      {/* resum */}
+                      <td className="px-3 py-2 text-xs text-slate-500">
+                        {resumParts.length > 0
+                          ? resumParts.join(" · ")
+                          : <span className="text-slate-300">—</span>}
                       </td>
-                      <td className="px-5 py-3 hidden lg:table-cell">
-                        {parts.length > 0 ? (
-                          <div className="flex flex-col gap-0.5">
-                            {parts.map((p, pi) => <span key={pi} className="text-slate-500 text-xs leading-snug">{p}</span>)}
-                          </div>
-                        ) : (
-                          <span className="text-slate-400 text-xs">Sense canvis</span>
-                        )}
-                        {(d?.codisDuplicats?.length ?? 0) > 0 && (
-                          <span className="block mt-1 text-amber-600 text-[11px]">⚠ {d!.codisDuplicats!.join(", ")}</span>
-                        )}
+
+                      {/* total canvis */}
+                      <td className="px-3 py-2 text-right">
+                        {totalCanvis > 0
+                          ? <span className="font-semibold text-[13px] text-slate-700">{totalCanvis}</span>
+                          : <span className="text-slate-300 text-xs">—</span>}
                       </td>
                     </tr>
-                    {(d?.errors?.length ?? 0) > 0 && (
-                      <tr className="border-b border-red-50 bg-red-50/40">
-                        <td colSpan={4} className="px-5 py-2">
-                          <p className="text-[10.5px] font-semibold text-red-500 uppercase tracking-widest mb-1">Detall d'errors</p>
-                          <ul className="space-y-0.5">
-                            {d!.errors!.map((e, ei) => (
-                              <li key={ei} className="text-[11.5px] text-red-700 font-mono break-all leading-snug">❌ {e}</li>
-                            ))}
-                          </ul>
+
+                    {/* ── Fila expandida: llista d'instal·lacions ──────────── */}
+                    {expanded && teDetall && (
+                      <tr className="border-t border-slate-100 bg-slate-50/80">
+                        <td colSpan={5} className="px-0 py-0">
+                          <div className="mx-3 my-2 rounded-xl border border-slate-200 overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="bg-slate-100 border-b border-slate-200 text-left">
+                                  <th className="px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Instal·lació</th>
+                                  <th className="px-3 py-1.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Acció</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {(d?.installacionsCreades ?? []).map((nom, ci) => (
+                                  <tr key={`c-${ci}`} className="border-t border-slate-100 hover:bg-emerald-50/40">
+                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{nom}</td>
+                                    <td className="px-3 py-1.5">
+                                      <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Nova</Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {(d?.installacionsActualitzades ?? []).map((nom, ci) => (
+                                  <tr key={`a-${ci}`} className="border-t border-slate-100 hover:bg-blue-50/40">
+                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{nom}</td>
+                                    <td className="px-3 py-1.5">
+                                      <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">Actualitzada</Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {(d?.installacionsEliminades ?? []).map((nom, ci) => (
+                                  <tr key={`e-${ci}`} className="border-t border-slate-100 hover:bg-red-50/40">
+                                    <td className="px-3 py-1.5 text-slate-700 font-medium">{nom}</td>
+                                    <td className="px-3 py-1.5">
+                                      <Badge className="bg-red-50 text-red-700 border-red-200 text-[10px]">Eliminada</Badge>
+                                    </td>
+                                  </tr>
+                                ))}
+                                {(d?.errors ?? []).map((e, ei) => (
+                                  <tr key={`err-${ei}`} className="border-t border-red-100 bg-red-50/30">
+                                    <td colSpan={2} className="px-3 py-1.5 text-red-700 font-mono break-all">❌ {e}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </td>
                       </tr>
                     )}
