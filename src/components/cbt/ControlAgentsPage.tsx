@@ -2,12 +2,10 @@
 // Pàgina d'administració: Control d'Agents
 //
 // Agents:
-//   1. visor3d      — Sincronitza models Revit d'ACC → Supabase
-//   2. bimSync      — Dues accions independents:
-//                       · Copiar disciplines (Desktop Connector → USB)
-//                       · Pujar MASTERs (USB → ACC + xRefs + processament)
-//   3. crearMasters — Panell informatiu + descàrrega script pyRevit
-//                     Instruccions del flux complet BIM
+//   1. visor3d   — Sincronitza models Revit d'ACC → Supabase (remot, Render)
+//   2. bimLocal  — Grup d'eines locals BIM (execució a l'ordinador de l'usuari):
+//                    · Crear Masters CBT   (script.py via pyRevit)
+//                    · BIM Sync USB        (bim_sync_usb.py via VS Code)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState, useCallback, useRef, Fragment } from "react";
@@ -33,9 +31,10 @@ import {
   Copy,
   ArrowRight,
   Info,
-  Link2,
   Upload,
   FolderSync,
+  Terminal,
+  Wrench,
 } from "lucide-react";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
@@ -43,7 +42,6 @@ import {
 interface SyncLog {
   id: number;
   executat_a: string;
-  // Visor 3D
   sistemes_creats?: number;
   sistemes_actualitzats?: number;
   sistemes_eliminats?: number;
@@ -51,7 +49,6 @@ interface SyncLog {
   installacions_actualitzades?: number;
   installacions_eliminades?: number;
   installacions_sense_canvis?: number;
-  // BIM Sync
   opcio?: string;
   fitxers_processats?: number;
   fitxers_copiats?: number;
@@ -86,7 +83,7 @@ interface AgentConfig {
   descripcio: string;
   icon: React.ReactNode;
   cronSchedule: string;
-  logTable: string | null;   // null = agent sense logs (ex: crearMasters)
+  logTable: string | null;
   syncEndpoint: string | null;
   tokenTable?: string;
   agentUrlEnv: string;
@@ -103,27 +100,16 @@ const AGENTS_CONFIG: AgentConfig[] = [
     logTable: "visor3d_sync_log",
     syncEndpoint: "/sync",
     tokenTable: "aps_tokens",
-    agentUrlEnv: "VITE_AGENT_URL",
+    agentUrlEnv: "VITE_VISOR3D_URL",
     agentSecretEnv: "VITE_AGENT_SECRET",
   },
   {
-    id: "bimSync",
-    nom: "Agent BIM Sync",
-    descripcio: "Copia disciplines al USB i puja MASTERs a ACC amb xRefs",
-    icon: <HardDrive className="h-4 w-4" />,
-    cronSchedule: "0 7 1 * *",
-    logTable: "bim_sync_log",
-    syncEndpoint: "/bim-sync",
-    agentUrlEnv: "VITE_AGENT_URL",
-    agentSecretEnv: "VITE_AGENT_SECRET",
-  },
-  {
-    id: "crearMasters",
-    nom: "Crear Masters CBT",
-    descripcio: "Script pyRevit per crear fitxers MASTER a partir de disciplines BIM",
-    icon: <FolderOpen className="h-4 w-4" />,
+    id: "bimLocal",
+    nom: "Eines BIM Locals",
+    descripcio: "Crear Masters (pyRevit) i BIM Sync USB — s'executen a l'ordinador de l'usuari",
+    icon: <Wrench className="h-4 w-4" />,
     cronSchedule: "",
-    logTable: null,
+    logTable: "bim_sync_log",
     syncEndpoint: null,
     agentUrlEnv: "",
     agentSecretEnv: "",
@@ -204,9 +190,9 @@ interface AgentListItemProps {
 }
 
 function AgentListItem({ agent, lastLog, selected, onClick }: AgentListItemProps) {
-  const isInfoOnly  = !agent.logTable;
+  const isLocal     = agent.id === "bimLocal";
   const hasError    = lastLog ? (lastLog.errors ?? 0) > 0 : false;
-  const statusColor = isInfoOnly
+  const statusColor = isLocal
     ? "bg-violet-400"
     : !lastLog
     ? "bg-slate-200"
@@ -232,8 +218,8 @@ function AgentListItem({ agent, lastLog, selected, onClick }: AgentListItemProps
           <span className={`h-2 w-2 rounded-full shrink-0 ${statusColor}`} />
         </div>
         <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-          {isInfoOnly
-            ? "Script local · pyRevit"
+          {isLocal
+            ? "Script local · pyRevit + Python"
             : lastLog
             ? timeAgo(lastLog.executat_a)
             : "Sense execucions"}
@@ -245,7 +231,7 @@ function AgentListItem({ agent, lastLog, selected, onClick }: AgentListItemProps
   );
 }
 
-// ─── Pas numerado (per a instruccions) ───────────────────────────────────────
+// ─── Pas numerado ─────────────────────────────────────────────────────────────
 
 function Pas({
   num, titol, children, icon,
@@ -291,6 +277,32 @@ function Code({ children }: { children: string }) {
   );
 }
 
+// ─── Botó de descàrrega ───────────────────────────────────────────────────────
+
+function DownloadButton({
+  label, href, filename, color = "violet",
+}: {
+  label: string; href: string; filename: string; color?: "violet" | "sky";
+}) {
+  const cls = color === "violet"
+    ? "bg-violet-600 hover:bg-violet-700 text-white"
+    : "bg-sky-600 hover:bg-sky-700 text-white";
+  return (
+    <Button
+      className={`${cls} gap-2 rounded-xl h-9 px-5 text-sm shadow-sm`}
+      onClick={() => {
+        const a = document.createElement("a");
+        a.href = href;
+        a.download = filename;
+        a.click();
+      }}
+    >
+      <Download className="h-3.5 w-3.5" />
+      {label}
+    </Button>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // PANELL VISOR 3D
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -315,7 +327,6 @@ function Visor3DPanel({
 
   return (
     <div className="space-y-4">
-      {/* Capçalera */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -373,7 +384,6 @@ function Visor3DPanel({
         )}
       </Card>
 
-      {/* Execució manual */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
         <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-3">Execució manual</p>
         <div className="flex items-center gap-3 flex-wrap">
@@ -398,45 +408,49 @@ function Visor3DPanel({
         )}
       </Card>
 
-      {/* Historial */}
       <LogsTable agent={agent} logs={logs} loading={loading} />
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// PANELL BIM SYNC — dos botons independents
+// PANELL EINES BIM LOCALS — Crear Masters + BIM Sync USB
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface BimSyncPanelProps {
-  agent:       AgentConfig;
-  logs:        SyncLog[];
-  loading:     boolean;
-  triggering:  string | null;   // "copiar" | "pujar" | null
-  polling:     boolean;
-  triggerMsg:  { ok: boolean; text: string } | null;
-  onTrigger:   (opcio: "copiar-disciplines" | "pujar-masters") => void;
-  onRefresh:   () => void;
+const SCRIPT_PATH_PYREVIT =
+  "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Masters.pushbutton\\script.py";
+
+interface BimLocalPanelProps {
+  logs:    SyncLog[];
+  loading: boolean;
+  onRefresh: () => void;
 }
 
-function BimSyncPanel({
-  agent, logs, loading, triggering, polling, triggerMsg, onTrigger, onRefresh,
-}: BimSyncPanelProps) {
-  const nextRun = nextCronDate(agent.cronSchedule);
-  const lastLog = logs[0] ?? null;
+type SubtabId = "flux" | "crearMasters" | "bimSync";
+
+function BimLocalPanel({ logs, loading, onRefresh }: BimLocalPanelProps) {
+  const [subtab, setSubtab] = useState<SubtabId>("flux");
+  const [copiedPath, setCopiedPath] = useState(false);
+
+  const subtabs: { id: SubtabId; label: string; icon: React.ReactNode }[] = [
+    { id: "flux",         label: "Flux complet",  icon: <ArrowRight className="h-3.5 w-3.5" /> },
+    { id: "crearMasters", label: "Crear Masters",  icon: <FolderOpen className="h-3.5 w-3.5" /> },
+    { id: "bimSync",      label: "BIM Sync USB",   icon: <HardDrive className="h-3.5 w-3.5" /> },
+  ];
 
   return (
     <div className="space-y-4">
+
       {/* Capçalera */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="h-11 w-11 rounded-xl bg-[#0099A8]/10 flex items-center justify-center text-[#0099A8]">
-              <HardDrive className="h-5 w-5" />
+            <div className="h-11 w-11 rounded-xl bg-violet-50 flex items-center justify-center text-violet-500">
+              <Wrench className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-800 text-base">{agent.nom}</h2>
-              <p className="text-xs text-slate-500 mt-0.5">{agent.descripcio}</p>
+              <h2 className="font-semibold text-slate-800 text-base">Eines BIM Locals</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Scripts que s'executen a l'ordinador de l'usuari</p>
             </div>
           </div>
           <Button variant="ghost" size="sm" onClick={onRefresh} disabled={loading}
@@ -444,274 +458,215 @@ function BimSyncPanel({
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
           </Button>
         </div>
-
-        <div className="mt-4 pt-4 border-t border-slate-50 grid grid-cols-2 sm:grid-cols-3 gap-4">
-          <div>
-            <p className="text-[10.5px] font-medium uppercase tracking-widest text-slate-400">Programació</p>
-            <p className="text-sm font-medium text-slate-700 mt-1 flex items-center gap-1.5">
-              <CalendarClock className="h-3.5 w-3.5 text-slate-400" />
-              {cronToText(agent.cronSchedule)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[10.5px] font-medium uppercase tracking-widest text-slate-400">Pròxima</p>
-            <p className="text-sm font-medium text-slate-700 mt-1 flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5 text-slate-400" />
-              {nextRun ? timeUntil(nextRun) : "—"}
-            </p>
-          </div>
-          {lastLog && (
-            <div>
-              <p className="text-[10.5px] font-medium uppercase tracking-widest text-slate-400">Darrera</p>
-              <div className="mt-1 flex items-center gap-1.5">
-                {(lastLog.errors ?? 0) > 0
-                  ? <XCircle className="h-3.5 w-3.5 text-red-500" />
-                  : <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />}
-                <span className="text-sm font-medium text-slate-700">{timeAgo(lastLog.executat_a)}</span>
-              </div>
-            </div>
-          )}
+        <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-2 flex-wrap">
+          <Badge className="bg-violet-50 text-violet-700 border-violet-200 text-[10px]">Script local</Badge>
+          <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">pyRevit + Revit 2024+</Badge>
+          <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">Python 3 · VS Code</Badge>
+          <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">No requereix servidor</Badge>
         </div>
       </Card>
 
-      {/* Avís de configuració USB */}
-      <Card className="p-4 border-amber-200 bg-amber-50 rounded-2xl">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <div className="text-[12px] text-amber-800 space-y-1.5 leading-relaxed">
-            <p className="font-semibold text-amber-900">Requisit: Agent local + USB connectat</p>
-            <p>
-              L'opció <strong>Pujar MASTERs</strong> requereix que l'agent s'executi a l'ordinador
-              on tens el USB connectat (no a Render/cloud). Configura la variable d'entorn:
-            </p>
-            <div className="font-mono bg-amber-100 rounded-lg px-3 py-1.5 text-[11px] text-amber-900 border border-amber-200">
-              <span className="text-amber-600">BIM_USB_PATH</span> = <span className="text-amber-800">F:\BIM_WORK</span>
-            </div>
-            <p className="text-amber-700">
-              Si veus l'error <em>"El directori USB no existeix"</em>, comprova que el USB
-              està connectat i que la lletra/ruta de <Code>BIM_USB_PATH</Code> és correcta
-              al fitxer <Code>.env</Code> de l'agent local.
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* Instruccions d'ús */}
-      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
-        <div className="flex items-center gap-2 mb-4">
-          <Info className="h-4 w-4 text-[#0099A8]" />
-          <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Com funciona</p>
-        </div>
-        <div className="space-y-0">
-          <Pas num={1} titol="Prepara el disc USB" icon={<HardDrive className="h-3.5 w-3.5" />}>
-            <p>Connecta el disc USB a l'ordinador on tens el <strong>Desktop Connector</strong> amb els fitxers d'ACC sincronitzats localment.</p>
-            <p>Assegura't que la variable <Code>BIM_USB_PATH</Code> apunta a la carpeta <Code>BIM_WORK</Code> del USB (configura-la a les variables d'entorn de l'agent).</p>
-          </Pas>
-          <Pas num={2} titol="Copiar disciplines al USB" icon={<FolderSync className="h-3.5 w-3.5" />}>
-            <p>Prem <strong>Copiar disciplines</strong>. L'agent busca recursivament tots els fitxers <Code>_ENT</Code>, <Code>_EST</Code> i <Code>_MEP</Code> a la carpeta origen del Desktop Connector i els copia al USB, mantenint l'estructura de carpetes relativa.</p>
-            <p>Els fitxers ja actualitzats es salten automàticament (comparació per data de modificació).</p>
-          </Pas>
-          <Pas num={3} titol="Porta el USB a l'altra màquina" icon={<ArrowRight className="h-3.5 w-3.5" />}>
-            <p>Mou el USB a l'ordinador des d'on vols pujar a ACC (pot ser el mateix o un de diferent). No cal cap programa especial: l'agent s'encarrega de tot via API.</p>
-          </Pas>
-          <Pas num={4} titol="Pujar MASTERs a ACC" icon={<Upload className="h-3.5 w-3.5" />}>
-            <p>Prem <strong>Pujar MASTERs</strong>. Per a cada fitxer <Code>_MASTER.rvt</Code> del USB, l'agent:</p>
-            <p>① Puja el fitxer a la carpeta <Code>001_MODEL-BIM</Code> corresponent a ACC.</p>
-            <p>② Registra les <strong>xRefs</strong> (vincles entre el MASTER i les disciplines) via <Code>POST /versions?copyFrom</Code>.</p>
-            <p>③ ACC inicia el <strong>processament automàtic</strong> (traducció SVF2 per al visor 3D). No cal entrar manualment a cada fitxer.</p>
-          </Pas>
-          <Pas num={5} titol="Comprova l'estat" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
-            <p>L'historial de sota registra cada execució amb el nombre de fitxers pujats, xRefs registrats i errors. En cas d'error, els detalls apareixen expandits a la taula.</p>
-          </Pas>
-        </div>
-      </Card>
-
-      {/* Accions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* Botó 1: Copiar disciplines */}
-        <Card className="p-4 border-slate-100 shadow-sm bg-white rounded-2xl">
-          <div className="flex items-start gap-3 mb-4">
-            <div className="h-9 w-9 rounded-xl bg-sky-50 flex items-center justify-center shrink-0">
-              <FolderSync className="h-4 w-4 text-sky-600" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm text-slate-800">Copiar disciplines</p>
-              <p className="text-[11.5px] text-slate-500 mt-0.5 leading-snug">
-                Desktop Connector → USB<br />
-                Copia <Code>_ENT</Code> <Code>_EST</Code> <Code>_MEP</Code>
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={() => onTrigger("copiar-disciplines")}
-            disabled={!!triggering || polling}
-            variant="outline"
-            className="w-full rounded-xl h-9 text-sm border-sky-200 text-sky-700 hover:bg-sky-50 gap-2">
-            {triggering === "copiar" ? (
-              <><div className="h-3.5 w-3.5 rounded-full border-2 border-sky-600 border-t-transparent animate-spin" /> Copiant…</>
-            ) : (
-              <><FolderSync className="h-3.5 w-3.5" /> Copiar disciplines</>
-            )}
-          </Button>
-        </Card>
-
-        {/* Botó 2: Pujar MASTERs */}
-        <Card className="p-4 border-slate-100 shadow-sm bg-white rounded-2xl">
-          <div className="flex items-start gap-3 mb-4">
-            <div className="h-9 w-9 rounded-xl bg-[#0099A8]/10 flex items-center justify-center shrink-0">
-              <Upload className="h-4 w-4 text-[#0099A8]" />
-            </div>
-            <div>
-              <p className="font-semibold text-sm text-slate-800">Pujar MASTERs</p>
-              <p className="text-[11.5px] text-slate-500 mt-0.5 leading-snug">
-                USB → ACC + xRefs<br />
-                Registra vincles i dispara processament
-              </p>
-            </div>
-          </div>
-          <Button
-            onClick={() => onTrigger("pujar-masters")}
-            disabled={!!triggering || polling}
-            className="w-full bg-[#0099A8] hover:bg-[#007a88] text-white rounded-xl h-9 text-sm gap-2">
-            {triggering === "pujar" ? (
-              <><div className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" /> Pujant…</>
-            ) : polling ? (
-              <><div className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" /> Esperant…</>
-            ) : (
-              <><Upload className="h-3.5 w-3.5" /> Pujar MASTERs</>
-            )}
-          </Button>
-        </Card>
+      {/* Subtabs */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+        {subtabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSubtab(t.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[12.5px] font-medium transition-all
+              ${subtab === t.id
+                ? "bg-white text-slate-800 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"}`}
+          >
+            <span className={subtab === t.id ? "text-[#0099A8]" : "text-slate-400"}>{t.icon}</span>
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {triggerMsg && (
-        <div className={`px-4 py-3 rounded-xl text-sm flex items-start gap-2
-          ${triggerMsg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-          {triggerMsg.ok ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 shrink-0" />}
-          {triggerMsg.text}
-        </div>
-      )}
-
-      {/* Historial */}
-      <LogsTable agent={agent} logs={logs} loading={loading} />
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// PANELL CREAR MASTERS — informatiu + descàrrega
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const SCRIPT_PATH_PYREVIT =
-  "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Masters.pushbutton\\script.py";
-
-function CrearMastersPanel() {
-  const [copied, setCopied] = useState(false);
-
-  function handleDownload() {
-    // L'script es serveix des de /public/scripts/script.py
-    const a = document.createElement("a");
-    a.href = "/scripts/script.py";
-    a.download = "script.py";
-    a.click();
-  }
-
-  function handleCopyPath() {
-    navigator.clipboard.writeText(SCRIPT_PATH_PYREVIT);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Capçalera */}
-      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="h-11 w-11 rounded-xl bg-violet-50 flex items-center justify-center text-violet-500">
-            <FolderOpen className="h-5 w-5" />
+      {/* ── TAB: Flux complet ───────────────────────────────────────────── */}
+      {subtab === "flux" && (
+        <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+          <div className="flex items-center gap-2 mb-4">
+            <Info className="h-4 w-4 text-[#0099A8]" />
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Flux complet BIM — pas a pas</p>
           </div>
-          <div>
-            <h2 className="font-semibold text-slate-800 text-base">Crear Masters CBT</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Script pyRevit · s'executa dins de Revit</p>
-          </div>
-        </div>
-        <div className="mt-4 pt-4 border-t border-slate-50">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge className="bg-violet-50 text-violet-700 border-violet-200 text-[10px]">Script local</Badge>
-            <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">pyRevit + Revit 2024+</Badge>
-            <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">IronPython 3</Badge>
-          </div>
-        </div>
-      </Card>
-
-      {/* Descàrrega */}
-      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
-        <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-3">Script</p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button onClick={handleDownload}
-            className="bg-violet-600 hover:bg-violet-700 text-white gap-2 rounded-xl h-9 px-5 text-sm shadow-sm">
-            <Download className="h-3.5 w-3.5" />
-            Descarregar script.py
-          </Button>
-          <Button variant="outline" onClick={handleCopyPath}
-            className="gap-2 rounded-xl h-9 px-4 text-sm border-slate-200 text-slate-600 hover:bg-slate-50">
-            {copied ? <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Copiat!</> : <><Copy className="h-3.5 w-3.5" /> Copia la ruta de destí</>}
-          </Button>
-        </div>
-        <p className="text-[11.5px] text-slate-400 mt-3 font-mono leading-relaxed break-all">
-          {SCRIPT_PATH_PYREVIT}
-        </p>
-      </Card>
-
-      {/* Instruccions del flux complet */}
-      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
-        <div className="flex items-center gap-2 mb-4">
-          <Info className="h-4 w-4 text-violet-500" />
-          <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Flux complet BIM — pas a pas</p>
-        </div>
-        <div className="space-y-0">
-          <Pas num={1} titol="Instal·la l'script a pyRevit" icon={<Download className="h-3.5 w-3.5" />}>
-            <p>Descarrega <Code>script.py</Code> i copia'l a la ruta de pyRevit indicada a sobre (botó <em>Copia la ruta de destí</em>).</p>
-            <p>A Revit, ves a la pestanya <strong>CBT → CBT Tools → Crear Masters</strong>. Si no apareix, fes <em>pyRevit → Reload</em>.</p>
-          </Pas>
-          <Pas num={2} titol="Prepara la plantilla CBT" icon={<FolderOpen className="h-3.5 w-3.5" />}>
-            <p>Col·loca el fitxer <Code>CBT_PLANTILLA.rte</Code> a <Code>Documents\</Code> o al costat dels fitxers RVT. L'script el troba automàticament.</p>
-            <p>Estructura de carpetes esperada:</p>
-            <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 overflow-x-auto mt-1">{`carpeta_arrel/
+          <div className="space-y-0">
+            <Pas num={1} titol="Instal·la l'script Crear Masters a pyRevit" icon={<Download className="h-3.5 w-3.5" />}>
+              <p>Descarrega <Code>script.py</Code> de la pestanya <strong>Crear Masters</strong> i copia'l a la ruta de pyRevit (botó <em>Copia la ruta</em>).</p>
+              <p>A Revit, ves a <strong>CBT → CBT Tools → Crear Masters</strong>. Si no apareix, fes <em>pyRevit → Reload</em>.</p>
+            </Pas>
+            <Pas num={2} titol="Prepara la plantilla CBT_PLANTILLA.rte" icon={<FolderOpen className="h-3.5 w-3.5" />}>
+              <p>Col·loca el fitxer <Code>CBT_PLANTILLA.rte</Code> a <Code>Documents\</Code> o al costat dels RVTs. L'script el troba automàticament.</p>
+              <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 overflow-x-auto mt-1">{`carpeta_arrel/
   001_GRANOLLERS/
     ED008_CALDES-DE-MONTBUI/
       001_MODEL-BIM/
         ED008_..._ENT.rvt
         ED008_..._EST.ZonaA.rvt
         ED008_..._MEP.rvt`}</pre>
-          </Pas>
-          <Pas num={3} titol="Executa l'script des de Revit" icon={<Zap className="h-3.5 w-3.5" />}>
-            <p>Fes clic a <strong>Crear Masters</strong> a la barra de pyRevit. L'script detecta automàticament totes les instal·lacions a la carpeta que seleccionis.</p>
-            <p>Per a cada instal·lació:</p>
-            <p>① Obre la plantilla <Code>.rte</Code> en segon pla.</p>
-            <p>② Vincula els fitxers <Code>_ENT</Code>, <Code>_EST</Code> i <Code>_MEP</Code> (incloses les zones A, B, etc.).</p>
-            <p>③ Crea la vista 3D <Code>TAULA-MASTER</Code> i la publica.</p>
-            <p>④ Desa com a <Code>ED008_CALDES-DE-MONTBUI_MASTER.rvt</Code>.</p>
-          </Pas>
-          <Pas num={4} titol="Copia les disciplines al USB" icon={<HardDrive className="h-3.5 w-3.5" />}>
-            <p>Un cop creats els MASTERs, usa l'<strong>Agent BIM Sync → Copiar disciplines</strong> per copiar tots els fitxers <Code>_ENT/_EST/_MEP</Code> del Desktop Connector al USB, mantenint l'estructura de carpetes.</p>
-          </Pas>
-          <Pas num={5} titol="Puja els MASTERs a ACC" icon={<Upload className="h-3.5 w-3.5" />}>
-            <p>Usa l'<strong>Agent BIM Sync → Pujar MASTERs</strong> per pujar els fitxers <Code>_MASTER.rvt</Code> del USB a ACC. L'agent registra automàticament les xRefs (vincles entre el MASTER i les disciplines) i dispara el processament a ACC.</p>
-            <p><strong>Important:</strong> els fitxers de disciplina han d'estar a la <strong>mateixa carpeta</strong> <Code>001_MODEL-BIM</Code> d'ACC que el MASTER. ACC resol els vincles pel nom del fitxer.</p>
-          </Pas>
-          <Pas num={6} titol="Verifica al Visor 3D" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
-            <p>Al cap de pocs minuts, ACC hauria de tenir el model federat disponible. L'<strong>Agent Visor 3D</strong> sincronitza els URNs amb Supabase perquè apareguin al visor de la plataforma.</p>
-            <p>Si el model no apareix, comprova l'estat de traducció a <strong>ACC → Documents</strong> i revisa els errors a l'historial de l'Agent BIM Sync.</p>
-          </Pas>
+            </Pas>
+            <Pas num={3} titol="Executa Crear Masters des de Revit" icon={<Zap className="h-3.5 w-3.5" />}>
+              <p>L'script detecta totes les instal·lacions, obre la plantilla en segon pla, vincula <Code>_ENT</Code>/<Code>_EST</Code>/<Code>_MEP</Code>, crea la vista 3D <Code>TAULA-MASTER</Code> i desa com a <Code>ED008_CALDES-DE-MONTBUI_MASTER.rvt</Code>.</p>
+            </Pas>
+            <Pas num={4} titol="Còpia disciplines al USB amb BIM Sync" icon={<HardDrive className="h-3.5 w-3.5" />}>
+              <p>Descarrega <Code>bim_sync_usb.py</Code> de la pestanya <strong>BIM Sync USB</strong> i executa'l amb VS Code o <Code>python bim_sync_usb.py</Code>.</p>
+              <p>Tria l'opció <strong>1 · Copiar disciplines → USB</strong> per copiar tots els <Code>_ENT/_EST/_MEP</Code> del Desktop Connector al USB.</p>
+            </Pas>
+            <Pas num={5} titol="Puja els MASTERs a ACC" icon={<Upload className="h-3.5 w-3.5" />}>
+              <p>Al mateix script BIM Sync, tria l'opció <strong>2 · Pujar MASTERs → ACC</strong>. L'script puja els <Code>_MASTER.rvt</Code>, registra les xRefs i dispara el processament automàtic a ACC.</p>
+              <p><strong>Important:</strong> les disciplines han d'estar a la mateixa carpeta <Code>001_MODEL-BIM</Code> d'ACC que el MASTER.</p>
+            </Pas>
+            <Pas num={6} titol="Verifica al Visor 3D" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+              <p>L'<strong>Agent Visor 3D</strong> sincronitza els URNs amb Supabase perquè apareguin al visor. Si el model no apareix, comprova l'estat de traducció a <strong>ACC → Documents</strong>.</p>
+            </Pas>
+          </div>
+        </Card>
+      )}
+
+      {/* ── TAB: Crear Masters ──────────────────────────────────────────── */}
+      {subtab === "crearMasters" && (
+        <div className="space-y-4">
+          {/* Descàrrega */}
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script pyRevit</p>
+            <p className="text-[12.5px] text-slate-500 mb-4 leading-relaxed">
+              Obre la plantilla <Code>CBT_PLANTILLA.rte</Code>, vincula les disciplines per instal·lació
+              i desa el fitxer <Code>_MASTER.rvt</Code>. S'executa dins de Revit via pyRevit.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <DownloadButton label="Descarregar script.py" href="/scripts/script.py" filename="script.py" color="violet" />
+              <Button variant="outline"
+                className="gap-2 rounded-xl h-9 px-4 text-sm border-slate-200 text-slate-600 hover:bg-slate-50"
+                onClick={() => { navigator.clipboard.writeText(SCRIPT_PATH_PYREVIT); setCopiedPath(true); setTimeout(() => setCopiedPath(false), 2000); }}>
+                {copiedPath
+                  ? <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Copiat!</>
+                  : <><Copy className="h-3.5 w-3.5" /> Copia la ruta de destí</>}
+              </Button>
+            </div>
+            <p className="text-[11.5px] text-slate-400 mt-3 font-mono leading-relaxed break-all">
+              {SCRIPT_PATH_PYREVIT}
+            </p>
+          </Card>
+
+          {/* Instruccions */}
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Info className="h-4 w-4 text-violet-500" />
+              <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Com funciona</p>
+            </div>
+            <div className="space-y-0">
+              <Pas num={1} titol="Instal·la l'script" icon={<Download className="h-3.5 w-3.5" />}>
+                <p>Descarrega <Code>script.py</Code> i copia'l a la ruta indicada (botó <em>Copia la ruta de destí</em>). Si la carpeta no existeix, crea-la manualment.</p>
+                <p>A Revit → <strong>pyRevit → Reload</strong> perquè aparegui a la barra <strong>CBT → CBT Tools → Crear Masters</strong>.</p>
+              </Pas>
+              <Pas num={2} titol="Prepara la plantilla i estructura de carpetes" icon={<FolderOpen className="h-3.5 w-3.5" />}>
+                <p>Col·loca <Code>CBT_PLANTILLA.rte</Code> a <Code>Documents\</Code>. L'script cerca automàticament a les carpetes habituals (Desktop, Documents, OneDrive).</p>
+                <p>Estructura de carpetes requerida:</p>
+                <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 overflow-x-auto mt-1">{`carpeta_arrel/
+  XXX_SISTEMA/
+    ED004_EDAR-MONTORNES-DEL-VALLES/
+      001_MODEL-BIM/
+        ED004_..._FM_ENT_24.rvt
+        ED004_..._FM_EST_24.ZonaA.rvt   ← suporta zones
+        ED004_..._FM_MEP_24.ZonaB.rvt   ← múltiples zones
+    ED008_CALDES-DE-MONTBUI/
+      001_MODEL-BIM/
+        ED008_..._ENT.rvt`}</pre>
+              </Pas>
+              <Pas num={3} titol="Executa l'script" icon={<Zap className="h-3.5 w-3.5" />}>
+                <p>Clic a <strong>Crear Masters</strong> a la barra pyRevit. Per a cada instal·lació:</p>
+                <p>① Comprova l'accessibilitat de tots els RVTs <em>abans</em> d'obrir la plantilla (diagnòstic pre-vol).</p>
+                <p>② Obre <Code>CBT_PLANTILLA.rte</Code> i neteja la geometria existent.</p>
+                <p>③ Vincula tots els <Code>_ENT</Code>, <Code>_EST</Code> i <Code>_MEP</Code> (ZonaA, ZonaB inclosos).</p>
+                <p>④ Crea la vista 3D <Code>TAULA-MASTER</Code> i la publica.</p>
+                <p>⑤ Desa com a <Code>ED008_CALDES-DE-MONTBUI_MASTER.rvt</Code> amb ruta absoluta.</p>
+              </Pas>
+              <Pas num={4} titol="Resultat" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                <p>Si un MASTER ja existeix es <strong>sobreescriu</strong> (pots tornar a executar-lo de forma segura). Els fitxers amb tots els vincles carregats estan llestos per pujar a ACC.</p>
+                <p>Quan pugis a ACC, puja el MASTER i tots els RVTs de disciplina a la <strong>mateixa carpeta</strong> del hub. ACC resoldrà els vincles pel nom del fitxer automàticament.</p>
+              </Pas>
+            </div>
+          </Card>
         </div>
-      </Card>
+      )}
+
+      {/* ── TAB: BIM Sync USB ───────────────────────────────────────────── */}
+      {subtab === "bimSync" && (
+        <div className="space-y-4">
+          {/* Descàrrega */}
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script Python</p>
+            <p className="text-[12.5px] text-slate-500 mb-4 leading-relaxed">
+              Copia les disciplines (<Code>_ENT/_EST/_MEP</Code>) del Desktop Connector al USB
+              i puja els <Code>_MASTER</Code> a ACC via API amb registre automàtic de xRefs.
+              S'executa amb VS Code o des del terminal.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <DownloadButton label="Descarregar bim_sync_usb.py" href="/scripts/bim_sync_usb.py" filename="bim_sync_usb.py" color="sky" />
+            </div>
+          </Card>
+
+          {/* Configuració */}
+          <Card className="p-4 border-amber-200 bg-amber-50 rounded-2xl">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+              <div className="text-[12px] text-amber-800 space-y-1.5 leading-relaxed">
+                <p className="font-semibold text-amber-900">Edita la configuració de l'script abans d'executar-lo</p>
+                <p>Obre <Code>bim_sync_usb.py</Code> i modifica les constants al bloc <strong>CONFIGURACIÓ</strong> (línies 40–55):</p>
+                <div className="font-mono bg-amber-100 rounded-lg px-3 py-2 text-[11px] text-amber-900 border border-amber-200 space-y-1">
+                  <div><span className="text-amber-600">ORIGEN</span> = <span className="text-amber-800">Path(r"C:\Users\TU_USUARI\DC\ACCDocs\...")</span></div>
+                  <div><span className="text-amber-600">USB</span> = <span className="text-amber-800">Path(r"F:")</span>  <span className="text-amber-500"># lletra del teu USB</span></div>
+                  <div><span className="text-amber-600">APS_CLIENT_ID</span> = <span className="text-amber-800">"el_teu_client_id"</span></div>
+                  <div><span className="text-amber-600">APS_CLIENT_SECRET</span> = <span className="text-amber-800">"el_teu_client_secret"</span></div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Instruccions */}
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Info className="h-4 w-4 text-sky-500" />
+              <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Com funciona</p>
+            </div>
+            <div className="space-y-0">
+              <Pas num={1} titol="Instal·la les dependències" icon={<Terminal className="h-3.5 w-3.5" />}>
+                <p>Executa una sola vegada a la terminal:</p>
+                <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 mt-1">pip install requests</pre>
+                <p>Necessari per a les opcions de pujada a ACC (API REST).</p>
+              </Pas>
+              <Pas num={2} titol="Opció 1 · Copiar disciplines → USB" icon={<FolderSync className="h-3.5 w-3.5" />}>
+                <p>Connecta el USB a l'ordinador amb el <strong>Desktop Connector</strong> actiu i els fitxers d'ACC sincronitzats localment.</p>
+                <p>Executa l'script i tria l'opció <strong>1</strong>. L'script busca recursivament tots els <Code>_ENT</Code>, <Code>_EST</Code>, <Code>_MEP</Code> a la carpeta <Code>ORIGEN</Code> i els copia a <Code>F:\BIM_WORK\</Code> mantenint l'estructura. Els fitxers ja actualitzats es salten.</p>
+              </Pas>
+              <Pas num={3} titol="Opció 2 · Pujar MASTERs → ACC + xRefs" icon={<Upload className="h-3.5 w-3.5" />}>
+                <p>Connecta el USB a qualsevol ordinador (no cal el Desktop Connector). Tria l'opció <strong>2</strong>.</p>
+                <p>Per a cada <Code>_MASTER.rvt</Code> del USB, l'script:</p>
+                <p>① Navega l'estructura de carpetes d'ACC per trobar la <Code>001_MODEL-BIM</Code> corresponent.</p>
+                <p>② Puja el <Code>_MASTER.rvt</Code> a la carpeta correcta via API.</p>
+                <p>③ Registra les <strong>xRefs</strong> (vincles disciplines) via <Code>POST /versions?copyFrom</Code>.</p>
+                <p>④ ACC inicia el processament automàtic (traducció SVF2). <strong>No cal entrar manualment a cada fitxer.</strong></p>
+              </Pas>
+              <Pas num={4} titol="Comprova el resultat" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                <p>L'script desa un log a <Code>bim_sync_log.txt</Code> al costat de l'script amb el detall de cada execució. Al cap de pocs minuts, el MASTER federat hauria d'estar disponible a ACC per al visor 3D.</p>
+              </Pas>
+            </div>
+          </Card>
+
+          {/* Historial BIM Sync */}
+          <LogsTable
+            agent={AGENTS_CONFIG.find(a => a.id === "bimLocal")!}
+            logs={logs}
+            loading={loading}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TAULA DE LOGS (compartida per Visor 3D i BIM Sync)
+// TAULA DE LOGS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog[]; loading: boolean }) {
@@ -756,13 +711,13 @@ function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog
                   if (d?.installacionsActualitzades?.length) parts.push(`↻ ${d.installacionsActualitzades.length} inst. actualitzades`);
                   if (d?.installacionsEliminades?.length)    parts.push(`✕ ${d.installacionsEliminades.length} inst. eliminades`);
                   if (d?.installacionsSenseCanvis?.length)   parts.push(`✓ ${d.installacionsSenseCanvis.length} sense canvis`);
-                } else if (agent.id === "bimSync") {
+                } else {
                   totalCanvis = (log.fitxers_pujats ?? 0) + (log.fitxers_copiats ?? 0);
-                  if (log.opcio)                    parts.push(`Opció: ${log.opcio}`);
-                  if (log.fitxers_copiats)          parts.push(`→ ${log.fitxers_copiats} fitxers copiats`);
-                  if (log.fitxers_pujats)           parts.push(`↑ ${log.fitxers_pujats} pujats a ACC`);
-                  if (log.xrefs_registrats)         parts.push(`🔗 ${log.xrefs_registrats} xRefs`);
-                  if (d?.fitxersAmbError?.length)   parts.push(`⚠ ${d.fitxersAmbError.length} errors`);
+                  if (log.opcio)                  parts.push(`Opció: ${log.opcio}`);
+                  if (log.fitxers_copiats)        parts.push(`→ ${log.fitxers_copiats} fitxers copiats`);
+                  if (log.fitxers_pujats)         parts.push(`↑ ${log.fitxers_pujats} pujats a ACC`);
+                  if (log.xrefs_registrats)       parts.push(`🔗 ${log.xrefs_registrats} xRefs`);
+                  if (d?.fitxersAmbError?.length) parts.push(`⚠ ${d.fitxersAmbError.length} errors`);
                 }
 
                 return (
@@ -782,7 +737,7 @@ function LogsTable({ agent, logs, loading }: { agent: AgentConfig; logs: SyncLog
                               <AlertTriangle className="h-3 w-3" /> {d!.codisDuplicats!.length} dup.
                             </Badge>
                           )}
-                          {agent.id === "bimSync" && log.opcio && (
+                          {log.opcio && (
                             <Badge className="bg-sky-50 text-sky-700 border-sky-200 text-[10px]">{log.opcio}</Badge>
                           )}
                         </div>
@@ -840,7 +795,6 @@ export function ControlAgentsPage() {
   const [tokenPerAgent, setTokenPerAgent]   = useState<Record<string, ApsToken | null>>({});
   const [loading, setLoading]               = useState(true);
 
-  // Triggering per agent: null | "copiar" | "pujar" | "sync"
   const [triggering, setTriggering]         = useState<string | null>(null);
   const [triggerMsg, setTriggerMsg]         = useState<{ ok: boolean; text: string } | null>(null);
   const [polling, setPolling]               = useState(false);
@@ -961,27 +915,24 @@ export function ControlAgentsPage() {
     };
   }, [fetchAll]);
 
-  // ── Execució genèrica ─────────────────────────────────────────────────────
+  // ── Execució agent Visor 3D ───────────────────────────────────────────────
 
-  async function executaAgent(
-    agent: AgentConfig,
-    body: Record<string, any>,
-    triggeringKey: string
-  ) {
-    const agentUrl    = (import.meta.env as any)[agent.agentUrlEnv] as string | undefined;
+  async function executaAgentVisor3D() {
+    const agent     = AGENTS_CONFIG[0];
+    const agentUrl  = (import.meta.env as any)[agent.agentUrlEnv] as string | undefined;
     const agentSecret = (import.meta.env as any)[agent.agentSecretEnv] as string | undefined;
 
     if (!agentUrl) {
       setTriggerMsg({ ok: false, text: `${agent.agentUrlEnv} no està configurada.` });
       return;
     }
-    setTriggering(triggeringKey);
+    setTriggering("sync");
     setTriggerMsg(null);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (agentSecret) headers["Authorization"] = `Bearer ${agentSecret}`;
       const res = await fetch(`${agentUrl}${agent.syncEndpoint}`, {
-        method: "POST", headers, body: JSON.stringify(body),
+        method: "POST", headers, body: JSON.stringify({}),
       });
       if (res.ok) {
         setTriggerMsg({ ok: true, text: "Agent iniciat. Esperant el resultat en temps real…" });
@@ -1021,18 +972,6 @@ export function ControlAgentsPage() {
       setTriggering(null);
     }
   }
-
-  // ── Handlers específics ───────────────────────────────────────────────────
-
-  const handleVisor3DTrigger = () =>
-    executaAgent(AGENTS_CONFIG[0], {}, "sync");
-
-  const handleBimSyncTrigger = (opcio: "copiar-disciplines" | "pujar-masters") =>
-    executaAgent(
-      AGENTS_CONFIG[1],
-      { opcio },
-      opcio === "copiar-disciplines" ? "copiar" : "pujar"
-    );
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -1076,24 +1015,16 @@ export function ControlAgentsPage() {
               triggering={!!triggering}
               polling={polling}
               triggerMsg={triggerMsg}
-              onTrigger={handleVisor3DTrigger}
+              onTrigger={executaAgentVisor3D}
               onRefresh={handleRefresh}
             />
           )}
-          {selectedAgent.id === "bimSync" && (
-            <BimSyncPanel
-              agent={selectedAgent}
-              logs={logsPerAgent["bimSync"] ?? []}
+          {selectedAgent.id === "bimLocal" && (
+            <BimLocalPanel
+              logs={logsPerAgent["bimLocal"] ?? []}
               loading={loading}
-              triggering={triggering}
-              polling={polling}
-              triggerMsg={triggerMsg}
-              onTrigger={handleBimSyncTrigger}
               onRefresh={handleRefresh}
             />
-          )}
-          {selectedAgent.id === "crearMasters" && (
-            <CrearMastersPanel />
           )}
         </div>
       </div>

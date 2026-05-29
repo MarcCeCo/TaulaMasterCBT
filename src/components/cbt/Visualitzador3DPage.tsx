@@ -763,7 +763,12 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
   installacio: Installacio; sistema: Sistema; onClose: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const agentUrl = (import.meta.env.VITE_AGENT_URL as string | undefined)?.trim();
+  // VITE_TOKEN_SERVICE_URL apunta al token-service independent.
+  // Retrocompatible: si no està definit, usa VITE_AGENT_URL (agent monolític antic).
+  const agentUrl = (
+    (import.meta.env.VITE_TOKEN_SERVICE_URL as string | undefined) ??
+    (import.meta.env.VITE_AGENT_URL as string | undefined)
+  )?.trim();
 
   const splitUrns = (val?: string) =>
     val ? val.split(",").map(u => u.trim()).filter(Boolean) : [];
