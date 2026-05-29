@@ -393,16 +393,20 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
 
   const updateProjecteUsers = useCallback(async (id: string, projectUsers: ProjectUserAccess[] | null) => {
     const token = getToken();
+    // Deduplicem per userId abans d'enviar (evita duplicats si es crida 2 vegades)
+    const deduped = projectUsers
+      ? [...new Map(projectUsers.map(u => [u.userId, u])).values()]
+      : null;
     await supa(token, "PATCH", `projectes?id=eq.${id}`,
-      { allowed_users: projectUsers ?? null },
+      { allowed_users: deduped },
       { "Prefer": "return=minimal" }
     );
     setProjectes(prev => prev.map(p => {
       if (p.id !== id) return p;
       return {
         ...p,
-        projectUsers,
-        allowedUsers: projectUsers ? projectUsers.map(u => u.userId) : null,
+        projectUsers: deduped,
+        allowedUsers: deduped ? deduped.map(u => u.userId) : null,
       };
     }));
   }, [getToken]);

@@ -346,15 +346,25 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     }
   };
 
+  const [savingUsers, setSavingUsers] = useState(false);
+
   const guardarUsuaris = async () => {
-    if (!dialogUsuaris) return;
-    // Sempre guardem l'array filtrant entrades sense rol vàlid.
-    // null = mai (tots els projectes són d'accés restringit).
-    const validRoles = ["viewer", "editor_global", "editor_caracteristiques"];
-    const value = selectedProjectUsers.filter(u => validRoles.includes(u.role));
-    await updateProjecteUsers(dialogUsuaris, value);
-    toast.success("Permisos del projecte actualitzats");
-    setDialogUsuaris(null);
+    if (!dialogUsuaris || savingUsers) return;
+    setSavingUsers(true);
+    try {
+      // Filtrem entrades sense rol vàlid i deduplicem per userId (últim guanya)
+      const validRoles = ["viewer", "editor_global", "editor_caracteristiques"];
+      const seen = new Map<string, ProjectUserAccess>();
+      for (const u of selectedProjectUsers) {
+        if (validRoles.includes(u.role)) seen.set(u.userId, u);
+      }
+      const value = [...seen.values()];
+      await updateProjecteUsers(dialogUsuaris, value);
+      toast.success(`Permisos desats (${value.length} usuari${value.length !== 1 ? "s" : ""})`);
+      setDialogUsuaris(null);
+    } finally {
+      setSavingUsers(false);
+    }
   };
 
   /** Helper per canviar el rol d'un usuari a la selecció del diàleg */
@@ -1893,8 +1903,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             </div>
             <DialogFooter>
               <Button variant="outline" size="sm" onClick={() => setDialogUsuaris(null)}>Cancel·la</Button>
-              <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={guardarUsuaris}>
-                Desa permisos
+              <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={guardarUsuaris} disabled={savingUsers}>
+                {savingUsers ? "Desant…" : "Desa permisos"}
               </Button>
             </DialogFooter>
           </DialogContent>
