@@ -626,5 +626,35 @@ export async function executaAgent(): Promise<ResultatSync> {
   }
 
   console.log(`\n✅ Agent finalitzat:`, resultat);
+
+  // ─── Escriu el log a Supabase ────────────────────────────────────────────────
+  try {
+    await supabase.from("visor3d_sync_log").insert({
+      executat_a: new Date().toISOString(),
+      sistemes_creats:              resultat.sistemesCreats.length,
+      sistemes_actualitzats:        resultat.sistemesActualitzats.length,
+      sistemes_eliminats:           resultat.sistemesEliminats.length,
+      installacions_creades:        resultat.installacionsCreades.length,
+      installacions_actualitzades:  resultat.installacionsActualitzades.length,
+      installacions_eliminades:     resultat.installacionsEliminades.length,
+      installacions_sense_canvis:   resultat.installacionsSenseCanvis.length,
+      errors:                       resultat.errors.length,
+      detalls: {
+        sistemesCreats:              resultat.sistemesCreats,
+        sistemesActualitzats:        resultat.sistemesActualitzats,
+        sistemesEliminats:           resultat.sistemesEliminats,
+        installacionsCreades:        resultat.installacionsCreades,
+        installacionsActualitzades:  resultat.installacionsActualitzades,
+        installacionsEliminades:     resultat.installacionsEliminades,
+        installacionsSenseCanvis:    resultat.installacionsSenseCanvis,
+        codisDuplicats:              resultat.codisDuplicats,
+        errors:                      resultat.errors,
+      },
+    });
+    console.log("📝 Log escrit a visor3d_sync_log");
+  } catch (logErr: any) {
+    console.error("⚠️  No s'ha pogut escriure el log a Supabase:", logErr?.message ?? logErr);
+  }
+
   return resultat;
 }
