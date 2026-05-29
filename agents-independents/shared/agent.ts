@@ -408,7 +408,7 @@ async function extrauSistemes(
       const lastModified = allFitxers
         .map((f: any) => f.attributes?.lastModifiedTime ?? "")
         .sort()
-        .reverse()[0] ?? new Date().toISOString();
+        .reverse()[0] ?? "";
 
       installacions.push({
         codi: parsed.codi,
