@@ -129,8 +129,17 @@ const tagToRow = (t: ProjectTag) => ({
  *  - array d'objectes {userId, role} (format nou)
  */
 function parseAllowedUsers(raw: any): { projectUsers: ProjectUserAccess[] | null; allowedUsers: string[] | null } {
-  if (!Array.isArray(raw) || raw.length === 0) {
+  // null/undefined explícit = accés obert a tothom
+  if (raw === null || raw === undefined) {
     return { projectUsers: null, allowedUsers: null };
+  }
+  // No és array = tractem com accés obert (dada corrupta)
+  if (!Array.isArray(raw)) {
+    return { projectUsers: null, allowedUsers: null };
+  }
+  // Array buit = accés restringit a ningú (excepte admins) — NO convertim a null
+  if (raw.length === 0) {
+    return { projectUsers: [], allowedUsers: [] };
   }
   const projectUsers: ProjectUserAccess[] = raw.map((item: any) => {
     // Format nou: {userId, role}

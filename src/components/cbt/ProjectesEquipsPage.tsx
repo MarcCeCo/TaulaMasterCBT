@@ -162,6 +162,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   // Diàleg assignació usuaris (només admins)
   const [dialogUsuaris, setDialogUsuaris] = useState<string | null>(null); // id projecte
+  const [dialogUsuarisIsOpen, setDialogUsuarisIsOpen] = useState<boolean>(false); // true = accés obert (null a BD)
   const [allUsers, setAllUsers]           = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers]   = useState(false);
   const [selectedProjectUsers, setSelectedProjectUsers] = useState<ProjectUserAccess[]>([]);
@@ -228,7 +229,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         // Si projectUsers és null (accés obert) tothom el veu.
         // Si hi ha assignacions, cal estar-hi amb qualsevol rol.
         if (!myProfile) return false;
-        if (!p.projectUsers) return true; // accés obert
+        if (p.projectUsers === null) return true;   // accés obert (null explícit)
+        if (p.projectUsers.length === 0) return false; // accés tancat (només admins)
         return p.projectUsers.some(u => u.userId === myProfile.id);
       })
       .sort((a, b) => b.createdAt - a.createdAt),
@@ -316,6 +318,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const obrirDialogUsuaris = async (id: string) => {
     const p = projectes.find(px => px.id === id);
     if (!p) return;
+    const isOpen = p.projectUsers === null;
+    setDialogUsuarisIsOpen(isOpen);
     setSelectedProjectUsers(p.projectUsers ?? []);
     setDialogUsuaris(id);
     setLoadingUsers(true);
@@ -341,8 +345,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   const guardarUsuaris = async () => {
     if (!dialogUsuaris) return;
-    // null = sense restriccions; array buit = ningú (excepte admins)
-    const value = selectedProjectUsers.length === 0 ? null : selectedProjectUsers;
+    // dialogUsuarisIsOpen=true → null (accés obert a tothom)
+    // dialogUsuarisIsOpen=false → array (buit o amb usuaris); MAI convertim a null
+    const value = dialogUsuarisIsOpen ? null : selectedProjectUsers;
     await updateProjecteUsers(dialogUsuaris, value);
     toast.success("Permisos del projecte actualitzats");
     setDialogUsuaris(null);
@@ -1751,9 +1756,29 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
-              <p className="text-xs text-slate-500">
-                Assigna un nivell d'accés a cada usuari per a aquest projecte. Si no n'assignes cap, el projecte serà visible per a tots. Els administradors sempre hi tenen accés complet.
-              </p>
+              {/* Botó per alternar accés obert / restringit */}
+              <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50">
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">
+                    {dialogUsuarisIsOpen
+                      ? "🔓 Accés obert (visible per a tots)"
+                      : "🔒 Accés restringit (només usuaris assignats)"}
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Els administradors sempre hi tenen accés complet.</p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-xs shrink-0"
+                  onClick={() => {
+                    setDialogUsuarisIsOpen(prev => !prev);
+                    setSelectedProjectUsers([]);
+                  }}
+                >
+                  {dialogUsuarisIsOpen ? "Restringir accés" : "Obrir accés"}
+                </Button>
+              </div>
 
               {/* Llegenda de rols */}
               <div className="grid grid-cols-3 gap-2 text-[10px]">
@@ -1873,7 +1898,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 </p>
               )}
               {selectedProjectUsers.length === 0 && !loadingUsers && (
-                <p className="text-xs text-slate-400 italic">Sense assignació = accés obert per a tots</p>
+                <p className="text-xs text-slate-400 italic">
+                  {dialogUsuaris && projectes.find(p => p.id === dialogUsuaris)?.projectUsers === null
+                    ? "🔓 Accés obert — tots els usuaris veuen aquest projecte"
+                    : "🔒 Cap usuari assignat — només els administradors hi tindran accés"}
+                </p>
               )}
             </div>
             <DialogFooter>
