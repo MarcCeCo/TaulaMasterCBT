@@ -158,7 +158,25 @@ function TaulaMasterPage() {
 
 export function TaulaMasterMain() {
   const { canSeeView, profile, user, isAdmin } = useAuth();
-  const [activeSection, setActiveSection] = useState("dashboard");
+
+  const VALID_SECTIONS = [
+    "dashboard","equips","revit-bim","visualitzador-3d",
+    "projectes-equips","rosmiman","usuaris","control-agents","canviapwd",
+  ];
+
+  const [activeSection, setActiveSectionState] = useState<string>(() => {
+    try {
+      const saved = sessionStorage.getItem("cbt_active_section");
+      return saved && VALID_SECTIONS.includes(saved) ? saved : "dashboard";
+    } catch {
+      return "dashboard";
+    }
+  });
+
+  const setActiveSection = (section: string) => {
+    try { sessionStorage.setItem("cbt_active_section", section); } catch {}
+    setActiveSectionState(section);
+  };
 
   const profileLoaded = !!profile || !user;
   const noAccessAtAll =
