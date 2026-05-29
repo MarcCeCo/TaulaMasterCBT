@@ -320,7 +320,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     if (!p) return;
     const isOpen = p.projectUsers === null;
     setDialogUsuarisIsOpen(isOpen);
-    setSelectedProjectUsers(p.projectUsers ?? []);
+    // Filtrem entrades sense rol vàlid (protecció format antic o dades corruptes)
+    const validRoles = ["viewer", "editor_global", "editor_caracteristiques"];
+    const cleanUsers = (p.projectUsers ?? []).filter(u => validRoles.includes(u.role));
+    setSelectedProjectUsers(cleanUsers);
     setDialogUsuaris(id);
     setLoadingUsers(true);
     try {
@@ -345,9 +348,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   const guardarUsuaris = async () => {
     if (!dialogUsuaris) return;
-    // dialogUsuarisIsOpen=true → null (accés obert a tothom)
-    // dialogUsuarisIsOpen=false → array (buit o amb usuaris); MAI convertim a null
-    const value = dialogUsuarisIsOpen ? null : selectedProjectUsers;
+    // Sempre guardem l'array filtrant entrades sense rol vàlid.
+    // null = mai (tots els projectes són d'accés restringit).
+    const validRoles = ["viewer", "editor_global", "editor_caracteristiques"];
+    const value = selectedProjectUsers.filter(u => validRoles.includes(u.role));
     await updateProjecteUsers(dialogUsuaris, value);
     toast.success("Permisos del projecte actualitzats");
     setDialogUsuaris(null);
@@ -1756,29 +1760,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
-              {/* Botó per alternar accés obert / restringit */}
-              <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-slate-200 bg-slate-50">
-                <div>
-                  <p className="text-xs font-semibold text-slate-700">
-                    {dialogUsuarisIsOpen
-                      ? "🔓 Accés obert (visible per a tots)"
-                      : "🔒 Accés restringit (només usuaris assignats)"}
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-0.5">Els administradors sempre hi tenen accés complet.</p>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-xs shrink-0"
-                  onClick={() => {
-                    setDialogUsuarisIsOpen(prev => !prev);
-                    setSelectedProjectUsers([]);
-                  }}
-                >
-                  {dialogUsuarisIsOpen ? "Restringir accés" : "Obrir accés"}
-                </Button>
-              </div>
+              <p className="text-xs text-slate-500">
+                🔒 Accés restringit — assigna el rol de cada usuari per a aquest projecte. Els administradors sempre hi tenen accés complet.
+              </p>
 
               {/* Llegenda de rols */}
               <div className="grid grid-cols-3 gap-2 text-[10px]">
@@ -1892,18 +1876,20 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                   )}
                 </div>
               )}
-              {selectedProjectUsers.length > 0 && (
-                <p className="text-xs text-[#006E7A] font-medium">
-                  {selectedProjectUsers.length} usuari{selectedProjectUsers.length !== 1 ? "s" : ""} assignat{selectedProjectUsers.length !== 1 ? "s" : ""}
-                </p>
-              )}
-              {selectedProjectUsers.length === 0 && !loadingUsers && (
-                <p className="text-xs text-slate-400 italic">
-                  {dialogUsuaris && projectes.find(p => p.id === dialogUsuaris)?.projectUsers === null
-                    ? "🔓 Accés obert — tots els usuaris veuen aquest projecte"
-                    : "🔒 Cap usuari assignat — només els administradors hi tindran accés"}
-                </p>
-              )}
+              {(() => {
+                const assignats = selectedProjectUsers.filter(u =>
+                  ["viewer","editor_global","editor_caracteristiques"].includes(u.role)
+                );
+                return assignats.length > 0 ? (
+                  <p className="text-xs text-[#006E7A] font-medium">
+                    {assignats.length} usuari{assignats.length !== 1 ? "s" : ""} amb accés assignat
+                  </p>
+                ) : !loadingUsers ? (
+                  <p className="text-xs text-slate-400 italic">
+                    🔒 Cap usuari assignat — només els administradors hi tindran accés
+                  </p>
+                ) : null;
+              })()}
             </div>
             <DialogFooter>
               <Button variant="outline" size="sm" onClick={() => setDialogUsuaris(null)}>Cancel·la</Button>

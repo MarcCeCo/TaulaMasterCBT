@@ -141,17 +141,23 @@ function parseAllowedUsers(raw: any): { projectUsers: ProjectUserAccess[] | null
   if (raw.length === 0) {
     return { projectUsers: [], allowedUsers: [] };
   }
-  const projectUsers: ProjectUserAccess[] = raw.map((item: any) => {
-    // Format nou: {userId, role}
-    if (typeof item === "object" && item !== null && item.userId) {
-      const role: ProjectRole = ["viewer", "editor_global", "editor_caracteristiques"].includes(item.role)
-        ? item.role as ProjectRole
-        : "editor_global";
-      return { userId: item.userId, role };
-    }
-    // Format antic: string (userId directe) → rol "editor_global" per compatibilitat
-    return { userId: String(item), role: "editor_global" as ProjectRole };
-  });
+  const VALID_ROLES: ProjectRole[] = ["viewer", "editor_global", "editor_caracteristiques"];
+  const projectUsers: ProjectUserAccess[] = raw
+    .map((item: any) => {
+      // Format nou: {userId, role}
+      if (typeof item === "object" && item !== null && item.userId) {
+        const role: ProjectRole = VALID_ROLES.includes(item.role)
+          ? item.role as ProjectRole
+          : "editor_global";
+        return { userId: item.userId, role };
+      }
+      // Format antic: string (userId directe) → rol "editor_global" per compatibilitat
+      if (typeof item === "string" && item.length > 0) {
+        return { userId: item, role: "editor_global" as ProjectRole };
+      }
+      return null;
+    })
+    .filter((u): u is ProjectUserAccess => u !== null);
   return {
     projectUsers,
     allowedUsers: projectUsers.map(u => u.userId),
