@@ -18,9 +18,9 @@ import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  AlertCircle, BookOpen, Box, Building2, Cable, CheckCircle2, Columns3,
+  AlertCircle, BookOpen, Box, Building2, Cable, Columns3,
   Download, Droplets, FileSpreadsheet, FileText, Flame, FolderOpen,
-  Info, Lightbulb, Package, Pipette, Radio, RefreshCw, Settings2,
+  Lightbulb, Package, Pipette, Radio, RefreshCw, Settings2,
   Shield, Thermometer, Waves, Wind, WrapText, Zap,
 } from "lucide-react";
 import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
@@ -68,60 +68,6 @@ function toFileName(nom: string): string {
 function buildRfaName(equipName: string, parentName: string | null, equipCode: string): string {
   const nomComplet = parentName ? `${parentName} ${equipName}` : equipName;
   return `CBT_${toFileName(nomComplet)}_${equipCode.toUpperCase()}.rfa`;
-}
-
-// ─── ZIP builder (sense dependències) ────────────────────────────────────────
-function crc32(data: Uint8Array): number {
-  const table = new Uint32Array(256);
-  for (let i = 0; i < 256; i++) {
-    let c = i;
-    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-    table[i] = c;
-  }
-  let crc = 0xffffffff;
-  for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
-  return (crc ^ 0xffffffff) >>> 0;
-}
-function u16le(n: number): Uint8Array { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; }
-function u32le(n: number): Uint8Array { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; }
-
-async function buildZip(entries: { name: string; data: Uint8Array }[]): Promise<Blob> {
-  const enc = new TextEncoder();
-  const parts: Uint8Array[] = [];
-  const centralDir: Uint8Array[] = [];
-  let offset = 0;
-  for (const entry of entries) {
-    const nameBytes = enc.encode(entry.name);
-    const crc = crc32(entry.data);
-    const size = entry.data.length;
-    const localHeader = new Uint8Array([
-      0x50, 0x4b, 0x03, 0x04, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      ...u32le(crc), ...u32le(size), ...u32le(size),
-      ...u16le(nameBytes.length), 0, 0, ...nameBytes,
-    ]);
-    const cdEntry = new Uint8Array([
-      0x50, 0x4b, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      ...u32le(crc), ...u32le(size), ...u32le(size),
-      ...u16le(nameBytes.length), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      ...u32le(offset), ...nameBytes,
-    ]);
-    centralDir.push(cdEntry);
-    parts.push(localHeader, entry.data);
-    offset += localHeader.length + size;
-  }
-  const cdOffset = offset;
-  const cdSize = centralDir.reduce((s, b) => s + b.length, 0);
-  const eocd = new Uint8Array([
-    0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0,
-    ...u16le(entries.length), ...u16le(entries.length),
-    ...u32le(cdSize), ...u32le(cdOffset), 0, 0,
-  ]);
-  const allParts = [...parts, ...centralDir, eocd];
-  const total = allParts.reduce((s, b) => s + b.length, 0);
-  const buf = new Uint8Array(total);
-  let pos = 0;
-  for (const p of allParts) { buf.set(p, pos); pos += p.length; }
-  return new Blob([buf], { type: "application/zip" });
 }
 
 // ─── Fila de la taula memoritzada ─────────────────────────────────────────────
@@ -177,152 +123,83 @@ const RfaTableRow = memo(function RfaTableRow({
 
 // PERF: les targetes de documentació son estàtiques — memo() evita que es
 // re-renderitzin quan canvia la cerca o el scroll de la taula de famílies
-const DocumentacioCards = memo(function DocumentacioCards({
-  kitDownloaded, onKitDownload,
-}: {
-  kitDownloaded: boolean;
-  onKitDownload: () => void;
-}) {
+const DocumentacioCards = memo(function DocumentacioCards() {
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Columna esquerra */}
-      <div className="space-y-4">
-        <Card className="border-0 shadow-sm bg-white">
-          <CardHeader className="pb-2 border-b border-slate-100">
-            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-[#0099A8]" />
-              Manual BIM
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                <FileText className="h-5 w-5 text-red-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">Manual BIM CBT v2.x</p>
-                <p className="text-xs text-slate-500 mt-0.5">Protocol, estàndards i requisits de lliurament</p>
-              </div>
-              <a href="/docs/CBT_MANUAL-BIM.pdf" download>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                  <Download className="h-3.5 w-3.5" /> PDF
-                </Button>
-              </a>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <Card className="border-0 shadow-sm bg-white">
+        <CardHeader className="pb-2 border-b border-slate-100">
+          <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-[#0099A8]" />
+            Manual BIM
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+              <FileText className="h-5 w-5 text-red-500" />
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800">Manual BIM CBT v2.x</p>
+              <p className="text-xs text-slate-500 mt-0.5">Protocol, estàndards i requisits de lliurament</p>
+            </div>
+            <a href="/docs/CBT_MANUAL-BIM.pdf" download>
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                <Download className="h-3.5 w-3.5" /> PDF
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
 
-        <Card className="border-0 shadow-sm bg-white">
-          <CardHeader className="pb-2 border-b border-slate-100">
-            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-              <FileSpreadsheet className="h-4 w-4 text-[#0099A8]" />
-              PEB — Pla d'Execució BIM
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
-                <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">PEB_CBT.xlsm</p>
-                <p className="text-xs text-slate-500 mt-0.5">Pla d'Execució BIM del Consorci Besòs Tordera</p>
-              </div>
-              <a href="/docs/CBT_PEB.xlsm" download>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                  <Download className="h-3.5 w-3.5" /> Excel
-                </Button>
-              </a>
+      <Card className="border-0 shadow-sm bg-white">
+        <CardHeader className="pb-2 border-b border-slate-100">
+          <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4 text-[#0099A8]" />
+            PEB — Pla d'Execució BIM
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+              <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800">PEB_CBT.xlsm</p>
+              <p className="text-xs text-slate-500 mt-0.5">Pla d'Execució BIM del Consorci Besòs Tordera</p>
+            </div>
+            <a href="/docs/CBT_PEB.xlsm" download>
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                <Download className="h-3.5 w-3.5" /> Excel
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
 
-        <Card className="border-0 shadow-sm bg-white">
-          <CardHeader className="pb-2 border-b border-slate-100">
-            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-              <Package className="h-4 w-4 text-[#0099A8]" />
-              Plantilla de projecte
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
-                <Package className="h-5 w-5 text-violet-500" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-800">CBT_PLANTILLA.rte</p>
-                <p className="text-xs text-slate-500 mt-0.5">Vistes, fulls i paràmetres CBT preconfigurats</p>
-              </div>
-              <a href="/templates/CBT_PLANTILLA.rte" download>
-                <Button size="sm" variant="outline" className="gap-1.5 text-xs">
-                  <Download className="h-3.5 w-3.5" /> .rte
-                </Button>
-              </a>
+      <Card className="border-0 shadow-sm bg-white">
+        <CardHeader className="pb-2 border-b border-slate-100">
+          <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+            <Package className="h-4 w-4 text-[#0099A8]" />
+            Plantilla de projecte
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-lg bg-violet-50 flex items-center justify-center shrink-0">
+              <Package className="h-5 w-5 text-violet-500" />
             </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Columna dreta */}
-      <div className="space-y-4">
-        <Card className="border-0 shadow-sm bg-white">
-          <CardHeader className="pb-2 border-b border-slate-100">
-            <CardTitle className="text-sm font-semibold text-slate-600 flex items-center gap-2">
-              <Package className="h-4 w-4 text-[#0099A8]" />
-              Paquet de creació de famílies
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-4 space-y-4">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <p className="text-sm font-semibold text-slate-800">CBT_FamiliesKit</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Script FULL + Script TEST + configuració JSON (generada ara)
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  className="bg-[#006E7A] hover:bg-[#005a64] text-white gap-1.5 text-xs shrink-0"
-                  onClick={onKitDownload}
-                >
-                  {kitDownloaded ? (
-                    <><CheckCircle2 className="h-3.5 w-3.5" /> Descarregat!</>
-                  ) : (
-                    <><Download className="h-3.5 w-3.5" /> Descarregar</>
-                  )}
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {["FULL_script.py", "TEST_script.py", "CBT_Revit_Config.json", "README.txt"].map((f) => (
-                  <span key={f} className="font-mono text-[11px] bg-white border border-slate-200 rounded px-2 py-0.5 text-slate-600">{f}</span>
-                ))}
-              </div>
-              <div className="mt-3 flex items-start gap-1.5 text-xs text-slate-500">
-                <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>El JSON es genera en el moment de la descàrrega i reflecteix l'estat actual de la Taula Master.</span>
-              </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-slate-800">CBT_PLANTILLA.rte</p>
+              <p className="text-xs text-slate-500 mt-0.5">Vistes, fulls i paràmetres CBT preconfigurats</p>
             </div>
-            <div className="rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-              <p className="text-xs font-semibold text-blue-700 mb-2">Flux d'ús recomanat</p>
-              <ol className="text-xs text-blue-700 space-y-1 list-none">
-                {[
-                  ["1", "Llegeix el Manual BIM i el PEB del teu projecte"],
-                  ["2", "Descarrega la plantilla .rte i configura Revit"],
-                  ["3", "Descarrega el paquet CBT_FamiliesKit"],
-                  ["4", "Executa TEST_script per validar l'ecosistema"],
-                  ["5", "Si el TEST va bé, executa FULL_script"],
-                ].map(([n, text]) => (
-                  <li key={n} className="flex items-start gap-2">
-                    <span className="h-4 w-4 rounded-full bg-[#0099A8] text-white text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-semibold">{n}</span>
-                    {text}
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            <a href="/templates/CBT_PLANTILLA.rte" download>
+              <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+                <Download className="h-3.5 w-3.5" /> .rte
+              </Button>
+            </a>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 });
@@ -337,7 +214,6 @@ export function RevitBimPage() {
   const canSee = canSeeView("revit");
 
   const [search, setSearch] = useState("");
-  const [kitDownloaded, setKitDownloaded] = useState(false);
 
   // PERF: virtualització de la taula .rfa
   const ROW_H = 53;
@@ -394,86 +270,6 @@ export function RevitBimPage() {
     a.click();
   }, []);
 
-  const README_TEXT = `CBT FamiliesKit — Instruccions
-================================
-CONTINGUT:
-  · CBT_Revit_Config.json  — Configuració generada automàticament
-  · FULL_script.py         — Script pyRevit per crear TOTES les famílies
-  · TEST_script.py         — Script pyRevit per crear 1 família per categoria (test)
-  · README.txt             — Aquest fitxer
-
-COM INSTAL·LAR:
-  1. Guarda CBT_Revit_Config.json a: C:\\Users\\<usuari>\\Documents\\CBT_Revit_Config.json
-  2. Guarda CBT_PARAMETRES-COMPARTITS.txt a: C:\\Users\\<usuari>\\Documents\\
-  3. Copia els scripts a les rutes de pyRevit:
-     TEST: %APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families TEST.pushbutton\\script.py
-     FULL: %APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families FULL.pushbutton\\script.py
-  4. Reinicia Revit i executa el botó "Crear Families TEST" per validar.
-  5. Si el TEST va bé, executa "Crear Families FULL".
-
-Compatible amb Revit 2020-2030.`;
-
-  // PERF FIX: useCallback + reutilitza equipByCode ja calculat
-  const handleKitDownload = useCallback(async () => {
-    const enc = new TextEncoder();
-    const exportableItems = equipments
-      .filter((eq) => {
-        if (!eq.needsTable) return false;
-        const cat = eq.revitCategory?.trim() ?? "";
-        return !!cat && VALID_CATEGORIES.has(cat);
-      })
-      .map((eq) => {
-        const cat = eq.revitCategory!.trim();
-        const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) ?? null : null;
-        const nomComplet = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
-        return {
-          nom: toFileName(nomComplet),
-          cat,
-          template: CATEGORY_CONFIG[cat]?.template ?? "Metric Generic Model.rft",
-          equip_code: eq.equipCode ?? "",
-          table_code: eq.tableCode ?? "",
-        };
-      });
-
-    const config = {
-      generated_at: new Date().toISOString(),
-      output_folder: "%USERPROFILE%\\Documents\\Families_Output",
-      shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
-      total: exportableItems.length,
-      equipments: exportableItems,
-    };
-
-    const staticFiles = [
-      { url: "/scripts/FULL_script.py", zipName: "FULL_script.py" },
-      { url: "/scripts/TEST_script.py", zipName: "TEST_script.py" },
-    ];
-    const entries: { name: string; data: Uint8Array }[] = [
-      { name: "CBT_Revit_Config.json", data: enc.encode(JSON.stringify(config, null, 2)) },
-      { name: "README.txt", data: enc.encode(README_TEXT) },
-    ];
-    const results = await Promise.allSettled(
-      staticFiles.map(({ url, zipName }) =>
-        fetch(url).then(async (r) => {
-          if (!r.ok) throw new Error(`HTTP ${r.status}`);
-          return { name: zipName, data: new Uint8Array(await r.arrayBuffer()) };
-        })
-      )
-    );
-    for (const res of results) {
-      if (res.status === "fulfilled") entries.push(res.value);
-      else console.warn("Fitxer no inclòs al ZIP:", res.reason);
-    }
-    const blob = await buildZip(entries);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `CBT_FamiliesKit_${new Date().toISOString().slice(0, 10)}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setKitDownloaded(true);
-    setTimeout(() => setKitDownloaded(false), 3000);
-  }, [equipments, equipByCode, README_TEXT]);
-
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   if (!canSee) {
@@ -501,7 +297,7 @@ Compatible amb Revit 2020-2030.`;
         </div>
 
         {/* ── Targetes de documentació (estàtiques, no esperen loading) ────── */}
-        <DocumentacioCards kitDownloaded={kitDownloaded} onKitDownload={handleKitDownload} />
+        <DocumentacioCards />
 
         {/* ── Taula famílies .rfa ───────────────────────────────────────────── */}
         <Card className="border-0 shadow-sm bg-white">
