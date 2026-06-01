@@ -1,20 +1,43 @@
-name: Sincronització Mensual Forma → Plataforma
+name: Sincronització Mensual Visor 3D
+
+# Executa la sincronització Autodesk Fusion Teams → Supabase el dia 1 de cada
+# mes a les 06:00 UTC. És l'únic mecanisme de scheduling: el servidor Node no
+# conté cap scheduler intern, evitant execucions dobles per reinicis del servei.
+#
+# Prerequisits (GitHub Secrets):
+#   AGENT_URL    → URL base del servei a Render (ex: https://visor3d.onrender.com)
+#   AGENT_SECRET → Bearer token de l'endpoint POST /sync
 
 on:
   schedule:
-    # El dia 1 de cada mes a les 06:00 UTC
-    - cron: '0 6 1 * *'
-  workflow_dispatch: # Permet executar-lo manualment si cal
+    - cron: '0 6 1 * *'   # Dia 1 de cada mes a les 06:00 UTC
+  workflow_dispatch:        # Execució manual des de GitHub Actions
 
 jobs:
   sync:
+    name: Sincronització ACC → Supabase
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - name: Executar agent APS (sincronització mensual Forma)
+      - name: Despertar el servei (warm-up)
         run: |
-          echo "🔄 Sincronització mensual Autodesk Forma → Plataforma..."
+          echo "⏳ Assegurant que el servei està actiu..."
+          for i in 1 2 3; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" \
+              --max-time 30 --connect-timeout 10 \
+              "${{ secrets.AGENT_URL }}/wake")
+            echo "  Intent $i → HTTP $status"
+            [ "$status" -eq 200 ] && break
+            sleep 10
+          done
+
+      - name: Executar sincronització
+        run: |
+          echo "🔄 Iniciant sincronització mensual ACC → Supabase..."
 
           response=$(curl -s -w "\n%{http_code}" \
+            --max-time 60 --connect-timeout 15 \
             -X POST "${{ secrets.AGENT_URL }}/sync" \
             -H "Authorization: Bearer ${{ secrets.AGENT_SECRET }}" \
             -H "Content-Type: application/json")
@@ -22,12 +45,19 @@ jobs:
           http_code=$(echo "$response" | tail -n1)
           body=$(echo "$response" | head -n-1)
 
-          echo "Resposta HTTP: $http_code"
-          echo "Body: $body"
+          echo "Resposta HTTP : $http_code"
+          echo "Body          : $body"
 
           if [ "$http_code" -ge 200 ] && [ "$http_code" -lt 300 ]; then
-            echo "✅ Sincronització completada correctament"
+            echo "✅ Sincronització acceptada correctament"
           else
             echo "❌ Error en la sincronització: codi $http_code"
             exit 1
           fi
+
+      - name: Verificar estat final
+        if: success()
+        run: |
+          echo "🔍 Verificant estat del servei..."
+          sleep 5
+          curl -s "${{ secrets.AGENT_URL }}/health" | python3 -m json.tool || true

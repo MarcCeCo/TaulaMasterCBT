@@ -1,20 +1,24 @@
 name: Keep Agent Alive
 
+# Fa ping al servei cada 14 minuts per evitar que Render (free tier) adormi
+# el procés. L'endpoint /health és de només lectura i no dispara cap execució.
+
 on:
   schedule:
-    # Ping cada 10 minuts per evitar que Render adormi el servei
-    - cron: '*/10 * * * *'
-  workflow_dispatch: # Permet executar-lo manualment si cal
+    - cron: '*/14 * * * *'  # Cada 14 minuts (Render dorm després de 15 min d'inactivitat)
+  workflow_dispatch:
 
 jobs:
   ping:
+    name: Ping keep-alive
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+
     steps:
-      - name: Ping Agent
+      - name: Ping /health
         run: |
           response=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 60 \
-            --connect-timeout 10 \
+            --max-time 60 --connect-timeout 10 \
             "${{ secrets.AGENT_URL }}/health")
 
           echo "Resposta HTTP: $response"
