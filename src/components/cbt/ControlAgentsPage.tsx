@@ -1120,13 +1120,16 @@ function CrearFamiliesPanel() {
           </div>
           <div className="space-y-0">
             <Pas num={1} titol="Descarrega el CBT_FamiliesKit" icon={<Download className="h-3.5 w-3.5" />}>
-              <p>Fes clic al botó <strong>Descarregar CBT_FamiliesKit</strong> d'aquest mateix panell. El ZIP es genera en el moment i conté <Code>FULL_script.py</Code>, <Code>TEST_script.py</Code>, <Code>CBT_Revit_Config.json</Code> i <Code>README.txt</Code>.</p>
+              <p>Fes clic al botó <strong>Descarregar CBT_FamiliesKit</strong> d'aquest mateix panell. El ZIP es genera en el moment i conté <Code>FULL_script.py</Code>, <Code>TEST_script.py</Code>, <Code>CBT_Revit_Config.json</Code>, <Code>CBT_PARAMETRES-COMPARTITS.txt</Code> i <Code>README.txt</Code>.</p>
               <p>El JSON reflecteix l'estat <strong>actual</strong> de la Taula Master en el moment de la descàrrega.</p>
             </Pas>
-            <Pas num={2} titol="Col·loca el JSON de configuració" icon={<Terminal className="h-3.5 w-3.5" />}>
+            <Pas num={2} titol="Col·loca els fitxers de configuració" icon={<Terminal className="h-3.5 w-3.5" />}>
               <p>Desa <Code>CBT_Revit_Config.json</Code> a:</p>
               <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 mt-1">C:\Users\&lt;usuari&gt;\Documents\CBT_Revit_Config.json</pre>
               <p>L'script el troba automàticament. Si no el trova, cerca també a <Code>Desktop</Code> i <Code>OneDrive\Documents</Code>.</p>
+              <p className="mt-2">Desa també <Code>CBT_PARAMETRES-COMPARTITS.txt</Code> a la mateixa carpeta:</p>
+              <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 mt-1">C:\Users\&lt;usuari&gt;\Documents\CBT_PARAMETRES-COMPARTITS.txt</pre>
+              <p>Aquest fitxer conté tots els paràmetres compartits CBT que s'afegiran a cada família generada.</p>
             </Pas>
             <Pas num={3} titol="Instal·la els scripts a pyRevit" icon={<FolderOpen className="h-3.5 w-3.5" />}>
               <p>Copia <Code>TEST_script.py</Code> i <Code>FULL_script.py</Code> a les respectives rutes de pyRevit (veure pestanyes <em>TEST Script</em> i <em>FULL Script</em> per les rutes exactes i el botó <em>Copia la ruta</em>).</p>
