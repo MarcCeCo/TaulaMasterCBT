@@ -35,6 +35,8 @@ import {
   FolderSync,
   Terminal,
   Wrench,
+  Package,
+  Box,
 } from "lucide-react";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
@@ -110,6 +112,17 @@ const AGENTS_CONFIG: AgentConfig[] = [
     icon: <Wrench className="h-4 w-4" />,
     cronSchedule: "",
     logTable: "bim_sync_log",
+    syncEndpoint: null,
+    agentUrlEnv: "",
+    agentSecretEnv: "",
+  },
+  {
+    id: "crearFamilies",
+    nom: "Crear Famílies",
+    descripcio: "Genera famílies .rfa CBT per a Revit — s'executa a l'ordinador de l'usuari via pyRevit",
+    icon: <Package className="h-4 w-4" />,
+    cronSchedule: "",
+    logTable: null,
     syncEndpoint: null,
     agentUrlEnv: "",
     agentSecretEnv: "",
@@ -866,6 +879,232 @@ function LogsTable({ agent, logs, loading, nomInstallacions }: {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PANELL CREAR FAMÍLIES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const SCRIPT_PATH_FULL =
+  "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families FULL.pushbutton\\script.py";
+const SCRIPT_PATH_TEST =
+  "%APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families TEST.pushbutton\\script.py";
+
+type FamiliesSubtabId = "flux" | "fullScript" | "testScript";
+
+function CrearFamiliesPanel() {
+  const [subtab, setSubtab] = useState<FamiliesSubtabId>("flux");
+  const [copiedFull, setCopiedFull] = useState(false);
+  const [copiedTest, setCopiedTest] = useState(false);
+  const [kitDownloaded, setKitDownloaded] = useState(false);
+
+  const subtabs: { id: FamiliesSubtabId; label: string; icon: React.ReactNode }[] = [
+    { id: "flux",       label: "Flux complet",   icon: <ArrowRight className="h-3.5 w-3.5" /> },
+    { id: "fullScript", label: "FULL Script",     icon: <Box className="h-3.5 w-3.5" /> },
+    { id: "testScript", label: "TEST Script",     icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+  ];
+
+  async function handleKitDownload() {
+    // Descarrega el paquet CBT_FamiliesKit (redirigeix a RevitBimPage)
+    const a = document.createElement("a");
+    a.href = "/revit-bim";
+    a.click();
+    setKitDownloaded(true);
+    setTimeout(() => setKitDownloaded(false), 3000);
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* Capçalera */}
+      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="h-11 w-11 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600">
+              <Package className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-slate-800 text-base">Crear Famílies</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Scripts pyRevit per generar famílies .rfa CBT automàticament</p>
+            </div>
+          </div>
+          <DownloadButton
+            label={kitDownloaded ? "Descarregat!" : "Descarregar CBT_FamiliesKit"}
+            href="/revit-bim"
+            filename="CBT_FamiliesKit.zip"
+            color="violet"
+          />
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-2 flex-wrap">
+          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Script local</Badge>
+          <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">pyRevit + Revit 2020–2030</Badge>
+          <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">No requereix servidor</Badge>
+          <Badge className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">JSON generat automàticament</Badge>
+        </div>
+      </Card>
+
+      {/* Subtabs */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+        {subtabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setSubtab(t.id)}
+            className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-[12.5px] font-medium transition-all
+              ${subtab === t.id
+                ? "bg-white text-slate-800 shadow-sm"
+                : "text-slate-500 hover:text-slate-700"}`}
+          >
+            <span className={subtab === t.id ? "text-[#0099A8]" : "text-slate-400"}>{t.icon}</span>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB: Flux complet ─────────────────────────────────────────────── */}
+      {subtab === "flux" && (
+        <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+          <div className="flex items-center gap-2 mb-4">
+            <Info className="h-4 w-4 text-[#0099A8]" />
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Flux complet — pas a pas</p>
+          </div>
+          <div className="space-y-0">
+            <Pas num={1} titol="Descarrega el paquet CBT_FamiliesKit" icon={<Download className="h-3.5 w-3.5" />}>
+              <p>Ves a la pàgina <strong>Documentació BIM → Paquet de creació de famílies</strong> i descarrega el ZIP. Conté <Code>FULL_script.py</Code>, <Code>TEST_script.py</Code>, <Code>CBT_Revit_Config.json</Code> i <Code>README.txt</Code>.</p>
+              <p>El JSON es genera <strong>en el moment de la descàrrega</strong> i reflecteix l'estat actual de la Taula Master.</p>
+            </Pas>
+            <Pas num={2} titol="Instal·la els scripts a pyRevit" icon={<FolderOpen className="h-3.5 w-3.5" />}>
+              <p>Copia <Code>TEST_script.py</Code> a la ruta del botó TEST i <Code>FULL_script.py</Code> a la ruta del botó FULL (veure pestanyes <em>TEST Script</em> i <em>FULL Script</em>).</p>
+              <p>A Revit, ves a <strong>pyRevit → Reload</strong> perquè apareguin els botons a <strong>CBT → CBT Tools → Crear Families</strong>.</p>
+            </Pas>
+            <Pas num={3} titol="Col·loca el fitxer de configuració" icon={<Terminal className="h-3.5 w-3.5" />}>
+              <p>Desa <Code>CBT_Revit_Config.json</Code> a:</p>
+              <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 mt-1">C:\Users\&lt;usuari&gt;\Documents\CBT_Revit_Config.json</pre>
+              <p>L'script el troba automàticament. Si no el trova, busca a <Code>Desktop</Code> i <Code>OneDrive\Documents</Code>.</p>
+            </Pas>
+            <Pas num={4} titol="Executa TEST per validar l'ecosistema" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+              <p>Clic a <strong>Crear Families TEST</strong> a la barra pyRevit. Crea <strong>1 família per categoria</strong> per verificar que tot funciona: plantilles RFT, paràmetres compartits i rutes de sortida.</p>
+              <p>Si alguna categoria falla, revisa que la plantilla <Code>.rft</Code> corresponent existeixi a Revit.</p>
+            </Pas>
+            <Pas num={5} titol="Executa FULL per crear totes les famílies" icon={<Zap className="h-3.5 w-3.5" />}>
+              <p>Si el TEST va bé, clic a <strong>Crear Families FULL</strong>. L'script processa tots els equips del JSON, obre la plantilla RFT per categoria, afegeix els paràmetres compartits CBT i desa cada <Code>CBT_NOM-EQUIP_CODI.rfa</Code> a <Code>Documents\Families_Output\</Code>.</p>
+            </Pas>
+            <Pas num={6} titol="Verifica les famílies generades" icon={<Package className="h-3.5 w-3.5" />}>
+              <p>Les famílies apareixeran a la taula <strong>Famílies .rfa per equip</strong> de la pàgina <strong>Documentació BIM</strong> amb el botó de descàrrega actiu. Puja les <Code>.rfa</Code> a la biblioteca compartida d'ACC.</p>
+            </Pas>
+          </div>
+        </Card>
+      )}
+
+      {/* ── TAB: FULL Script ─────────────────────────────────────────────── */}
+      {subtab === "fullScript" && (
+        <div className="space-y-4">
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script FULL pyRevit</p>
+            <p className="text-[12.5px] text-slate-500 mb-4 leading-relaxed">
+              Processa <strong>tots els equips</strong> del JSON de configuració i genera una <Code>.rfa</Code> per equip,
+              agrupats per categoria Revit. S'executa dins de Revit via pyRevit.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <DownloadButton label="Descarregar FULL_script.py" href="/scripts/FULL_script.py" filename="FULL_script.py" color="violet" />
+              <Button
+                variant="outline"
+                className="gap-2 rounded-xl h-9 px-4 text-sm border-slate-200 text-slate-600 hover:bg-slate-50"
+                onClick={() => { navigator.clipboard.writeText(SCRIPT_PATH_FULL); setCopiedFull(true); setTimeout(() => setCopiedFull(false), 2000); }}
+              >
+                {copiedFull
+                  ? <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Copiat!</>
+                  : <><Copy className="h-3.5 w-3.5" /> Copia la ruta de destí</>}
+              </Button>
+            </div>
+            <p className="text-[11.5px] text-slate-400 mt-3 font-mono leading-relaxed break-all">
+              {SCRIPT_PATH_FULL}
+            </p>
+          </Card>
+
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Info className="h-4 w-4 text-violet-500" />
+              <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Com funciona</p>
+            </div>
+            <div className="space-y-0">
+              <Pas num={1} titol="Llegeix la configuració" icon={<FolderOpen className="h-3.5 w-3.5" />}>
+                <p>L'script llegeix <Code>CBT_Revit_Config.json</Code> de <Code>Documents</Code>. Aquest fitxer conté la llista completa d'equips amb codi, categoria Revit i plantilla <Code>.rft</Code> associada.</p>
+              </Pas>
+              <Pas num={2} titol="Agrupa per categoria i plantilla" icon={<Box className="h-3.5 w-3.5" />}>
+                <p>Per eficiència, agrupa els equips per plantilla RFT. Obre cada plantilla <strong>una sola vegada</strong> i genera totes les famílies d'aquella categoria en seqüència.</p>
+              </Pas>
+              <Pas num={3} titol="Afegeix paràmetres compartits CBT" icon={<Terminal className="h-3.5 w-3.5" />}>
+                <p>Per cada família, afegeix els paràmetres compartits definits a <Code>CBT_PARAMETRES-COMPARTITS.txt</Code> (codi equip, taula, sistema, etc.) com a paràmetres d'instància o tipus.</p>
+              </Pas>
+              <Pas num={4} titol="Desa com a .rfa" icon={<Download className="h-3.5 w-3.5" />}>
+                <p>Cada família es desa amb el nom <Code>CBT_NOM-EQUIP_CODI.rfa</Code> a la carpeta <Code>Documents\Families_Output\</Code>. Les famílies existents es sobreescriuen de forma segura.</p>
+              </Pas>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ── TAB: TEST Script ─────────────────────────────────────────────── */}
+      {subtab === "testScript" && (
+        <div className="space-y-4">
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script TEST pyRevit</p>
+            <p className="text-[12.5px] text-slate-500 mb-4 leading-relaxed">
+              Crea <strong>1 família per categoria</strong> per validar que l'ecosistema funciona correctament
+              (plantilles RFT, paràmetres compartits, rutes de sortida). Executa sempre el TEST abans del FULL.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <DownloadButton label="Descarregar TEST_script.py" href="/scripts/TEST_script.py" filename="TEST_script.py" color="sky" />
+              <Button
+                variant="outline"
+                className="gap-2 rounded-xl h-9 px-4 text-sm border-slate-200 text-slate-600 hover:bg-slate-50"
+                onClick={() => { navigator.clipboard.writeText(SCRIPT_PATH_TEST); setCopiedTest(true); setTimeout(() => setCopiedTest(false), 2000); }}
+              >
+                {copiedTest
+                  ? <><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Copiat!</>
+                  : <><Copy className="h-3.5 w-3.5" /> Copia la ruta de destí</>}
+              </Button>
+            </div>
+            <p className="text-[11.5px] text-slate-400 mt-3 font-mono leading-relaxed break-all">
+              {SCRIPT_PATH_TEST}
+            </p>
+          </Card>
+
+          <Card className="p-4 border-blue-100 bg-blue-50 rounded-2xl">
+            <div className="flex items-start gap-3">
+              <Info className="h-4 w-4 text-blue-600 mt-0.5 shrink-0" />
+              <div className="text-[12px] text-blue-800 space-y-1.5 leading-relaxed">
+                <p className="font-semibold text-blue-900">Quan usar TEST vs FULL</p>
+                <p><strong>TEST:</strong> Primera instal·lació, canvi de PC, actualització del JSON o quan s'afegeixen noves categories. Ràpid (1–2 min) i no sobreescriu producció.</p>
+                <p><strong>FULL:</strong> Quan el TEST ha passat correctament i vols generar <em>totes</em> les famílies. Pot trigar 10–30 min depenent del nombre d'equips.</p>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Info className="h-4 w-4 text-sky-500" />
+              <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Què valida el TEST</p>
+            </div>
+            <div className="space-y-0">
+              <Pas num={1} titol="Accessibilitat de plantilles RFT" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                <p>Comprova que totes les plantilles <Code>.rft</Code> (Metric Mechanical Equipment, Metric Specialty Equipment, etc.) existeixen a la instal·lació local de Revit.</p>
+              </Pas>
+              <Pas num={2} titol="Fitxer de paràmetres compartits" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                <p>Verifica que <Code>CBT_PARAMETRES-COMPARTITS.txt</Code> és accessible i conté els paràmetres CBT necessaris.</p>
+              </Pas>
+              <Pas num={3} titol="Carpeta de sortida accessible" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
+                <p>Intenta crear la carpeta <Code>Documents\Families_Output\</Code> si no existeix i verifica que hi ha permisos d'escriptura.</p>
+              </Pas>
+              <Pas num={4} titol="Genera 1 família per categoria" icon={<Package className="h-3.5 w-3.5" />}>
+                <p>Per cada categoria Revit present al JSON, crea la primera família de la llista. Si alguna falla, reporta l'error amb la causa exacta sense aturar la resta de categories.</p>
+              </Pas>
+            </div>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENT PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1136,6 +1375,9 @@ export function ControlAgentsPage() {
               loading={loading}
               onRefresh={handleRefresh}
             />
+          )}
+          {selectedAgent.id === "crearFamilies" && (
+            <CrearFamiliesPanel />
           )}
         </div>
       </div>

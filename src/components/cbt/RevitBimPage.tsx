@@ -160,23 +160,14 @@ const RfaTableRow = memo(function RfaTableRow({
         )}
       </td>
       <td className="py-2.5 px-3 text-right">
-        {hasValidCat && rfaName ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => onDownload(rfaName)}>
-                <Download className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Descarregar {rfaName}</TooltipContent>
-          </Tooltip>
-        ) : (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span><Button size="icon" variant="ghost" className="h-7 w-7 text-slate-300" disabled><Download className="h-3.5 w-3.5" /></Button></span>
-            </TooltipTrigger>
-            <TooltipContent>Assigna una categoria Revit per habilitar la descàrrega</TooltipContent>
-          </Tooltip>
-        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => onDownload(rfaName!)}>
+              <Download className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Descarregar {rfaName}</TooltipContent>
+        </Tooltip>
       </td>
     </tr>
   );
@@ -368,22 +359,26 @@ export function RevitBimPage() {
     return m;
   }, [equipments]);
 
-  // ── Files Portal BIM ──
+  // ── Files Portal BIM — només famílies disponibles per descarregar ──
   const equipRows = useMemo<EquipRow[]>(() => {
     const q = debouncedSearch.trim().toLowerCase();
     return equipments
       .filter((eq) => {
+        // Filtre 1: ha de tenir categoria Revit vàlida i codi (família disponible)
+        const cat = eq.revitCategory?.trim() ?? "";
+        const hasValidCat = !!cat && VALID_CATEGORIES.has(cat);
+        if (!hasValidCat || !eq.equipCode) return false;
+        // Filtre 2: cerca textual
         if (!q) return true;
         const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) ?? "" : "";
         const fullName = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
         return fullName.toLowerCase().includes(q) || (eq.equipCode ?? "").toLowerCase().includes(q);
       })
       .map((eq) => {
-        const cat = eq.revitCategory?.trim() ?? "";
-        const hasValidCat = !!cat && VALID_CATEGORIES.has(cat);
+        const cat = eq.revitCategory!.trim();
         const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) ?? null : null;
-        const rfaName = hasValidCat && eq.equipCode ? buildRfaName(eq.equipName, parentName, eq.equipCode) : null;
-        return { eq, parentName, cat, hasValidCat, rfaName };
+        const rfaName = buildRfaName(eq.equipName, parentName, eq.equipCode!);
+        return { eq, parentName, cat, hasValidCat: true, rfaName };
       });
   }, [equipments, equipByCode, debouncedSearch]);
 
@@ -573,7 +568,9 @@ Compatible amb Revit 2020-2030.`;
                   </thead>
                   <tbody>
                     {equipRows.length === 0 ? (
-                      <tr><td colSpan={4} className="text-center py-12 text-sm text-slate-400">Cap equip trobat</td></tr>
+                      <tr><td colSpan={4} className="text-center py-12 text-sm text-slate-400">
+                        {debouncedSearch ? "Cap família trobada per aquesta cerca" : "Cap família disponible per descarregar"}
+                      </td></tr>
                     ) : (() => {
                       const containerH = tableContainerRef.current?.clientHeight ?? TABLE_MAX_H;
                       const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
