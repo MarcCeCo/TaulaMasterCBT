@@ -87,25 +87,26 @@ server.listen(PORT, () => {
 
 // ─── Scheduler intern: executa l'agent el dia 1 de cada mes a les 06:00 UTC ──
 //
-// Com funciona:
-//   1. En arrencar el servidor, calcula quants ms falten per al proper dia 1 a les 06:00 UTC.
-//   2. Registra un setTimeout per a aquell moment.
-//   3. Quan dispara, executa l'agent i programa el següent setTimeout (per al mes vinent).
+// Bug fix: la versió anterior recalculava propDia1_06UTC() just després
+// d'executar l'agent. En aquell instant "ara" coincideix amb l'objectiu i
+// la funció retornava una data quasi immediata → bucle d'execucions.
 //
-// D'aquesta manera el servidor és autònom i no depèn de cap cron extern (Render, Supabase...).
-// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Solució: la data de la SEGÜENT execució es calcula ABANS d'executar l'agent
+// i es passa explícitament a la crida recursiva d'iniciaScheduler().
+// ─────────────────────────────────────────────────────────────────────────────
 
-function propDia1_06UTC(): Date {
-  const ara = new Date();
-  // Primer candidat: aquest mes
+// Retorna el proper dia 1 a les 06:00 UTC que sigui > des + MIN_MS_MARGE.
+// El paràmetre "des" permet calcular la data a partir d'un moment arbitrari
+// (s'usa per calcular "el mes que ve" passant la data actual de l'objectiu).
+function propDia1_06UTC(des: Date = new Date()): Date {
+  const MIN_MS_MARGE = 60_000; // 1 minut — evita disparar de nou si el setTimeout arriba lleugerament tard
   const candidat = new Date(Date.UTC(
-    ara.getUTCFullYear(),
-    ara.getUTCMonth(),
+    des.getUTCFullYear(),
+    des.getUTCMonth(),
     1,
     6, 0, 0, 0,
   ));
-  // Si ja hem passat (o estem exactament), passa al mes vinent
-  if (candidat.getTime() <= ara.getTime()) {
+  if (candidat.getTime() <= des.getTime() + MIN_MS_MARGE) {
     candidat.setUTCMonth(candidat.getUTCMonth() + 1);
   }
   return candidat;
@@ -113,9 +114,12 @@ function propDia1_06UTC(): Date {
 
 let schedulerTimeout: NodeJS.Timeout | null = null;
 
-function iniciaScheduler() {
-  const propExecucio = propDia1_06UTC();
-  const msRestants   = propExecucio.getTime() - Date.now();
+function iniciaScheduler(objectiu?: Date) {
+  // Primera crida (en arrencar): calcula la propera data des d'ara.
+  // Crides recursives: reben sempre la data del mes vinent ja calculada,
+  // mai es recalcula des de "ara" perquè "ara" podria coincidir amb l'objectiu.
+  const propExecucio = objectiu ?? propDia1_06UTC();
+  const msRestants   = Math.max(propExecucio.getTime() - Date.now(), 1_000);
   const diesRestants = Math.round(msRestants / 86_400_000 * 10) / 10;
 
   console.log(`⏰ Scheduler: propera execució automàtica → ${propExecucio.toISOString()} (d'aquí ~${diesRestants} dies)`);
@@ -123,6 +127,11 @@ function iniciaScheduler() {
   if (schedulerTimeout) clearTimeout(schedulerTimeout);
   schedulerTimeout = setTimeout(async () => {
     console.log(`\n⏰ Scheduler: disparant execució automàtica (${new Date().toISOString()})...`);
+
+    // Calculem la data del mes vinent ARA, quan "propExecucio" és el punt de referència,
+    // no quan l'agent hagi acabat (podrien passar minuts i recalcular malament).
+    const seguentExecucio = propDia1_06UTC(propExecucio);
+
     if (agentEnExecucio) {
       console.warn("⚠️  Scheduler: l'agent ja s'estava executant, s'omet aquesta execució.");
     } else {
@@ -136,7 +145,8 @@ function iniciaScheduler() {
         agentEnExecucio = false;
       }
     }
-    // Programa el mes vinent
-    iniciaScheduler();
+
+    // Passa la data explícita del mes vinent — mai recalculem des de "ara"
+    iniciaScheduler(seguentExecucio);
   }, msRestants);
 }
