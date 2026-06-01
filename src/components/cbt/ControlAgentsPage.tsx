@@ -948,10 +948,11 @@ async function buildZip(entries: { name: string; data: Uint8Array }[]): Promise<
 const README_KIT = `CBT FamiliesKit — Instruccions
 ================================
 CONTINGUT:
-  · CBT_Revit_Config.json  — Configuració generada automàticament
-  · FULL_script.py         — Script pyRevit per crear TOTES les famílies
-  · TEST_script.py         — Script pyRevit per crear 1 família per categoria (test)
-  · README.txt             — Aquest fitxer
+  · CBT_Revit_Config.json          — Configuració generada automàticament
+  · CBT_PARAMETRES-COMPARTITS.txt  — Fitxer de paràmetres compartits Revit (CBT)
+  · FULL_script.py                 — Script pyRevit per crear TOTES les famílies
+  · TEST_script.py                 — Script pyRevit per crear 1 família per categoria (test)
+  · README.txt                     — Aquest fitxer
 
 COM INSTAL·LAR:
   1. Guarda CBT_Revit_Config.json a: C:\\Users\\<usuari>\\Documents\\CBT_Revit_Config.json
@@ -1020,8 +1021,9 @@ function CrearFamiliesPanel() {
 
       // Intenta descarregar els scripts estàtics del servidor
       const staticFiles = [
-        { url: "/scripts/FULL_script.py", zipName: "FULL_script.py" },
-        { url: "/scripts/TEST_script.py", zipName: "TEST_script.py" },
+        { url: "/scripts/FULL_script.py",                   zipName: "FULL_script.py" },
+        { url: "/scripts/TEST_script.py",                   zipName: "TEST_script.py" },
+        { url: "/scripts/CBT_PARAMETRES-COMPARTITS.txt",    zipName: "CBT_PARAMETRES-COMPARTITS.txt" },
       ];
       const entries: { name: string; data: Uint8Array }[] = [
         { name: "CBT_Revit_Config.json", data: enc.encode(JSON.stringify(config, null, 2)) },
