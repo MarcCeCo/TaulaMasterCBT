@@ -59,7 +59,7 @@ export const CATEGORY_CONFIG: Record<
   "Generic Models":             { label: "Generic Models",             template: "Metric Generic Model.rft",              color: "bg-gray-50 text-gray-600 border-gray-200",       icon: <Box className="h-3.5 w-3.5" />,         group: "Arquitectura / General" },
 };
 
-const VALID_CATEGORIES = new Set(REVIT_CATEGORIES_FLAT);
+export const VALID_CATEGORIES = new Set(REVIT_CATEGORIES_FLAT);
 
 function toFileName(nom: string): string {
   return nom.toUpperCase().replace(/\s+/g, "-");

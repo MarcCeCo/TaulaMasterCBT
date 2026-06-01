@@ -12,6 +12,8 @@ import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
 import { supaFetch as supa } from "@/lib/supaFetch";
 import { useAuth } from "@/lib/auth";
+import { useDataStore } from "@/lib/dataStore";
+import { CATEGORY_CONFIG, VALID_CATEGORIES } from "./RevitBimPage";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -889,11 +891,86 @@ const SCRIPT_PATH_TEST =
 
 type FamiliesSubtabId = "flux" | "fullScript" | "testScript";
 
+// ─── ZIP builder (sense dependències externes) ────────────────────────────────
+function crc32(data: Uint8Array): number {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let j = 0; j < 8; j++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[i] = c;
+  }
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xffffffff) >>> 0;
+}
+function u16le(n: number): Uint8Array { const b = new Uint8Array(2); new DataView(b.buffer).setUint16(0, n, true); return b; }
+function u32le(n: number): Uint8Array { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n, true); return b; }
+
+async function buildZip(entries: { name: string; data: Uint8Array }[]): Promise<Blob> {
+  const enc = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  const centralDir: Uint8Array[] = [];
+  let offset = 0;
+  for (const entry of entries) {
+    const nameBytes = enc.encode(entry.name);
+    const crc = crc32(entry.data);
+    const size = entry.data.length;
+    const localHeader = new Uint8Array([
+      0x50, 0x4b, 0x03, 0x04, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ...u32le(crc), ...u32le(size), ...u32le(size),
+      ...u16le(nameBytes.length), 0, 0, ...nameBytes,
+    ]);
+    const cdEntry = new Uint8Array([
+      0x50, 0x4b, 0x01, 0x02, 20, 0, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ...u32le(crc), ...u32le(size), ...u32le(size),
+      ...u16le(nameBytes.length), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+      ...u32le(offset), ...nameBytes,
+    ]);
+    centralDir.push(cdEntry);
+    parts.push(localHeader, entry.data);
+    offset += localHeader.length + size;
+  }
+  const cdOffset = offset;
+  const cdSize = centralDir.reduce((s, b) => s + b.length, 0);
+  const eocd = new Uint8Array([
+    0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0,
+    ...u16le(entries.length), ...u16le(entries.length),
+    ...u32le(cdSize), ...u32le(cdOffset), 0, 0,
+  ]);
+  const allParts = [...parts, ...centralDir, eocd];
+  const total = allParts.reduce((s, b) => s + b.length, 0);
+  const buf = new Uint8Array(total);
+  let pos = 0;
+  for (const p of allParts) { buf.set(p, pos); pos += p.length; }
+  return new Blob([buf], { type: "application/zip" });
+}
+
+const README_KIT = `CBT FamiliesKit — Instruccions
+================================
+CONTINGUT:
+  · CBT_Revit_Config.json  — Configuració generada automàticament
+  · FULL_script.py         — Script pyRevit per crear TOTES les famílies
+  · TEST_script.py         — Script pyRevit per crear 1 família per categoria (test)
+  · README.txt             — Aquest fitxer
+
+COM INSTAL·LAR:
+  1. Guarda CBT_Revit_Config.json a: C:\\Users\\<usuari>\\Documents\\CBT_Revit_Config.json
+  2. Guarda CBT_PARAMETRES-COMPARTITS.txt a: C:\\Users\\<usuari>\\Documents\\
+  3. Copia els scripts a les rutes de pyRevit:
+     TEST: %APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families TEST.pushbutton\\script.py
+     FULL: %APPDATA%\\pyRevit-Master\\Extensions\\CBT.extension\\CBT.tab\\CBT Tools.panel\\Crear Families FULL.pushbutton\\script.py
+  4. Reinicia Revit i executa el botó "Crear Families TEST" per validar.
+  5. Si el TEST va bé, executa "Crear Families FULL".
+
+Compatible amb Revit 2020-2030.`;
+
 function CrearFamiliesPanel() {
+  const { equipments } = useDataStore();
   const [subtab, setSubtab] = useState<FamiliesSubtabId>("flux");
   const [copiedFull, setCopiedFull] = useState(false);
   const [copiedTest, setCopiedTest] = useState(false);
   const [kitDownloaded, setKitDownloaded] = useState(false);
+  const [kitBuilding, setKitBuilding] = useState(false);
 
   const subtabs: { id: FamiliesSubtabId; label: string; icon: React.ReactNode }[] = [
     { id: "flux",       label: "Flux complet",   icon: <ArrowRight className="h-3.5 w-3.5" /> },
@@ -901,13 +978,80 @@ function CrearFamiliesPanel() {
     { id: "testScript", label: "TEST Script",     icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
   ];
 
+  // ── Genera i descarrega el ZIP CBT_FamiliesKit ────────────────────────────
   async function handleKitDownload() {
-    // Descarrega el paquet CBT_FamiliesKit (redirigeix a RevitBimPage)
-    const a = document.createElement("a");
-    a.href = "/revit-bim";
-    a.click();
-    setKitDownloaded(true);
-    setTimeout(() => setKitDownloaded(false), 3000);
+    setKitBuilding(true);
+    try {
+      const enc = new TextEncoder();
+
+      // Construeix el JSON de configuració a partir dels equips actuals
+      const equipByCode = new Map<string, string>();
+      for (const eq of equipments) {
+        if (eq.equipCode) equipByCode.set(eq.equipCode, eq.equipName);
+        equipByCode.set(eq.id, eq.equipName);
+      }
+
+      const exportableItems = equipments
+        .filter((eq) => {
+          if (!eq.needsTable) return false;
+          const cat = eq.revitCategory?.trim() ?? "";
+          return !!cat && VALID_CATEGORIES.has(cat);
+        })
+        .map((eq) => {
+          const cat = eq.revitCategory!.trim();
+          const parentName = eq.parentEquipCode ? equipByCode.get(eq.parentEquipCode) ?? null : null;
+          const nomComplet = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
+          return {
+            nom: nomComplet.toUpperCase().replace(/\s+/g, "-"),
+            cat,
+            template: CATEGORY_CONFIG[cat]?.template ?? "Metric Generic Model.rft",
+            equip_code: eq.equipCode ?? "",
+            table_code: eq.tableCode ?? "",
+          };
+        });
+
+      const config = {
+        generated_at: new Date().toISOString(),
+        output_folder: "%USERPROFILE%\\Documents\\Families_Output",
+        shared_params_path: "%USERPROFILE%\\Documents\\CBT_PARAMETRES-COMPARTITS.txt",
+        total: exportableItems.length,
+        equipments: exportableItems,
+      };
+
+      // Intenta descarregar els scripts estàtics del servidor
+      const staticFiles = [
+        { url: "/scripts/FULL_script.py", zipName: "FULL_script.py" },
+        { url: "/scripts/TEST_script.py", zipName: "TEST_script.py" },
+      ];
+      const entries: { name: string; data: Uint8Array }[] = [
+        { name: "CBT_Revit_Config.json", data: enc.encode(JSON.stringify(config, null, 2)) },
+        { name: "README.txt",            data: enc.encode(README_KIT) },
+      ];
+      const results = await Promise.allSettled(
+        staticFiles.map(({ url, zipName }) =>
+          fetch(url).then(async (r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return { name: zipName, data: new Uint8Array(await r.arrayBuffer()) };
+          })
+        )
+      );
+      for (const res of results) {
+        if (res.status === "fulfilled") entries.push(res.value);
+        else console.warn("Fitxer no inclòs al ZIP:", res.reason);
+      }
+
+      const blob = await buildZip(entries);
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = `CBT_FamiliesKit_${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setKitDownloaded(true);
+      setTimeout(() => setKitDownloaded(false), 3000);
+    } finally {
+      setKitBuilding(false);
+    }
   }
 
   return (
@@ -925,12 +1069,20 @@ function CrearFamiliesPanel() {
               <p className="text-xs text-slate-500 mt-0.5">Scripts pyRevit per generar famílies .rfa CBT automàticament</p>
             </div>
           </div>
-          <DownloadButton
-            label={kitDownloaded ? "Descarregat!" : "Descarregar CBT_FamiliesKit"}
-            href="/revit-bim"
-            filename="CBT_FamiliesKit.zip"
-            color="violet"
-          />
+          <Button
+            className={`gap-2 rounded-xl h-9 px-5 text-sm shadow-sm text-white
+              ${kitDownloaded ? "bg-emerald-600 hover:bg-emerald-700" : "bg-violet-600 hover:bg-violet-700"}`}
+            onClick={handleKitDownload}
+            disabled={kitBuilding}
+          >
+            {kitBuilding ? (
+              <><div className="h-3.5 w-3.5 rounded-full border-2 border-white border-t-transparent animate-spin" /> Generant…</>
+            ) : kitDownloaded ? (
+              <><CheckCircle2 className="h-3.5 w-3.5" /> Descarregat!</>
+            ) : (
+              <><Download className="h-3.5 w-3.5" /> Descarregar CBT_FamiliesKit</>
+            )}
+          </Button>
         </div>
         <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-2 flex-wrap">
           <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">Script local</Badge>
@@ -965,28 +1117,28 @@ function CrearFamiliesPanel() {
             <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Flux complet — pas a pas</p>
           </div>
           <div className="space-y-0">
-            <Pas num={1} titol="Descarrega el paquet CBT_FamiliesKit" icon={<Download className="h-3.5 w-3.5" />}>
-              <p>Ves a la pàgina <strong>Documentació BIM → Paquet de creació de famílies</strong> i descarrega el ZIP. Conté <Code>FULL_script.py</Code>, <Code>TEST_script.py</Code>, <Code>CBT_Revit_Config.json</Code> i <Code>README.txt</Code>.</p>
-              <p>El JSON es genera <strong>en el moment de la descàrrega</strong> i reflecteix l'estat actual de la Taula Master.</p>
+            <Pas num={1} titol="Descarrega el CBT_FamiliesKit" icon={<Download className="h-3.5 w-3.5" />}>
+              <p>Fes clic al botó <strong>Descarregar CBT_FamiliesKit</strong> d'aquest mateix panell. El ZIP es genera en el moment i conté <Code>FULL_script.py</Code>, <Code>TEST_script.py</Code>, <Code>CBT_Revit_Config.json</Code> i <Code>README.txt</Code>.</p>
+              <p>El JSON reflecteix l'estat <strong>actual</strong> de la Taula Master en el moment de la descàrrega.</p>
             </Pas>
-            <Pas num={2} titol="Instal·la els scripts a pyRevit" icon={<FolderOpen className="h-3.5 w-3.5" />}>
-              <p>Copia <Code>TEST_script.py</Code> a la ruta del botó TEST i <Code>FULL_script.py</Code> a la ruta del botó FULL (veure pestanyes <em>TEST Script</em> i <em>FULL Script</em>).</p>
-              <p>A Revit, ves a <strong>pyRevit → Reload</strong> perquè apareguin els botons a <strong>CBT → CBT Tools → Crear Families</strong>.</p>
-            </Pas>
-            <Pas num={3} titol="Col·loca el fitxer de configuració" icon={<Terminal className="h-3.5 w-3.5" />}>
+            <Pas num={2} titol="Col·loca el JSON de configuració" icon={<Terminal className="h-3.5 w-3.5" />}>
               <p>Desa <Code>CBT_Revit_Config.json</Code> a:</p>
               <pre className="bg-slate-50 rounded-lg px-3 py-2 text-[10.5px] font-mono text-slate-600 mt-1">C:\Users\&lt;usuari&gt;\Documents\CBT_Revit_Config.json</pre>
-              <p>L'script el troba automàticament. Si no el trova, busca a <Code>Desktop</Code> i <Code>OneDrive\Documents</Code>.</p>
+              <p>L'script el troba automàticament. Si no el trova, cerca també a <Code>Desktop</Code> i <Code>OneDrive\Documents</Code>.</p>
+            </Pas>
+            <Pas num={3} titol="Instal·la els scripts a pyRevit" icon={<FolderOpen className="h-3.5 w-3.5" />}>
+              <p>Copia <Code>TEST_script.py</Code> i <Code>FULL_script.py</Code> a les respectives rutes de pyRevit (veure pestanyes <em>TEST Script</em> i <em>FULL Script</em> per les rutes exactes i el botó <em>Copia la ruta</em>).</p>
+              <p>A Revit, fes <strong>pyRevit → Reload</strong> perquè apareguin els botons a <strong>CBT → CBT Tools → Crear Families</strong>.</p>
             </Pas>
             <Pas num={4} titol="Executa TEST per validar l'ecosistema" icon={<CheckCircle2 className="h-3.5 w-3.5" />}>
               <p>Clic a <strong>Crear Families TEST</strong> a la barra pyRevit. Crea <strong>1 família per categoria</strong> per verificar que tot funciona: plantilles RFT, paràmetres compartits i rutes de sortida.</p>
-              <p>Si alguna categoria falla, revisa que la plantilla <Code>.rft</Code> corresponent existeixi a Revit.</p>
+              <p>Si alguna categoria falla, revisa que la plantilla <Code>.rft</Code> corresponent existeixi a la instal·lació local de Revit.</p>
             </Pas>
             <Pas num={5} titol="Executa FULL per crear totes les famílies" icon={<Zap className="h-3.5 w-3.5" />}>
-              <p>Si el TEST va bé, clic a <strong>Crear Families FULL</strong>. L'script processa tots els equips del JSON, obre la plantilla RFT per categoria, afegeix els paràmetres compartits CBT i desa cada <Code>CBT_NOM-EQUIP_CODI.rfa</Code> a <Code>Documents\Families_Output\</Code>.</p>
+              <p>Si el TEST ha passat correctament, clic a <strong>Crear Families FULL</strong>. L'script processa tots els equips del JSON, obre la plantilla RFT per categoria, afegeix els paràmetres compartits CBT i desa cada <Code>CBT_NOM-EQUIP_CODI.rfa</Code> a <Code>Documents\Families_Output\</Code>.</p>
             </Pas>
-            <Pas num={6} titol="Verifica les famílies generades" icon={<Package className="h-3.5 w-3.5" />}>
-              <p>Les famílies apareixeran a la taula <strong>Famílies .rfa per equip</strong> de la pàgina <strong>Documentació BIM</strong> amb el botó de descàrrega actiu. Puja les <Code>.rfa</Code> a la biblioteca compartida d'ACC.</p>
+            <Pas num={6} titol="Puja les famílies a ACC" icon={<Package className="h-3.5 w-3.5" />}>
+              <p>Un cop generades, puja les <Code>.rfa</Code> de <Code>Documents\Families_Output\</Code> a la biblioteca compartida d'ACC. Les famílies quedaran disponibles per a tots els modeladors del projecte.</p>
             </Pas>
           </div>
         </Card>
