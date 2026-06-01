@@ -32,6 +32,8 @@ const server = http.createServer(async (req, res) => {
       status: "ok",
       service: "visor3d",
       agent: agentEnExecucio ? "running" : "idle",
+      scheduler: "actiu",
+      propera_execucio: propDia1_06UTC().toISOString(),
       timestamp: new Date().toISOString(),
     }));
     return;
@@ -80,4 +82,61 @@ server.listen(PORT, () => {
   console.log(`   GET  /health   → estat`);
   console.log(`   GET  /wake     → keep-alive`);
   console.log(`   POST /sync     → sincronitza ACC → Supabase  [Bearer requerit]\n`);
+  iniciaScheduler();
 });
+
+// ─── Scheduler intern: executa l'agent el dia 1 de cada mes a les 06:00 UTC ──
+//
+// Com funciona:
+//   1. En arrencar el servidor, calcula quants ms falten per al proper dia 1 a les 06:00 UTC.
+//   2. Registra un setTimeout per a aquell moment.
+//   3. Quan dispara, executa l'agent i programa el següent setTimeout (per al mes vinent).
+//
+// D'aquesta manera el servidor és autònom i no depèn de cap cron extern (Render, Supabase...).
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+function propDia1_06UTC(): Date {
+  const ara = new Date();
+  // Primer candidat: aquest mes
+  const candidat = new Date(Date.UTC(
+    ara.getUTCFullYear(),
+    ara.getUTCMonth(),
+    1,
+    6, 0, 0, 0,
+  ));
+  // Si ja hem passat (o estem exactament), passa al mes vinent
+  if (candidat.getTime() <= ara.getTime()) {
+    candidat.setUTCMonth(candidat.getUTCMonth() + 1);
+  }
+  return candidat;
+}
+
+let schedulerTimeout: NodeJS.Timeout | null = null;
+
+function iniciaScheduler() {
+  const propExecucio = propDia1_06UTC();
+  const msRestants   = propExecucio.getTime() - Date.now();
+  const diesRestants = Math.round(msRestants / 86_400_000 * 10) / 10;
+
+  console.log(`⏰ Scheduler: propera execució automàtica → ${propExecucio.toISOString()} (d'aquí ~${diesRestants} dies)`);
+
+  if (schedulerTimeout) clearTimeout(schedulerTimeout);
+  schedulerTimeout = setTimeout(async () => {
+    console.log(`\n⏰ Scheduler: disparant execució automàtica (${new Date().toISOString()})...`);
+    if (agentEnExecucio) {
+      console.warn("⚠️  Scheduler: l'agent ja s'estava executant, s'omet aquesta execució.");
+    } else {
+      agentEnExecucio = true;
+      try {
+        const r = await executaAgent();
+        console.log("✅ Scheduler: execució finalitzada:", r);
+      } catch (e) {
+        console.error("❌ Scheduler: error en l'execució:", e);
+      } finally {
+        agentEnExecucio = false;
+      }
+    }
+    // Programa el mes vinent
+    iniciaScheduler();
+  }, msRestants);
+}
