@@ -1,6 +1,6 @@
 // token-service/src/server.ts
 // Servei lleuger i sempre actiu que exposa el token APS 3-legged per al Viewer SDK.
-// Renova el token proactivament cada 50 minuts des de Supabase.
+// Renova el token proactivament calculant el temps restant real del token a Supabase.
 //
 // Endpoints:
 //   GET /health         → estat del servei
@@ -34,7 +34,12 @@ const server = http.createServer(async (req, res) => {
   // ── Health ────────────────────────────────────────────────────────────────
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", service: "token-service", timestamp: new Date().toISOString() }));
+    res.end(JSON.stringify({
+      status: "ok",
+      service: "token-service",
+      propera_renovacio: properaRenovacioISO(),
+      timestamp: new Date().toISOString(),
+    }));
     return;
   }
 
@@ -58,7 +63,6 @@ const server = http.createServer(async (req, res) => {
 
     const state = Math.random().toString(36).substring(2) + Date.now().toString(36);
     pendingStates.set(state, Date.now());
-    // Neteja states antics (>10 min)
     const ara = Date.now();
     for (const [k, ts] of pendingStates.entries()) {
       if (ara - ts > 10 * 60 * 1000) pendingStates.delete(k);
@@ -94,10 +98,9 @@ const server = http.createServer(async (req, res) => {
     }
     pendingStates.delete(returnedState);
 
-    // Intercanvia codi per token i desa a Supabase
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const clientId    = process.env.APS_CLIENT_ID;
+    const supabaseUrl  = process.env.SUPABASE_URL;
+    const supabaseKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const clientId     = process.env.APS_CLIENT_ID;
     const clientSecret = process.env.APS_CLIENT_SECRET;
     const callbackUrl  = process.env.APS_CALLBACK_URL;
 
@@ -131,6 +134,10 @@ const server = http.createServer(async (req, res) => {
         refresh_token: tokenData.refresh_token,
         expires_at:    Date.now() + tokenData.expires_in * 1000,
       });
+
+      // Nou token acabat d'obtenir: reprogramem el scheduler
+      planificaRenovacio();
+
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(htmlPagina("Autenticació completada", "Sessió APS iniciada correctament. Ja pots tancar aquesta finestra.", true));
     } catch (err) {
@@ -184,6 +191,8 @@ const server = http.createServer(async (req, res) => {
         const { data: rowNou } = await supabase
           .from("aps_tokens").select("expires_at").eq("id", 1).single();
         expiresIn = rowNou ? Math.round((rowNou.expires_at - Date.now()) / 1000) : 3600;
+        // Token renovat via petició externa: reprogramem el scheduler
+        planificaRenovacio();
       } else {
         res.writeHead(503, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Refresh token no disponible. Visita /auth/login." }));
@@ -207,18 +216,89 @@ const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: "Ruta no trobada" }));
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`\n🔑 Token Service arrancant al port ${PORT}`);
   console.log(`   GET  /health          → estat`);
   console.log(`   GET  /wake            → keep-alive`);
   console.log(`   GET  /auth/login      → inicia OAuth APS`);
   console.log(`   GET  /auth/callback   → callback OAuth APS`);
   console.log(`   GET  /api/aps-token   → token per al Viewer SDK\n`);
+  // En arrencar, llegim expires_at real de Supabase i programem la renovació
+  // al moment òptim en lloc d'usar un interval fix des de zero.
+  await planificaRenovacio();
 });
 
-// ─── Renovació proactiva del token cada 50 minuts ────────────────────────────
+// ─── Renovació proactiva intel·ligent ─────────────────────────────────────────
+//
+// Problema del setInterval fix:
+//   - Si el procés reinicia, el comptador comença de zero sense saber quan
+//     expira realment el token → pot renovar massa aviat o massa tard.
+//   - obteToken3Legged té un marge de 5 min: si el token encara és vàlid,
+//     retorna sense renovar i sense log → intervals silenciosos que semblen
+//     renovacions perdudes.
+//
+// Solució: setTimeout dinàmic
+//   En arrencar (i després de cada renovació), llegim expires_at de Supabase
+//   i programem el proper setTimeout per disparar quan quedin MARGE_RENOVACIO_MS
+//   abans que el token expiri. Sempre renova en el moment just, independentment
+//   dels reinicis del servei.
+// ─────────────────────────────────────────────────────────────────────────────
 
-async function renovaTokenProactivament() {
+const MARGE_RENOVACIO_MS = 10 * 60 * 1000; // Renova quan quedin 10 min per expirar
+const MIN_INTERVAL_MS    =  5 * 60 * 1000; // Mai programar per menys de 5 min
+
+let renovacioTimeout: NodeJS.Timeout | null = null;
+let properaRenovacioAt: Date | null = null;
+
+function properaRenovacioISO(): string | null {
+  return properaRenovacioAt ? properaRenovacioAt.toISOString() : null;
+}
+
+async function planificaRenovacio(): Promise<void> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) return;
+
+  if (renovacioTimeout) { clearTimeout(renovacioTimeout); renovacioTimeout = null; }
+
+  try {
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: row } = await supabase
+      .from("aps_tokens")
+      .select("expires_at, refresh_token")
+      .eq("id", 1)
+      .maybeSingle();
+
+    if (!row?.refresh_token) {
+      console.log("⏸️  Scheduler token APS: cap token a Supabase, esperant autenticació.");
+      return;
+    }
+
+    const ara           = Date.now();
+    const expiresAt     = row.expires_at as number;
+    const msFinsTrigger = Math.max(expiresAt - ara - MARGE_RENOVACIO_MS, MIN_INTERVAL_MS);
+    properaRenovacioAt  = new Date(ara + msFinsTrigger);
+
+    const minsRestants = Math.round(msFinsTrigger / 60_000);
+    console.log(`⏰ Scheduler token APS: propera renovació en ${minsRestants} min (${properaRenovacioAt.toISOString()})`);
+
+    renovacioTimeout = setTimeout(async () => {
+      await renovaTokenProactivament();
+      // Reprogramem per a la propera expiració
+      await planificaRenovacio();
+    }, msFinsTrigger);
+
+  } catch (err) {
+    console.error("❌ Error planificant renovació token:", err instanceof Error ? err.message : err);
+    // Fallback: reintenta en 5 min si hi ha error de xarxa o Supabase
+    renovacioTimeout = setTimeout(planificaRenovacio, MIN_INTERVAL_MS);
+    properaRenovacioAt = new Date(Date.now() + MIN_INTERVAL_MS);
+  }
+}
+
+async function renovaTokenProactivament(): Promise<void> {
   const supabaseUrl  = process.env.SUPABASE_URL;
   const supabaseKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const clientId     = process.env.APS_CLIENT_ID;
@@ -228,11 +308,12 @@ async function renovaTokenProactivament() {
     const supabase = createClient(supabaseUrl, supabaseKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
+    // Forcem la renovació ignorant el marge intern de obteToken3Legged:
+    // esborrem expires_at per fer-lo creure que el token ha expirat.
+    await supabase.from("aps_tokens").update({ expires_at: 0 }).eq("id", 1);
     await obteToken3Legged(supabase, clientId, clientSecret);
     console.log("🔄 Token APS renovat proactivament");
   } catch (err) {
     console.error("❌ Error renovació proactiva:", err instanceof Error ? err.message : err);
   }
 }
-
-setInterval(renovaTokenProactivament, 50 * 60 * 1000);
