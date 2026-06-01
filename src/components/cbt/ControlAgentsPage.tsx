@@ -383,30 +383,30 @@ function Visor3DPanel({
             </div>
           </div>
         )}
-      </Card>
 
-      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
-        <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-3">Execució manual</p>
-        <div className="flex items-center gap-3 flex-wrap">
-          <Button onClick={onTrigger} disabled={triggering || polling}
-            className="bg-[#0099A8] hover:bg-[#007a88] text-white gap-2 rounded-xl h-9 px-5 text-sm shadow-sm">
-            <Zap className={`h-3.5 w-3.5 ${triggering || polling ? "animate-pulse" : ""}`} />
-            {triggering ? "Iniciant…" : polling ? "Executant…" : "Executar ara"}
-          </Button>
-          {polling && (
-            <div className="flex items-center gap-2 text-[#0099A8] text-xs">
-              <div className="h-3.5 w-3.5 rounded-full border-2 border-[#0099A8] border-t-transparent animate-spin" />
-              Esperant resultat en temps real…
+        <div className="mt-4 pt-4 border-t border-slate-50">
+          <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-3">Execució manual</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button onClick={onTrigger} disabled={triggering || polling}
+              className="bg-[#0099A8] hover:bg-[#007a88] text-white gap-2 rounded-xl h-9 px-5 text-sm shadow-sm">
+              <Zap className={`h-3.5 w-3.5 ${triggering || polling ? "animate-pulse" : ""}`} />
+              {triggering ? "Iniciant…" : polling ? "Executant…" : "Executar ara"}
+            </Button>
+            {polling && (
+              <div className="flex items-center gap-2 text-[#0099A8] text-xs">
+                <div className="h-3.5 w-3.5 rounded-full border-2 border-[#0099A8] border-t-transparent animate-spin" />
+                Esperant resultat en temps real…
+              </div>
+            )}
+          </div>
+          {triggerMsg && (
+            <div className={`mt-3 px-4 py-2.5 rounded-xl text-sm flex items-start gap-2
+              ${triggerMsg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+              {triggerMsg.ok ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+              {triggerMsg.text}
             </div>
           )}
         </div>
-        {triggerMsg && (
-          <div className={`mt-3 px-4 py-2.5 rounded-xl text-sm flex items-start gap-2
-            ${triggerMsg.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-            {triggerMsg.ok ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <XCircle className="h-4 w-4 mt-0.5 shrink-0" />}
-            {triggerMsg.text}
-          </div>
-        )}
       </Card>
 
       <LogsTable agent={agent} logs={logs} loading={loading} nomInstallacions={nomInstallacions} />
@@ -696,7 +696,7 @@ function LogsTable({ agent, logs, loading, nomInstallacions }: {
 
   return (
     <Card className="border-slate-100 shadow-sm bg-white rounded-2xl overflow-hidden">
-      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50">
+      <div className="px-5 py-3.5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
         <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
           Historial ({logs.length})
         </p>
@@ -706,8 +706,15 @@ function LogsTable({ agent, logs, loading, nomInstallacions }: {
       ) : !logs.length ? (
         <div className="px-5 py-8 text-center text-sm text-slate-400">Cap execució registrada</div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="border border-slate-200 rounded-lg overflow-auto mx-4 my-4 bg-white">
           <table className="w-full text-sm" style={{ minWidth: 640 }}>
+            <colgroup>
+              <col style={{ width: 28 }} />
+              <col style={{ width: 220 }} />
+              <col style={{ width: 120 }} />
+              <col />
+              <col style={{ width: 80 }} />
+            </colgroup>
             <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
               <tr className="text-left">
                 <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-5" />
@@ -759,8 +766,8 @@ function LogsTable({ agent, logs, loading, nomInstallacions }: {
                     {/* ── Fila principal ──────────────────────────────────── */}
                     <tr
                       className={`border-t border-slate-100 transition-colors
-                        ${teDetall ? "cursor-pointer hover:bg-slate-50/70" : ""}
-                        ${i === 0 ? "bg-slate-50/40" : ""}
+                        ${teDetall ? "cursor-pointer hover:bg-slate-50/70" : "hover:bg-slate-50/40"}
+                        ${i === 0 && !expanded ? "bg-slate-50/40" : ""}
                         ${expanded ? "bg-slate-50" : ""}`}
                       onClick={() => teDetall && toggleExpandit(log.id)}
                     >
