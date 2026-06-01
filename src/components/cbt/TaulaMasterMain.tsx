@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ShieldOff, ChevronRight, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
+import { GroqChatWidget } from "./GroqChatWidget";
 import { useAuth } from "@/lib/auth";
 
 // Pàgines pesants carregades lazy — cada una tindrà el seu propi chunk JS
@@ -341,6 +342,9 @@ export function TaulaMasterMain() {
           </span>
         </footer>
       </div>
+
+      {/* Assistent de suport (botó flotant + xat Groq) */}
+      <GroqChatWidget />
     </div>
   );
 }
