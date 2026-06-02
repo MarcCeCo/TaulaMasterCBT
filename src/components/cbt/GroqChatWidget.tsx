@@ -1,14 +1,11 @@
 // src/components/cbt/GroqChatWidget.tsx
-// Xat de suport flotant alimentat per Groq.
-// Apareix a totes les pàgines via TaulaMasterMain.
-//
-// FIX 413: Limitem el context enviat al backend per no superar el límit TPM de Groq.
+// Xat de suport flotant alimentat per Groq + RAG (Supabase pgvector + Voyage AI).
+// Ja NO envia tot el context al backend — el RAG s'encarrega de trobar
+// la informació rellevant a cada consulta (~750 tokens en lloc de ~4.000+).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { ChevronDown, Loader2, Send, X, BookOpen } from "lucide-react";
-import { useDataStore } from "@/lib/dataStore";
-import { useProjectes } from "@/lib/useProjectes";
+import { useState, useRef, useEffect } from "react";
+import { ChevronDown, Loader2, Send, X, BookOpen, RefreshCw } from "lucide-react";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -21,14 +18,8 @@ interface Missatge {
 interface Props {
   pageContext?: string;
   pageLabel?:  string;
+  isAdmin?:    boolean;
 }
-
-// ─── Límits de context (client → backend) ─────────────────────────────────────
-// Han de ser iguals o inferiors als del backend per evitar 413.
-const MAX_EQUIPS_CTX    = 80;
-const MAX_FIELDS_CTX    = 60;
-const MAX_GUBIM_CTX     = 80;
-const MAX_PROJECTES_CTX = 5;
 
 // ─── Suggeriments per secció ──────────────────────────────────────────────────
 
@@ -55,7 +46,7 @@ const SUGGERIMENTS: Record<string, string[]> = {
   ],
   "projectes-equips": [
     "Proposa'm un TAG per a una bomba a ED008",
-    "Quins TAGs existeixen per a la instal·lació GR001?",
+    "Quin és el codi d'instal·lació de l'EDAR Montornès?",
     "Quina diferència hi ha entre duplicitat S i D?",
   ],
   "control-agents": [
@@ -71,7 +62,7 @@ const SUGGERIMENTS: Record<string, string[]> = {
 };
 
 const SUGGERIMENTS_DEFECTE = [
-  "Explica'm el Manual BIM de CBT",
+  "Quin és el codi d'instal·lació de l'EDAR Montornès?",
   "Quins equips hi ha de la família de bombes?",
   "Proposa'm un TAG Rosmiman per a ED008",
 ];
@@ -84,44 +75,18 @@ function formatHora(ts: number): string {
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
-export function GroqChatWidget({ pageContext, pageLabel }: Props) {
+export function GroqChatWidget({ pageContext, pageLabel, isAdmin }: Props) {
   const [obert, setObert]             = useState(false);
   const [missatges, setMissatges]     = useState<Missatge[]>([]);
   const [input, setInput]             = useState("");
   const [carregant, setCarregant]     = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [nouMissatge, setNouMissatge] = useState(false);
-  const [bimManualText, setBimManualText] = useState<string>("");
-  const [carregantManual, setCarregantManual] = useState(false);
+  const [indexant, setIndexant]       = useState(false);
+  const [indexMsg, setIndexMsg]       = useState<string | null>(null);
 
   const endRef   = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-
-  const ds         = useDataStore();
-  const { projectes } = useProjectes();
-
-  // ── Càrrega del Manual BIM ─────────────────────────────────────────────────
-  const carregaManual = useCallback(async () => {
-    if (bimManualText || carregantManual) return;
-    setCarregantManual(true);
-    try {
-      const res = await fetch("/api/bim-manual-text");
-      if (res.ok) {
-        const data = await res.json() as { text?: string };
-        if (data.text) setBimManualText(data.text);
-      }
-    } catch {
-      // No és crític
-    } finally {
-      setCarregantManual(false);
-    }
-  }, [bimManualText, carregantManual]);
-
-  useEffect(() => {
-    if (obert && !bimManualText && !carregantManual) {
-      carregaManual();
-    }
-  }, [obert, bimManualText, carregantManual, carregaManual]);
 
   // ── Efectes UI ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -143,59 +108,29 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
 
   const suggeriments = (pageContext && SUGGERIMENTS[pageContext]) ?? SUGGERIMENTS_DEFECTE;
 
-  // ── Serialització del context (limitat) ───────────────────────────────────
-  function buildContext() {
-    const equipments = ds.equipments.slice(0, MAX_EQUIPS_CTX).map(e => ({
-      equipCode: e.equipCode,
-      equipName: e.equipName,
-      gubimCode: e.gubimCode,
-      fieldCols: e.fieldCols,
-    }));
-
-    const fields = ds.fields.slice(0, MAX_FIELDS_CTX).map(f => ({
-      col:             f.col,
-      codi:            f.codi,
-      tipus_dada:      f.tipus_dada,
-      cbt:             f.cbt,
-      format_param:    f.format_param,
-      agrupacio_revit: f.agrupacio_revit,
-      disciplina:      f.disciplina,
-    }));
-
-    const gubimNodes = ds.gubimNodes.slice(0, MAX_GUBIM_CTX).map(n => ({
-      code: n.code,
-      name: n.name,
-    }));
-
-    const projectesCtx = projectes
-      .filter(p => p.status === "actiu")
-      .slice(0, MAX_PROJECTES_CTX)
-      .map(p => ({
-        codiProjecte:     p.codiProjecte,
-        nom:              p.nom,
-        codisInstallacio: p.codisInstallacio.map(i =>
-          typeof i === "string" ? i : i.codi
-        ),
-        tags: p.tags.map(t => ({
-          tagComplet:      t.tagComplet,
-          codiInstallacio: t.codiInstallacio,
-          ccm:             t.ccm,
-          funcio:          t.funcio,
-          duplicitat:      t.duplicitat,
-          status:          t.status,
-          descripcioEquip: t.descripcioEquip,
-        })),
-      }));
-
-    return {
-      equipments,
-      fields,
-      gubimNodes,
-      projectes:   projectesCtx,
-      bimManual:   bimManualText ? bimManualText.slice(0, 4_000) : undefined,
-      pageContext:  pageLabel ?? pageContext,
-    };
-  }
+  // ── Reindexar (només admins) ───────────────────────────────────────────────
+  const reindexar = async () => {
+    if (indexant) return;
+    setIndexant(true);
+    setIndexMsg(null);
+    try {
+      const res = await fetch("/api/index-embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipus: "tot" }),
+      });
+      const data = await res.json() as { indexats?: number; errors?: number; temps_ms?: number; error?: string };
+      if (!res.ok || data.error) {
+        setIndexMsg(`❌ Error: ${data.error}`);
+      } else {
+        setIndexMsg(`✅ ${data.indexats} registres indexats en ${((data.temps_ms ?? 0) / 1000).toFixed(1)}s`);
+      }
+    } catch (err) {
+      setIndexMsg(`❌ ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setIndexant(false);
+    }
+  };
 
   // ── Enviar missatge ────────────────────────────────────────────────────────
   const envia = async () => {
@@ -215,8 +150,10 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // Ara NOMÉS enviem els missatges i el context de pàgina
+          // El RAG al backend s'encarrega de trobar la informació rellevant
           messages: historial.map(m => ({ role: m.rol, content: m.text })),
-          context:  buildContext(),
+          context: { pageContext: pageLabel ?? pageContext },
         }),
       });
 
@@ -249,7 +186,7 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
       <div
         className="fixed bottom-[84px] right-5 z-50 flex flex-col"
         style={{
-          width: 360, height: 520,
+          width: 360, height: 540,
           background: "white",
           borderRadius: 20,
           boxShadow: "0 8px 40px rgba(0,90,99,0.18), 0 2px 8px rgba(0,0,0,0.08)",
@@ -269,13 +206,8 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
             borderRadius: "20px 20px 0 0",
           }}
         >
-          {/* Icona: la Núria */}
           <div className="h-9 w-9 rounded-xl overflow-hidden shrink-0 bg-white/20 flex items-center justify-center">
-            <img
-              src="/NutriaCBT.png"
-              alt="Assistent CBT"
-              className="h-full w-full object-cover"
-            />
+            <img src="/NutriaCBT.png" alt="Assistent CBT" className="h-full w-full object-cover" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white font-semibold text-sm leading-tight">Assistent CBT</p>
@@ -283,20 +215,27 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
               {pageLabel && (
                 <p className="text-white/70 text-[10.5px] truncate">{pageLabel}</p>
               )}
-              {bimManualText && (
-                <span
-                  className="flex items-center gap-0.5 text-[9px] text-white/50"
-                  title="Manual BIM carregat"
-                >
-                  <BookOpen className="h-2.5 w-2.5" />
-                  Manual BIM
-                </span>
-              )}
-              {carregantManual && (
-                <Loader2 className="h-2.5 w-2.5 text-white/40 animate-spin" />
-              )}
+              <span className="flex items-center gap-0.5 text-[9px] text-white/50" title="RAG actiu">
+                <BookOpen className="h-2.5 w-2.5" />
+                RAG actiu
+              </span>
             </div>
           </div>
+
+          {/* Botó reindexar (només admins) */}
+          {isAdmin && (
+            <button
+              onClick={reindexar}
+              disabled={indexant}
+              className="h-7 w-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors mr-1"
+              title="Reindexar dades al RAG"
+            >
+              {indexant
+                ? <Loader2 className="h-3.5 w-3.5 text-white animate-spin" />
+                : <RefreshCw className="h-3.5 w-3.5 text-white" />}
+            </button>
+          )}
+
           <button
             onClick={tancaPanell}
             className="h-7 w-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
@@ -305,6 +244,20 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
           </button>
         </div>
 
+        {/* Missatge d'indexació */}
+        {indexMsg && (
+          <div
+            className="px-4 py-2 text-[11px] shrink-0"
+            style={{
+              background: indexMsg.startsWith("✅") ? "#F0FDF4" : "#FEF2F2",
+              color:      indexMsg.startsWith("✅") ? "#15803D" : "#DC2626",
+              borderBottom: "1px solid rgba(0,153,168,0.08)",
+            }}
+          >
+            {indexMsg}
+          </div>
+        )}
+
         {/* Zona de missatges */}
         <div
           className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0"
@@ -312,21 +265,15 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
         >
           {missatges.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-4">
-              {/* Avatar gran de la Núria */}
               <div
-                className="h-16 w-16 rounded-2xl overflow-hidden flex items-center justify-center"
+                className="h-16 w-16 rounded-2xl overflow-hidden"
                 style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}
               >
-                <img
-                  src="/NutriaCBT.png"
-                  alt="Assistent CBT"
-                  className="h-full w-full object-cover"
-                />
+                <img src="/NutriaCBT.png" alt="Assistent CBT" className="h-full w-full object-cover" />
               </div>
               <p className="text-sm font-semibold text-slate-700">Com puc ajudar-te?</p>
               <p className="text-[11.5px] text-slate-400 leading-relaxed">
-                Tinc accés als equips, camps, projectes, TAGs
-                {bimManualText ? " i al Manual BIM" : ""} de la plataforma.
+                Tinc accés a <strong>tota</strong> la informació de la plataforma gràcies al RAG.
               </p>
               <div className="flex flex-col gap-1.5 w-full mt-1">
                 {suggeriments.map(s => (
@@ -350,10 +297,8 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
           {missatges.map((m, i) => (
             <div key={i} className={`flex gap-2 ${m.rol === "user" ? "flex-row-reverse" : "flex-row"}`}>
               {m.rol === "assistant" && (
-                <div
-                  className="h-6 w-6 rounded-lg shrink-0 overflow-hidden mt-0.5"
-                  style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}
-                >
+                <div className="h-6 w-6 rounded-lg shrink-0 overflow-hidden mt-0.5"
+                  style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}>
                   <img src="/NutriaCBT.png" alt="" className="h-full w-full object-cover" />
                 </div>
               )}
@@ -366,10 +311,7 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
                 }
               >
                 {m.text.split("\n").map((linia, li, arr) => (
-                  <span key={li}>
-                    {linia}
-                    {li < arr.length - 1 && <br />}
-                  </span>
+                  <span key={li}>{linia}{li < arr.length - 1 && <br />}</span>
                 ))}
                 <div className={`text-[9.5px] mt-1 ${m.rol === "user" ? "text-white/60 text-right" : "text-slate-400"}`}>
                   {formatHora(m.ts)}
@@ -380,32 +322,23 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
 
           {carregant && (
             <div className="flex gap-2 items-center">
-              <div
-                className="h-6 w-6 rounded-lg shrink-0 overflow-hidden"
-                style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}
-              >
+              <div className="h-6 w-6 rounded-lg shrink-0 overflow-hidden"
+                style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}>
                 <img src="/NutriaCBT.png" alt="" className="h-full w-full object-cover" />
               </div>
-              <div
-                className="px-3 py-2.5 rounded-2xl rounded-bl-md flex gap-1 items-center"
-                style={{ background: "#F3F4F2" }}
-              >
+              <div className="px-3 py-2.5 rounded-2xl rounded-bl-md flex gap-1 items-center"
+                style={{ background: "#F3F4F2" }}>
                 {[0, 1, 2].map(i => (
-                  <span
-                    key={i}
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: "#0099A8", animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
-                  />
+                  <span key={i} className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: "#0099A8", animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
                 ))}
               </div>
             </div>
           )}
 
           {error && (
-            <div
-              className="px-3 py-2 rounded-xl text-[11.5px]"
-              style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}
-            >
+            <div className="px-3 py-2 rounded-xl text-[11.5px]"
+              style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
               ❌ {error}
             </div>
           )}
@@ -414,19 +347,15 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
         </div>
 
         {/* Input */}
-        <div
-          className="px-3 pb-3 pt-2 shrink-0"
-          style={{ borderTop: "1px solid rgba(0,153,168,0.08)" }}
-        >
-          <div
-            className="flex items-end gap-2 rounded-2xl px-3 py-2"
+        <div className="px-3 pb-3 pt-2 shrink-0"
+          style={{ borderTop: "1px solid rgba(0,153,168,0.08)" }}>
+          <div className="flex items-end gap-2 rounded-2xl px-3 py-2"
             style={{
               background: "#F3F4F2",
               border: "1.5px solid",
               borderColor: input ? "rgba(0,153,168,0.35)" : "rgba(0,153,168,0.12)",
               transition: "border-color 150ms",
-            }}
-          >
+            }}>
             <textarea
               ref={inputRef}
               value={input}
@@ -460,7 +389,7 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
         </div>
       </div>
 
-      {/* ── Botó flotant amb la Núria ────────────────────────────────────── */}
+      {/* ── Botó flotant ────────────────────────────────────────────────── */}
       <button
         onClick={obert ? tancaPanell : obrePanell}
         className="fixed bottom-5 right-5 z-50 h-14 w-14 rounded-2xl flex items-center justify-center shadow-lg transition-all overflow-hidden"
@@ -483,9 +412,7 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
           <span
             className="absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
             style={{ background: "#EF4444" }}
-          >
-            !
-          </span>
+          >!</span>
         )}
       </button>
 
