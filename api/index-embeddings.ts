@@ -230,7 +230,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── Fields ──
     if (tipusTarget === "tot" || tipusTarget === "field") {
       send({ fase: "field", estat: "carregant" });
-      const rows: FieldRow[] = await supaFetch("fields_meta?select=col,codi,tipus_dada,cbt,disciplina,agrupacio_revit,format_param&limit=2000");
+      const rows: FieldRow[] = await supaFetch("fields?select=col,codi,tipus_dada,cbt,disciplina,agrupacio_revit,format_param&limit=2000");
       send({ fase: "field", estat: "indexant", total: rows.length });
       const r = await processaBatch(rows, "field", f => f.col, textField, f => ({ col: f.col, codi: f.codi, tipus_dada: f.tipus_dada }), voyageKey, supaUrl!, supaKey!);
       totalIndexats += r.indexats; totalErrors += r.errors;
