@@ -1,186 +1,118 @@
 // api/groq-chat.ts
-// Vercel Edge Function — proxy segur per a la Groq API.
-// La clau GROQ_API_KEY mai surt al client.
+// Vercel Edge Function — proxy segur per a la Groq API amb RAG via Supabase pgvector.
 //
-// FIX 413: Limitem el context per no superar el límit de 12.000 TPM de Groq.
-// Estratègia:
-//  - Equips:    màx 80 (amb camps truncats)
-//  - Fields:    màx 60
-//  - GuBIM:     màx 80 nodes
-//  - Projectes: màx 5 projectes, màx 30 TAGs per projecte
-//  - BIM Manual: màx 4.000 caràcters (resum)
-//  - Historial: màx 6 torns (últimes 12 línies)
+// Flux:
+//   1. Rep la pregunta de l'usuari
+//   2. Genera un embedding de la pregunta (Voyage AI)
+//   3. Cerca els 10 fragments més rellevants a cbt_embeddings (pgvector)
+//   4. Construeix un system prompt MÍNIM amb només els resultats RAG
+//   5. Crida Groq (~750 tokens en lloc de ~4.000+)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const config = { runtime: "edge" };
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-// ─── Tipus del body ───────────────────────────────────────────────────────────
+// ─── Tipus ────────────────────────────────────────────────────────────────────
 
 interface MissatgeAPI {
   role: string;
   content: string;
 }
 
-interface EquipContext {
-  equipCode:   string;
-  equipName:   string;
-  gubimCode:   string;
-  fieldCols:   string[];
+interface RagResult {
+  id:        string;
+  tipus:     string;
+  contingut: string;
+  metadata:  Record<string, unknown>;
+  similitud: number;
 }
 
-interface FieldContext {
-  col:             string;
-  codi:            string | null;
-  tipus_dada:      string | null;
-  cbt:             string | null;
-  format_param:    string | null;
-  agrupacio_revit: string | null;
-  disciplina:      string | null;
+// ─── Embedding de la query (Voyage AI) ───────────────────────────────────────
+
+async function embedQuery(text: string, voyageKey: string): Promise<number[]> {
+  const res = await fetch("https://api.voyageai.com/v1/embeddings", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${voyageKey}`,
+    },
+    body: JSON.stringify({
+      model: "voyage-3",
+      input: [text],
+      input_type: "query",
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Voyage AI error ${res.status}: ${err}`);
+  }
+
+  const data = await res.json() as { data: { embedding: number[] }[] };
+  return data.data[0].embedding;
 }
 
-interface GubimContext {
-  code: string;
-  name: string;
+// ─── Cerca RAG a Supabase pgvector ────────────────────────────────────────────
+
+async function cercaRag(
+  queryEmbedding: number[],
+  supaUrl: string,
+  supaKey: string,
+  matchCount = 12
+): Promise<RagResult[]> {
+  const res = await fetch(`${supaUrl}/rest/v1/rpc/cerca_rag`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "apikey": supaKey,
+      "Authorization": `Bearer ${supaKey}`,
+    },
+    body: JSON.stringify({
+      query_embedding: queryEmbedding,
+      match_count: matchCount,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Supabase RAG error ${res.status}: ${err}`);
+  }
+
+  return res.json() as Promise<RagResult[]>;
 }
 
-interface TagContext {
-  tagComplet:      string;
-  codiInstallacio: string;
-  ccm:             string;
-  funcio:          string;
-  duplicitat:      string;
-  status:          string;
-  descripcioEquip: string;
-}
-
-interface ProjecteContext {
-  codiProjecte:      string;
-  nom:               string;
-  codisInstallacio:  string[];
-  tags:              TagContext[];
-}
-
-interface ContextData {
-  equipments?:  EquipContext[];
-  fields?:      FieldContext[];
-  gubimNodes?:  GubimContext[];
-  projectes?:   ProjecteContext[];
-  bimManual?:   string;
-  pageContext?: string;
-}
-
-// ─── Límits de context (ajusta'ls si cal) ─────────────────────────────────────
-const MAX_EQUIPS      = 80;
-const MAX_FIELDS      = 60;
-const MAX_GUBIM       = 80;
-const MAX_PROJECTES   = 5;
-const MAX_TAGS_PER_P  = 30;
-const MAX_BIM_CHARS   = 4_000;
-const MAX_TORNS       = 6;   // últims N missatges de la conversa
-
-// ─── System prompt base ───────────────────────────────────────────────────────
+// ─── System prompt amb resultats RAG ─────────────────────────────────────────
 
 const SYSTEM_BASE = `Ets l'assistent de TaulaMaster CBT, la plataforma de gestió d'instal·lacions del Consorci Besòs Tordera.
 
 Respon sempre en català, de forma clara i concisa. Si et pregunten en castellà o anglès, respon en aquell idioma.
 
-## Capacitats
-
-Pots ajudar a:
-- Respondre preguntes sobre el Manual BIM de CBT
-- Llistar o filtrar equips de la Taula Master per codi, nom o classificació GuBIMClass
-- Explicar quins camps (fields) té un equip concret
-- Proposar TAGs Rosmiman nous seguint el format: CODIINSTALLACIO_CODIEQUIP_CCMFUNCIODUPLICITATAT
-- Consultar projectes actius i els seus TAGs
-- Ajudar amb dubtes de la plataforma en general
+Tens accés a tota la informació de la plataforma: equips, camps, classificació GuBIMClass, projectes i TAGs.
 
 ## Format TAG Rosmiman
-
 \`CODIINSTALLACIO_CODIEQUIP_CCMFUNCIODUPLICITATAT\`
 - CODIINSTALLACIO: 5 caràcters (ex: ED008, GR001)
 - CODIEQUIP: codi GuBIMClass (ex: BM00, VLV0)
 - CCM: comptador 3 dígits (ex: 001)
 - FUNCIO: A=alimentació, B=bypass, R=reserva…
 - DUPLICITAT: S=simple, D=duplicat, T=triple
-
 Exemple: \`ED008_BM00_001A\`
 
-Quan proposis TAGs nous, comprova que no existeixin als projectes actuals.
-`;
+Quan proposis TAGs nous, comprova que no existeixin als projectes.`;
 
-// ─── Constructor del system prompt (context limitat) ─────────────────────────
+function buildSystemPrompt(ragResults: RagResult[], pageContext?: string): string {
+  const parts = [SYSTEM_BASE];
 
-function buildSystemPrompt(ctx: ContextData): string {
-  const parts: string[] = [SYSTEM_BASE];
-
-  if (ctx.pageContext) {
-    parts.push(`## Pàgina actual\nL'usuari es troba a: **${ctx.pageContext}**`);
+  if (pageContext) {
+    parts.push(`## Pàgina actual\nL'usuari es troba a: **${pageContext}**`);
   }
 
-  // ── Equips (màx MAX_EQUIPS) ──
-  if (ctx.equipments && ctx.equipments.length > 0) {
-    const mostrats = ctx.equipments.slice(0, MAX_EQUIPS);
-    const lines = mostrats.map(e =>
-      `- ${e.equipCode || "(s/c)"} | ${e.equipName} | GuBIM: ${e.gubimCode}`
+  if (ragResults.length > 0) {
+    const lines = ragResults.map(r =>
+      `[${r.tipus.toUpperCase()} | similitud: ${(r.similitud * 100).toFixed(0)}%]\n${r.contingut}`
     );
-    const nota = ctx.equipments.length > MAX_EQUIPS
-      ? `\n_(mostrant ${MAX_EQUIPS} de ${ctx.equipments.length} equips)_`
-      : "";
-    parts.push(`## Equips (${mostrats.length})\n\n${lines.join("\n")}${nota}`);
-  }
-
-  // ── Camps (màx MAX_FIELDS) ──
-  if (ctx.fields && ctx.fields.length > 0) {
-    const mostrats = ctx.fields.slice(0, MAX_FIELDS);
-    const lines = mostrats.map(f => {
-      const d = [
-        f.codi       ? `codi: ${f.codi}`        : null,
-        f.tipus_dada ? `tipus: ${f.tipus_dada}`  : null,
-        f.disciplina ? `disc: ${f.disciplina}`   : null,
-      ].filter(Boolean).join(", ");
-      return `- ${f.col}${d ? ` (${d})` : ""}`;
-    });
-    const nota = ctx.fields.length > MAX_FIELDS
-      ? `\n_(mostrant ${MAX_FIELDS} de ${ctx.fields.length} camps)_`
-      : "";
-    parts.push(`## Camps (${mostrats.length})\n\n${lines.join("\n")}${nota}`);
-  }
-
-  // ── GuBIMClass (màx MAX_GUBIM) ──
-  if (ctx.gubimNodes && ctx.gubimNodes.length > 0) {
-    const nodes = ctx.gubimNodes.slice(0, MAX_GUBIM);
-    const lines = nodes.map(n => `- ${n.code}: ${n.name}`);
-    parts.push(`## GuBIMClass (${nodes.length} nodes)\n\n${lines.join("\n")}`);
-  }
-
-  // ── Projectes i TAGs (màx MAX_PROJECTES projectes, MAX_TAGS_PER_P tags) ──
-  if (ctx.projectes && ctx.projectes.length > 0) {
-    const mostrats = ctx.projectes.slice(0, MAX_PROJECTES);
-    const pLines: string[] = [];
-    for (const p of mostrats) {
-      pLines.push(`### ${p.codiProjecte} — ${p.nom}`);
-      const tags = p.tags.slice(0, MAX_TAGS_PER_P);
-      if (tags.length > 0) {
-        pLines.push(tags.map(t =>
-          `  - ${t.tagComplet} [${t.status}]${t.descripcioEquip ? ` — ${t.descripcioEquip}` : ""}`
-        ).join("\n"));
-        if (p.tags.length > MAX_TAGS_PER_P) {
-          pLines.push(`  _(+${p.tags.length - MAX_TAGS_PER_P} TAGs omesos)_`);
-        }
-      } else {
-        pLines.push("  (sense TAGs)");
-      }
-    }
-    parts.push(`## Projectes actius\n\n${pLines.join("\n")}`);
-  }
-
-  // ── Manual BIM (màx MAX_BIM_CHARS) ──
-  if (ctx.bimManual && ctx.bimManual.trim().length > 100) {
-    const text = ctx.bimManual.slice(0, MAX_BIM_CHARS);
-    const truncat = ctx.bimManual.length > MAX_BIM_CHARS
-      ? "\n[... text truncat — demana detalls específics ...]"
-      : "";
-    parts.push(`## Manual BIM CBT (resum)\n\n${text}${truncat}`);
+    parts.push(`## Informació rellevant trobada\n\n${lines.join("\n\n")}`);
+  } else {
+    parts.push("## Nota\nNo s'ha trobat informació específica per a aquesta consulta a la base de dades.");
   }
 
   return parts.join("\n\n");
@@ -188,7 +120,7 @@ function buildSystemPrompt(ctx: ContextData): string {
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   const headers = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
@@ -196,64 +128,63 @@ export default async function handler(req: Request): Promise<Response> {
     "Access-Control-Allow-Headers": "Content-Type",
   };
 
-  if (req.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers });
-  }
+  if (req.method === "OPTIONS") { res.status(204).end(); return; }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Mètode no permès" }), { status: 405, headers });
+    res.status(405).json({ error: "Mètode no permès" }); return;
   }
 
-  const groqApiKey = process.env.GROQ_API_KEY;
-  if (!groqApiKey) {
-    return new Response(
-      JSON.stringify({ error: "GROQ_API_KEY no configurada al servidor" }),
-      { status: 500, headers }
-    );
-  }
+  // Variables d'entorn — comprovació correcta (amb claus al if)
+  const groqKey   = process.env.GROQ_API_KEY;
+  const voyageKey = process.env.VOYAGE_API_KEY;
+  const supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  let body: { messages?: MissatgeAPI[]; context?: ContextData };
+  if (!groqKey)   { res.status(500).json({ error: "Falta GROQ_API_KEY" }); return; }
+  if (!voyageKey) { res.status(500).json({ error: "Falta VOYAGE_API_KEY" }); return; }
+  if (!supaUrl)   { res.status(500).json({ error: "Falta SUPABASE_URL" }); return; }
+  if (!supaKey)   { res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }); return; }
+
+  let body: { messages?: MissatgeAPI[]; context?: { pageContext?: string } };
   try {
-    body = await req.json();
+    body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
   } catch {
-    return new Response(JSON.stringify({ error: "Body invàlid" }), { status: 400, headers });
+    res.status(400).json({ error: "Body invàlid" }); return;
   }
 
   const missatgesUsuari = body.messages ?? [];
   if (!Array.isArray(missatgesUsuari) || missatgesUsuari.length === 0) {
-    return new Response(JSON.stringify({ error: "Cap missatge rebut" }), { status: 400, headers });
+    res.status(400).json({ error: "Cap missatge rebut" }); return;
   }
 
-  const ctx = body.context ?? {};
+  // Última pregunta de l'usuari per fer la cerca RAG
+  const ultimaPregunta = missatgesUsuari
+    .filter(m => m.role === "user")
+    .at(-1)?.content ?? "";
 
-  // Self-call per obtenir el Manual BIM (si no ve del client)
-  if (!ctx.bimManual) {
-    try {
-      const baseUrl = process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : "http://localhost:5173";
-      const manualRes = await fetch(`${baseUrl}/api/bim-manual-text`, {
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (manualRes.ok) {
-        const manualData = await manualRes.json() as { text?: string };
-        if (manualData.text) ctx.bimManual = manualData.text;
-      }
-    } catch {
-      // Continua sense manual si falla
-    }
+  // ── RAG: embedding + cerca ─────────────────────────────────────────────────
+  let ragResults: RagResult[] = [];
+  try {
+    const queryEmbedding = await embedQuery(ultimaPregunta, voyageKey);
+    ragResults = await cercaRag(queryEmbedding, supaUrl, supaKey, 12);
+  } catch (err) {
+    // Si el RAG falla, continuem sense context (millor que no respondre)
+    console.error("RAG error:", err);
   }
 
-  const systemPrompt = buildSystemPrompt(ctx);
+  const systemPrompt = buildSystemPrompt(
+    ragResults,
+    body.context?.pageContext
+  );
 
-  // Limita l'historial als últims MAX_TORNS missatges
-  const missatgesTallats = missatgesUsuari.slice(-MAX_TORNS);
+  // Historial limitat a 6 torns
+  const missatgesTallats = missatgesUsuari.slice(-6);
 
   try {
     const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${groqApiKey}`,
+        Authorization: `Bearer ${groqKey}`,
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
@@ -268,10 +199,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!groqRes.ok) {
       const errText = await groqRes.text();
-      return new Response(
-        JSON.stringify({ error: `Error Groq API: ${groqRes.status} — ${errText}` }),
-        { status: 502, headers }
-      );
+      res.status(502).json({ error: `Error Groq API: ${groqRes.status} — ${errText}` }); return;
     }
 
     const data = await groqRes.json() as {
@@ -279,10 +207,10 @@ export default async function handler(req: Request): Promise<Response> {
     };
 
     const reply = data.choices?.[0]?.message?.content ?? "";
-    return new Response(JSON.stringify({ reply }), { status: 200, headers });
+    res.status(200).json({ reply }); return;
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers });
+    res.status(500).json({ error: msg }); return;
   }
 }

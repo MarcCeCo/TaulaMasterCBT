@@ -39,6 +39,9 @@ import {
   Wrench,
   Package,
   Box,
+  Loader2,
+  Brain,
+  DatabaseZap,
 } from "lucide-react";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
@@ -123,6 +126,17 @@ const AGENTS_CONFIG: AgentConfig[] = [
     nom: "Crear Famílies",
     descripcio: "Genera famílies .rfa CBT per a Revit — s'executa a l'ordinador de l'usuari via pyRevit",
     icon: <Package className="h-4 w-4" />,
+    cronSchedule: "",
+    logTable: null,
+    syncEndpoint: null,
+    agentUrlEnv: "",
+    agentSecretEnv: "",
+  },
+  {
+    id: "lludrigaIA",
+    nom: "LludrigaIA",
+    descripcio: "Agent d'intel·ligència artificial RAG — indexa i gestiona el coneixement de la plataforma",
+    icon: <Brain className="h-4 w-4" />,
     cronSchedule: "",
     logTable: null,
     syncEndpoint: null,
@@ -1262,6 +1276,216 @@ function CrearFamiliesPanel() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// PANELL LLUDRIGA IA
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function LludrigaIAPanel() {
+  const [indexant, setIndexant]   = useState(false);
+  const [progres,  setProgres]    = useState<string>("");
+  const [resultat, setResultat]   = useState<{ ok: boolean; text: string } | null>(null);
+
+  const reindexar = async () => {
+    if (indexant) return;
+    setIndexant(true);
+    setResultat(null);
+    setProgres("Iniciant indexació...");
+    try {
+      const res = await fetch("/api/index-embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tipus: "tot" }),
+      });
+
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => `HTTP ${res.status}`);
+        let msg = text;
+        try { msg = JSON.parse(text).error ?? text; } catch { /* raw text */ }
+        setResultat({ ok: false, text: `Error: ${msg}` });
+        return;
+      }
+
+      // Lector del stream NDJSON — cada línia és un objecte JSON de progrés
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let totalIndexats = 0;
+      let totalErrors = 0;
+      let tempMs = 0;
+
+      const fasesLabel: Record<string, string> = {
+        equip: "Equips", field: "Camps", gubim: "GuBIMClass",
+        projecte: "Projectes", tag: "TAGs",
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line) as {
+              fase?: string; estat?: string; total?: number;
+              indexats?: number; errors?: number; temps_ms?: number;
+              fet?: boolean; error?: string; detall?: string;
+            };
+
+            if (msg.error) {
+              setResultat({ ok: false, text: `Error: ${msg.error}${msg.detall ? ` — ${msg.detall}` : ""}` });
+              return;
+            }
+            if (msg.fet) {
+              totalIndexats = msg.indexats ?? totalIndexats;
+              totalErrors   = msg.errors   ?? totalErrors;
+              tempMs        = msg.temps_ms ?? tempMs;
+              setProgres("");
+            } else if (msg.fase && msg.estat) {
+              const label = fasesLabel[msg.fase] ?? msg.fase;
+              if (msg.estat === "carregant")  setProgres(`Carregant ${label}...`);
+              if (msg.estat === "indexant")   setProgres(`Indexant ${label} (${msg.total ?? "?"} registres)...`);
+              if (msg.estat === "fet")        setProgres(`✓ ${label}: ${msg.indexats} indexats`);
+              if (msg.indexats != null)       totalIndexats += msg.indexats;
+              if (msg.errors   != null)       totalErrors   += msg.errors;
+            }
+          } catch { /* línia malformada, ignorar */ }
+        }
+      }
+
+      setResultat({
+        ok: totalErrors === 0,
+        text: `${totalIndexats} registres indexats en ${(tempMs / 1000).toFixed(1)}s${totalErrors ? ` (${totalErrors} errors)` : ""}`,
+      });
+    } catch (err) {
+      setResultat({ ok: false, text: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setIndexant(false);
+      setProgres("");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+
+      {/* Capçalera */}
+      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+        <div className="flex items-start gap-3">
+          <div className="h-11 w-11 rounded-xl bg-[#0099A8]/10 flex items-center justify-center text-[#0099A8]">
+            <Brain className="h-5 w-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-semibold text-slate-800 text-base">LludrigaIA</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Agent d'intel·ligència artificial RAG basat en Voyage AI + pgvector
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-slate-50 flex items-center gap-2 flex-wrap">
+          <Badge className="bg-[#0099A8]/8 text-[#0099A8] border-[#0099A8]/20 text-[10px]">Voyage AI</Badge>
+          <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">pgvector · Supabase</Badge>
+          <Badge className="bg-slate-50 text-slate-600 border-slate-200 text-[10px]">RAG ~750 tokens/consulta</Badge>
+          <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">Requereix VOYAGE_API_KEY</Badge>
+        </div>
+      </Card>
+
+      {/* Secció indexació */}
+      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+        <div className="flex items-center gap-2 mb-1">
+          <DatabaseZap className="h-4 w-4 text-[#0099A8]" />
+          <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">
+            Indexació de coneixement
+          </p>
+        </div>
+        <p className="text-[12.5px] text-slate-500 mb-5 leading-relaxed">
+          Genera els embeddings vectorials de tots els equips, camps, GuBIMClass, projectes i TAGs
+          de la plataforma. Necessari per al funcionament del xat assistit per RAG.
+          Triga aproximadament <strong>1–2 minuts</strong>.
+        </p>
+
+        <div className="flex items-center gap-4 flex-wrap">
+          <Button
+            onClick={reindexar}
+            disabled={indexant}
+            className="bg-[#0099A8] hover:bg-[#007a88] text-white gap-2 rounded-xl h-10 px-6 text-sm shadow-sm"
+          >
+            {indexant ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Indexant…
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                Reindexar ara
+              </>
+            )}
+          </Button>
+          {indexant && (
+            <div className="flex items-center gap-2 text-[#0099A8] text-xs">
+              <div className="h-3.5 w-3.5 rounded-full border-2 border-[#0099A8] border-t-transparent animate-spin" />
+              {progres || "Indexant tota la plataforma…"}
+            </div>
+          )}
+        </div>
+
+        {resultat && (
+          <div
+            className={`mt-4 px-4 py-3 rounded-xl text-sm flex items-start gap-2
+              ${resultat.ok ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}
+          >
+            {resultat.ok
+              ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+              : <XCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+            {resultat.ok ? `✅ ${resultat.text}` : `❌ ${resultat.text}`}
+          </div>
+        )}
+      </Card>
+
+      {/* Informació tècnica */}
+      <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
+        <div className="flex items-center gap-2 mb-4">
+          <Info className="h-4 w-4 text-[#0099A8]" />
+          <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400">Com funciona el RAG</p>
+        </div>
+        <div className="space-y-0">
+          <Pas num={1} titol="Indexació (aquest botó)" icon={<DatabaseZap className="h-3.5 w-3.5" />}>
+            <p>Llegeix tots els equips, camps, GuBIMClass, projectes i TAGs de Supabase, genera un vector de 1.024 dimensions per a cada registre via <strong>Voyage AI</strong> i els desa a la taula <Code>cbt_embeddings</Code>.</p>
+          </Pas>
+          <Pas num={2} titol="Consulta al xat" icon={<Brain className="h-3.5 w-3.5" />}>
+            <p>Quan l'usuari fa una pregunta, el backend vectoritza la pregunta, executa la funció <Code>cerca_rag()</Code> de pgvector i recupera els <strong>8 fragments més rellevants</strong> (~750 tokens).</p>
+          </Pas>
+          <Pas num={3} titol="Resposta contextualitzada" icon={<Zap className="h-3.5 w-3.5" />}>
+            <p>Els fragments es passen com a context al model de llenguatge (Groq), que genera una resposta precisa sense necessitat d'enviar tota la base de dades a cada consulta.</p>
+          </Pas>
+          <Pas num={4} titol="Quan reindexar" icon={<RefreshCw className="h-3.5 w-3.5" />}>
+            <p>Reindexar quan s'afegeixen nous equips o projectes, es modifiquen codis o noms clau, o quan el xat dona respostes incorrectes o no troba informació que hauria de conèixer.</p>
+          </Pas>
+        </div>
+      </Card>
+
+      {/* Variables d'entorn requerides */}
+      <Card className="p-4 border-amber-200 bg-amber-50 rounded-2xl">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-[12px] text-amber-800 space-y-1.5 leading-relaxed">
+            <p className="font-semibold text-amber-900">Variables d'entorn necessàries a Vercel</p>
+            <div className="font-mono bg-amber-100 rounded-lg px-3 py-2 text-[11px] text-amber-900 border border-amber-200 space-y-1">
+              <div><span className="text-amber-600">VOYAGE_API_KEY</span>        = <span className="text-amber-800">va-xxxxxxxxxx</span></div>
+              <div><span className="text-amber-600">SUPABASE_URL</span>           = <span className="text-amber-800">https://xxxx.supabase.co</span></div>
+              <div><span className="text-amber-600">SUPABASE_SERVICE_ROLE_KEY</span> = <span className="text-amber-800">eyJxxxx  ← service_role, no l'anon!</span></div>
+            </div>
+            <p>Obtén la clau de Voyage AI a <strong>voyageai.com → Dashboard → API Keys</strong> (50M tokens gratuïts/mes).</p>
+          </div>
+        </div>
+      </Card>
+
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // COMPONENT PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -1535,6 +1759,9 @@ export function ControlAgentsPage() {
           )}
           {selectedAgent.id === "crearFamilies" && (
             <CrearFamiliesPanel />
+          )}
+          {selectedAgent.id === "lludrigaIA" && (
+            <LludrigaIAPanel />
           )}
         </div>
       </div>

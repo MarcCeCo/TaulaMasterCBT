@@ -1,11 +1,19 @@
 {
+  "functions": {
+    "api/index-embeddings.ts": {
+      "maxDuration": 300
+    },
+    "api/groq-chat.ts": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/bim-proxy/:path*",
       "destination": "https://besostordera.autodesk360.com/:path*"
     },
     {
-      "source": "/((?!bim-proxy).*)",
+      "source": "/((?!api|bim-proxy).*)",
       "destination": "/index.html"
     }
   ]
