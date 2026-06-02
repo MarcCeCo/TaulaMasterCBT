@@ -1281,36 +1281,88 @@ function CrearFamiliesPanel() {
 
 function LludrigaIAPanel() {
   const [indexant, setIndexant]   = useState(false);
+  const [progres,  setProgres]    = useState<string>("");
   const [resultat, setResultat]   = useState<{ ok: boolean; text: string } | null>(null);
 
   const reindexar = async () => {
     if (indexant) return;
     setIndexant(true);
     setResultat(null);
+    setProgres("Iniciant indexació...");
     try {
       const res = await fetch("/api/index-embeddings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ tipus: "tot" }),
       });
-      const data = await res.json() as {
-        indexats?: number;
-        errors?: number;
-        temps_ms?: number;
-        error?: string;
-      };
-      if (!res.ok || data.error) {
-        setResultat({ ok: false, text: `Error: ${data.error ?? `HTTP ${res.status}`}` });
-      } else {
-        setResultat({
-          ok: true,
-          text: `${data.indexats ?? 0} registres indexats en ${((data.temps_ms ?? 0) / 1000).toFixed(1)}s`,
-        });
+
+      if (!res.ok || !res.body) {
+        const text = await res.text().catch(() => `HTTP ${res.status}`);
+        let msg = text;
+        try { msg = JSON.parse(text).error ?? text; } catch { /* raw text */ }
+        setResultat({ ok: false, text: `Error: ${msg}` });
+        return;
       }
+
+      // Lector del stream NDJSON — cada línia és un objecte JSON de progrés
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let totalIndexats = 0;
+      let totalErrors = 0;
+      let tempMs = 0;
+
+      const fasesLabel: Record<string, string> = {
+        equip: "Equips", field: "Camps", gubim: "GuBIMClass",
+        projecte: "Projectes", tag: "TAGs",
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line) as {
+              fase?: string; estat?: string; total?: number;
+              indexats?: number; errors?: number; temps_ms?: number;
+              fet?: boolean; error?: string; detall?: string;
+            };
+
+            if (msg.error) {
+              setResultat({ ok: false, text: `Error: ${msg.error}${msg.detall ? ` — ${msg.detall}` : ""}` });
+              return;
+            }
+            if (msg.fet) {
+              totalIndexats = msg.indexats ?? totalIndexats;
+              totalErrors   = msg.errors   ?? totalErrors;
+              tempMs        = msg.temps_ms ?? tempMs;
+              setProgres("");
+            } else if (msg.fase && msg.estat) {
+              const label = fasesLabel[msg.fase] ?? msg.fase;
+              if (msg.estat === "carregant")  setProgres(`Carregant ${label}...`);
+              if (msg.estat === "indexant")   setProgres(`Indexant ${label} (${msg.total ?? "?"} registres)...`);
+              if (msg.estat === "fet")        setProgres(`✓ ${label}: ${msg.indexats} indexats`);
+              if (msg.indexats != null)       totalIndexats += msg.indexats;
+              if (msg.errors   != null)       totalErrors   += msg.errors;
+            }
+          } catch { /* línia malformada, ignorar */ }
+        }
+      }
+
+      setResultat({
+        ok: totalErrors === 0,
+        text: `${totalIndexats} registres indexats en ${(tempMs / 1000).toFixed(1)}s${totalErrors ? ` (${totalErrors} errors)` : ""}`,
+      });
     } catch (err) {
       setResultat({ ok: false, text: err instanceof Error ? err.message : String(err) });
     } finally {
       setIndexant(false);
+      setProgres("");
     }
   };
 
@@ -1373,7 +1425,7 @@ function LludrigaIAPanel() {
           {indexant && (
             <div className="flex items-center gap-2 text-[#0099A8] text-xs">
               <div className="h-3.5 w-3.5 rounded-full border-2 border-[#0099A8] border-t-transparent animate-spin" />
-              Indexant tota la plataforma…
+              {progres || "Indexant tota la plataforma…"}
             </div>
           )}
         </div>

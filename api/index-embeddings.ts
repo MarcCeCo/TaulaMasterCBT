@@ -203,147 +203,141 @@ async function processaBatch<T>(
   return { indexats, errors };
 }
 
-// ─── Handler ──────────────────────────────────────────────────────────────────
+// ─── Handler (Streaming NDJSON) ───────────────────────────────────────────────
+// Retorna una resposta de text/event-stream (NDJSON) amb línies de progrés,
+// de manera que el navegador no faci timeout en operacions llargues.
+// Cada línia és un JSON: { fase, indexats, errors, total, fet } o { error }
 
 export default async function handler(req: Request): Promise<Response> {
-  const headers = {
-    "Content-Type": "application/json",
+  const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
   };
 
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Mètode no permès" }), { status: 405, headers });
+    return new Response(JSON.stringify({ error: "Mètode no permès" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
-  // Envolta tota la lògica per garantir que els errors retornen sempre JSON
-  try {
-
-  // Variables d'entorn — Node.js runtime les llegeix correctament via process.env
+  // Variables d'entorn — Node.js runtime
   const voyageKey = process.env.VOYAGE_API_KEY;
   const supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
   const supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!voyageKey) return new Response(JSON.stringify({ error: "Falta VOYAGE_API_KEY a les variables d'entorn de Vercel" }), { status: 500, headers });
-  if (!supaUrl)   return new Response(JSON.stringify({ error: "Falta SUPABASE_URL (o VITE_SUPABASE_URL) a les variables d'entorn de Vercel" }), { status: 500, headers });
-  if (!supaKey)   return new Response(JSON.stringify({ error: "Falta SUPABASE_SERVICE_ROLE_KEY a les variables d'entorn de Vercel" }), { status: 500, headers });
+  if (!voyageKey) return new Response(JSON.stringify({ error: "Falta VOYAGE_API_KEY a les variables d'entorn de Vercel" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (!supaUrl)   return new Response(JSON.stringify({ error: "Falta SUPABASE_URL (o VITE_SUPABASE_URL) a les variables d'entorn de Vercel" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  if (!supaKey)   return new Response(JSON.stringify({ error: "Falta SUPABASE_SERVICE_ROLE_KEY a les variables d'entorn de Vercel" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
   const body = await req.json().catch(() => ({})) as { tipus?: string };
   const tipusTarget = body.tipus ?? "tot";
 
-  const t0 = Date.now();
-  let totalIndexats = 0;
-  let totalErrors   = 0;
+  // Stream de progrés via ReadableStream (NDJSON)
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (obj: object) => {
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      };
 
-  const supaFetch = async (path: string) => {
-    const res = await fetch(`${supaUrl}/rest/v1/${path}`, {
-      headers: { "apikey": supaKey, "Authorization": `Bearer ${supaKey}` },
-    });
-    if (!res.ok) throw new Error(`Supabase fetch error ${res.status}: ${path}`);
-    return res.json();
-  };
+      const supaFetch = async (path: string) => {
+        const res = await fetch(`${supaUrl}/rest/v1/${path}`, {
+          headers: { "apikey": supaKey!, "Authorization": `Bearer ${supaKey}` },
+        });
+        if (!res.ok) throw new Error(`Supabase fetch error ${res.status}: ${path}`);
+        return res.json();
+      };
 
-  // ── Equips ──
-  if (tipusTarget === "tot" || tipusTarget === "equip") {
-    const rows: EquipRow[] = await supaFetch(
-      "equipments?select=id,equip_code,equip_name,gubim_code,field_cols,revit_category,table_name&limit=5000"
-    );
-    const r = await processaBatch(
-      rows, "equip",
-      e => e.id,
-      textEquip,
-      e => ({ equipCode: e.equip_code, equipName: e.equip_name, gubimCode: e.gubim_code }),
-      voyageKey, supaUrl, supaKey
-    );
-    totalIndexats += r.indexats;
-    totalErrors   += r.errors;
-  }
+      const t0 = Date.now();
+      let totalIndexats = 0;
+      let totalErrors   = 0;
 
-  // ── Fields ──
-  if (tipusTarget === "tot" || tipusTarget === "field") {
-    const rows: FieldRow[] = await supaFetch(
-      "fields_meta?select=col,codi,tipus_dada,cbt,disciplina,agrupacio_revit,format_param&limit=2000"
-    );
-    const r = await processaBatch(
-      rows, "field",
-      f => f.col,
-      textField,
-      f => ({ col: f.col, codi: f.codi, tipus_dada: f.tipus_dada }),
-      voyageKey, supaUrl, supaKey
-    );
-    totalIndexats += r.indexats;
-    totalErrors   += r.errors;
-  }
+      try {
+        // ── Equips ──
+        if (tipusTarget === "tot" || tipusTarget === "equip") {
+          send({ fase: "equip", estat: "carregant" });
+          const rows: EquipRow[] = await supaFetch(
+            "equipments?select=id,equip_code,equip_name,gubim_code,field_cols,revit_category,table_name&limit=5000"
+          );
+          send({ fase: "equip", estat: "indexant", total: rows.length });
+          const r = await processaBatch(rows, "equip", e => e.id, textEquip, e => ({ equipCode: e.equip_code, equipName: e.equip_name, gubimCode: e.gubim_code }), voyageKey!, supaUrl!, supaKey!);
+          totalIndexats += r.indexats; totalErrors += r.errors;
+          send({ fase: "equip", estat: "fet", indexats: r.indexats, errors: r.errors });
+        }
 
-  // ── GuBIMClass ──
-  if (tipusTarget === "tot" || tipusTarget === "gubim") {
-    const rows: GubimRow[] = await supaFetch(
-      "gubim_class?select=code,name,level,parent_code&limit=2000"
-    );
-    const r = await processaBatch(
-      rows, "gubim",
-      g => g.code,
-      textGubim,
-      g => ({ code: g.code, name: g.name }),
-      voyageKey, supaUrl, supaKey
-    );
-    totalIndexats += r.indexats;
-    totalErrors   += r.errors;
-  }
+        // ── Fields ──
+        if (tipusTarget === "tot" || tipusTarget === "field") {
+          send({ fase: "field", estat: "carregant" });
+          const rows: FieldRow[] = await supaFetch(
+            "fields_meta?select=col,codi,tipus_dada,cbt,disciplina,agrupacio_revit,format_param&limit=2000"
+          );
+          send({ fase: "field", estat: "indexant", total: rows.length });
+          const r = await processaBatch(rows, "field", f => f.col, textField, f => ({ col: f.col, codi: f.codi, tipus_dada: f.tipus_dada }), voyageKey!, supaUrl!, supaKey!);
+          totalIndexats += r.indexats; totalErrors += r.errors;
+          send({ fase: "field", estat: "fet", indexats: r.indexats, errors: r.errors });
+        }
 
-  // ── Projectes + TAGs ──
-  if (tipusTarget === "tot" || tipusTarget === "projecte" || tipusTarget === "tag") {
-    const projectes: ProjecteRow[] = await supaFetch(
-      "projectes?select=id,codi_projecte,nom,status&limit=500"
-    );
+        // ── GuBIMClass ──
+        if (tipusTarget === "tot" || tipusTarget === "gubim") {
+          send({ fase: "gubim", estat: "carregant" });
+          const rows: GubimRow[] = await supaFetch(
+            "gubim_class?select=code,name,level,parent_code&limit=2000"
+          );
+          send({ fase: "gubim", estat: "indexant", total: rows.length });
+          const r = await processaBatch(rows, "gubim", g => g.code, textGubim, g => ({ code: g.code, name: g.name }), voyageKey!, supaUrl!, supaKey!);
+          totalIndexats += r.indexats; totalErrors += r.errors;
+          send({ fase: "gubim", estat: "fet", indexats: r.indexats, errors: r.errors });
+        }
 
-    // Indexar projectes
-    if (tipusTarget === "tot" || tipusTarget === "projecte") {
-      const r = await processaBatch(
-        projectes, "projecte",
-        p => p.id,
-        textProjecte,
-        p => ({ codiProjecte: p.codi_projecte, nom: p.nom, status: p.status }),
-        voyageKey, supaUrl, supaKey
-      );
-      totalIndexats += r.indexats;
-      totalErrors   += r.errors;
-    }
+        // ── Projectes ──
+        let projectes: ProjecteRow[] = [];
+        if (tipusTarget === "tot" || tipusTarget === "projecte" || tipusTarget === "tag") {
+          send({ fase: "projecte", estat: "carregant" });
+          projectes = await supaFetch("projectes?select=id,codi_projecte,nom,status&limit=500");
+        }
 
-    // Indexar TAGs
-    if (tipusTarget === "tot" || tipusTarget === "tag") {
-      const nomPerId = Object.fromEntries(projectes.map(p => [p.id, `${p.codi_projecte} ${p.nom}`]));
-      const tags: TagRow[] = await supaFetch(
-        "projecte_tags?select=tag_complet,codi_installacio,ccm,funcio,duplicitat,status,descripcio_equip,projecte_id&limit=10000"
-      );
-      const r = await processaBatch(
-        tags, "tag",
-        t => t.tag_complet,
-        t => textTag(t, nomPerId[t.projecte_id] ?? t.projecte_id),
-        t => ({ tagComplet: t.tag_complet, codiInstallacio: t.codi_installacio, status: t.status }),
-        voyageKey, supaUrl, supaKey
-      );
-      totalIndexats += r.indexats;
-      totalErrors   += r.errors;
-    }
-  }
+        if (tipusTarget === "tot" || tipusTarget === "projecte") {
+          send({ fase: "projecte", estat: "indexant", total: projectes.length });
+          const r = await processaBatch(projectes, "projecte", p => p.id, textProjecte, p => ({ codiProjecte: p.codi_projecte, nom: p.nom, status: p.status }), voyageKey!, supaUrl!, supaKey!);
+          totalIndexats += r.indexats; totalErrors += r.errors;
+          send({ fase: "projecte", estat: "fet", indexats: r.indexats, errors: r.errors });
+        }
 
-    return new Response(
-      JSON.stringify({
-        indexats:  totalIndexats,
-        errors:    totalErrors,
-        temps_ms:  Date.now() - t0,
-      }),
-      { status: 200, headers }
-    );
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error("[index-embeddings] Error no controlat:", msg);
-    return new Response(
-      JSON.stringify({ error: "Error intern del servidor", detall: msg }),
-      { status: 500, headers }
-    );
-  }
+        // ── TAGs ──
+        if (tipusTarget === "tot" || tipusTarget === "tag") {
+          send({ fase: "tag", estat: "carregant" });
+          const nomPerId = Object.fromEntries(projectes.map(p => [p.id, `${p.codi_projecte} ${p.nom}`]));
+          const tags: TagRow[] = await supaFetch(
+            "projecte_tags?select=tag_complet,codi_installacio,ccm,funcio,duplicitat,status,descripcio_equip,projecte_id&limit=10000"
+          );
+          send({ fase: "tag", estat: "indexant", total: tags.length });
+          const r = await processaBatch(tags, "tag", t => t.tag_complet, t => textTag(t, nomPerId[t.projecte_id] ?? t.projecte_id), t => ({ tagComplet: t.tag_complet, codiInstallacio: t.codi_installacio, status: t.status }), voyageKey!, supaUrl!, supaKey!);
+          totalIndexats += r.indexats; totalErrors += r.errors;
+          send({ fase: "tag", estat: "fet", indexats: r.indexats, errors: r.errors });
+        }
+
+        // Missatge final
+        send({ fet: true, indexats: totalIndexats, errors: totalErrors, temps_ms: Date.now() - t0 });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error("[index-embeddings] Error:", msg);
+        send({ error: "Error intern del servidor", detall: msg });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "text/plain; charset=utf-8",
+      "X-Content-Type-Options": "nosniff",
+      "Transfer-Encoding": "chunked",
+    },
+  });
 }
