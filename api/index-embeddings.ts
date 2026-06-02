@@ -8,7 +8,11 @@
 // Retorna:  { indexats: number, errors: number, temps_ms: number }
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const config = { runtime: "edge" };
+// Canviat de "edge" a "nodejs" perquè:
+// - Edge runtime NO suporta process.env de forma fiable
+// - Edge té límit de CPU de 50ms, insuficient per processar batches d'embeddings
+// - Node.js serverless permet fins a 300s de durada (configurat a maxDuration)
+export const config = { runtime: "nodejs", maxDuration: 300 };
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -217,22 +221,10 @@ export default async function handler(req: Request): Promise<Response> {
   // Envolta tota la lògica per garantir que els errors retornen sempre JSON
   try {
 
-  // Variables d'entorn necessàries
-  // Nota: en Vercel Edge Runtime, process.env funciona per variables definides
-  // a Settings → Environment Variables del dashboard de Vercel.
-  let voyageKey: string | undefined;
-  let supaUrl: string | undefined;
-  let supaKey: string | undefined;
-  try {
-    voyageKey = process.env.VOYAGE_API_KEY;
-    supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-    supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  } catch (_) {
-    return new Response(
-      JSON.stringify({ error: "No s'han pogut llegir les variables d'entorn. Comprova la configuració de Vercel." }),
-      { status: 500, headers }
-    );
-  }
+  // Variables d'entorn — Node.js runtime les llegeix correctament via process.env
+  const voyageKey = process.env.VOYAGE_API_KEY;
+  const supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!voyageKey) return new Response(JSON.stringify({ error: "Falta VOYAGE_API_KEY a les variables d'entorn de Vercel" }), { status: 500, headers });
   if (!supaUrl)   return new Response(JSON.stringify({ error: "Falta SUPABASE_URL (o VITE_SUPABASE_URL) a les variables d'entorn de Vercel" }), { status: 500, headers });
