@@ -214,14 +214,29 @@ export default async function handler(req: Request): Promise<Response> {
     return new Response(JSON.stringify({ error: "Mètode no permès" }), { status: 405, headers });
   }
 
-  // Variables d'entorn necessàries
-  const voyageKey  = process.env.VOYAGE_API_KEY;
-  const supaUrl    = process.env.SUPABASE_URL    ?? process.env.VITE_SUPABASE_URL;
-  const supaKey    = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // Envolta tota la lògica per garantir que els errors retornen sempre JSON
+  try {
 
-  if (!voyageKey) return new Response(JSON.stringify({ error: "Falta VOYAGE_API_KEY" }), { status: 500, headers });
-  if (!supaUrl)   return new Response(JSON.stringify({ error: "Falta SUPABASE_URL" }), { status: 500, headers });
-  if (!supaKey)   return new Response(JSON.stringify({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }), { status: 500, headers });
+  // Variables d'entorn necessàries
+  // Nota: en Vercel Edge Runtime, process.env funciona per variables definides
+  // a Settings → Environment Variables del dashboard de Vercel.
+  let voyageKey: string | undefined;
+  let supaUrl: string | undefined;
+  let supaKey: string | undefined;
+  try {
+    voyageKey = process.env.VOYAGE_API_KEY;
+    supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+    supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  } catch (_) {
+    return new Response(
+      JSON.stringify({ error: "No s'han pogut llegir les variables d'entorn. Comprova la configuració de Vercel." }),
+      { status: 500, headers }
+    );
+  }
+
+  if (!voyageKey) return new Response(JSON.stringify({ error: "Falta VOYAGE_API_KEY a les variables d'entorn de Vercel" }), { status: 500, headers });
+  if (!supaUrl)   return new Response(JSON.stringify({ error: "Falta SUPABASE_URL (o VITE_SUPABASE_URL) a les variables d'entorn de Vercel" }), { status: 500, headers });
+  if (!supaKey)   return new Response(JSON.stringify({ error: "Falta SUPABASE_SERVICE_ROLE_KEY a les variables d'entorn de Vercel" }), { status: 500, headers });
 
   const body = await req.json().catch(() => ({})) as { tipus?: string };
   const tipusTarget = body.tipus ?? "tot";
@@ -323,12 +338,20 @@ export default async function handler(req: Request): Promise<Response> {
     }
   }
 
-  return new Response(
-    JSON.stringify({
-      indexats:  totalIndexats,
-      errors:    totalErrors,
-      temps_ms:  Date.now() - t0,
-    }),
-    { status: 200, headers }
-  );
+    return new Response(
+      JSON.stringify({
+        indexats:  totalIndexats,
+        errors:    totalErrors,
+        temps_ms:  Date.now() - t0,
+      }),
+      { status: 200, headers }
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[index-embeddings] Error no controlat:", msg);
+    return new Response(
+      JSON.stringify({ error: "Error intern del servidor", detall: msg }),
+      { status: 500, headers }
+    );
+  }
 }

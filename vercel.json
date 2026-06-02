@@ -5,7 +5,7 @@
       "destination": "https://besostordera.autodesk360.com/:path*"
     },
     {
-      "source": "/((?!bim-proxy).*)",
+      "source": "/((?!api|bim-proxy).*)",
       "destination": "/index.html"
     }
   ]
