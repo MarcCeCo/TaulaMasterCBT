@@ -1,11 +1,9 @@
 // src/components/cbt/GroqChatWidget.tsx
 // Xat de suport flotant alimentat per Groq + RAG (Supabase pgvector + Voyage AI).
-// Ja NO envia tot el context al backend — el RAG s'encarrega de trobar
-// la informació rellevant a cada consulta (~750 tokens en lloc de ~4.000+).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useRef, useEffect } from "react";
-import { ChevronDown, Loader2, Send, X, BookOpen, RefreshCw } from "lucide-react";
+import { ChevronDown, Loader2, Send, X, BookOpen } from "lucide-react";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -18,7 +16,6 @@ interface Missatge {
 interface Props {
   pageContext?: string;
   pageLabel?:  string;
-  isAdmin?:    boolean;
 }
 
 // ─── Suggeriments per secció ──────────────────────────────────────────────────
@@ -75,15 +72,13 @@ function formatHora(ts: number): string {
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
-export function GroqChatWidget({ pageContext, pageLabel, isAdmin }: Props) {
+export function GroqChatWidget({ pageContext, pageLabel }: Props) {
   const [obert, setObert]             = useState(false);
   const [missatges, setMissatges]     = useState<Missatge[]>([]);
   const [input, setInput]             = useState("");
   const [carregant, setCarregant]     = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [nouMissatge, setNouMissatge] = useState(false);
-  const [indexant, setIndexant]       = useState(false);
-  const [indexMsg, setIndexMsg]       = useState<string | null>(null);
 
   const endRef   = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -108,30 +103,6 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin }: Props) {
 
   const suggeriments = (pageContext && SUGGERIMENTS[pageContext]) ?? SUGGERIMENTS_DEFECTE;
 
-  // ── Reindexar (només admins) ───────────────────────────────────────────────
-  const reindexar = async () => {
-    if (indexant) return;
-    setIndexant(true);
-    setIndexMsg(null);
-    try {
-      const res = await fetch("/api/index-embeddings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tipus: "tot" }),
-      });
-      const data = await res.json() as { indexats?: number; errors?: number; temps_ms?: number; error?: string };
-      if (!res.ok || data.error) {
-        setIndexMsg(`❌ Error: ${data.error}`);
-      } else {
-        setIndexMsg(`✅ ${data.indexats} registres indexats en ${((data.temps_ms ?? 0) / 1000).toFixed(1)}s`);
-      }
-    } catch (err) {
-      setIndexMsg(`❌ ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setIndexant(false);
-    }
-  };
-
   // ── Enviar missatge ────────────────────────────────────────────────────────
   const envia = async () => {
     const text = input.trim();
@@ -150,8 +121,6 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          // Ara NOMÉS enviem els missatges i el context de pàgina
-          // El RAG al backend s'encarrega de trobar la informació rellevant
           messages: historial.map(m => ({ role: m.rol, content: m.text })),
           context: { pageContext: pageLabel ?? pageContext },
         }),
@@ -222,20 +191,6 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin }: Props) {
             </div>
           </div>
 
-          {/* Botó reindexar (només admins) */}
-          {isAdmin && (
-            <button
-              onClick={reindexar}
-              disabled={indexant}
-              className="h-7 w-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors mr-1"
-              title="Reindexar dades al RAG"
-            >
-              {indexant
-                ? <Loader2 className="h-3.5 w-3.5 text-white animate-spin" />
-                : <RefreshCw className="h-3.5 w-3.5 text-white" />}
-            </button>
-          )}
-
           <button
             onClick={tancaPanell}
             className="h-7 w-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors"
@@ -243,20 +198,6 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin }: Props) {
             <ChevronDown className="h-4 w-4 text-white" />
           </button>
         </div>
-
-        {/* Missatge d'indexació */}
-        {indexMsg && (
-          <div
-            className="px-4 py-2 text-[11px] shrink-0"
-            style={{
-              background: indexMsg.startsWith("✅") ? "#F0FDF4" : "#FEF2F2",
-              color:      indexMsg.startsWith("✅") ? "#15803D" : "#DC2626",
-              borderBottom: "1px solid rgba(0,153,168,0.08)",
-            }}
-          >
-            {indexMsg}
-          </div>
-        )}
 
         {/* Zona de missatges */}
         <div

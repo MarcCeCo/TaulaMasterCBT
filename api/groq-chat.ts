@@ -133,20 +133,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(405).json({ error: "Mètode no permès" }); return;
   }
 
-  // Variables d'entorn
+  // Variables d'entorn — comprovació correcta (amb claus al if)
   const groqKey   = process.env.GROQ_API_KEY;
   const voyageKey = process.env.VOYAGE_API_KEY;
   const supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
   const supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!groqKey)   res.status(500).json({ error: "Falta GROQ_API_KEY" }); return;
-  if (!voyageKey) res.status(500).json({ error: "Falta VOYAGE_API_KEY" }); return;
-  if (!supaUrl)   res.status(500).json({ error: "Falta SUPABASE_URL" }); return;
-  if (!supaKey)   res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }); return;
+  if (!groqKey)   { res.status(500).json({ error: "Falta GROQ_API_KEY" }); return; }
+  if (!voyageKey) { res.status(500).json({ error: "Falta VOYAGE_API_KEY" }); return; }
+  if (!supaUrl)   { res.status(500).json({ error: "Falta SUPABASE_URL" }); return; }
+  if (!supaKey)   { res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }); return; }
 
   let body: { messages?: MissatgeAPI[]; context?: { pageContext?: string } };
   try {
-    body = await req.json();
+    body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
   } catch {
     res.status(400).json({ error: "Body invàlid" }); return;
   }
