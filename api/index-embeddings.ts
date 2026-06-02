@@ -129,7 +129,7 @@ async function generaEmbeddings(textos: string[], voyageKey: string): Promise<nu
   const res = await fetch("https://api.voyageai.com/v1/embeddings", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${voyageKey}` },
-    body: JSON.stringify({ model: "voyage-3-lite", input: textos, input_type: "document" }),
+    body: JSON.stringify({ model: "voyage-3", input: textos, input_type: "document" }),
   });
   if (!res.ok) throw new Error(`Voyage AI error ${res.status}: ${await res.text()}`);
   const data = await res.json() as { data: { embedding: number[] }[] };
@@ -158,7 +158,34 @@ async function upsertBatch(
 
 // ─── Processa en batches ──────────────────────────────────────────────────────
 
-const BATCH_SIZE = 64;
+const BATCH_SIZE = 32; // Reduït per respectar el rate limit de Voyage AI
+
+// Espera N ms
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+// Crida a Voyage AI amb reintents automàtics en cas de 429
+async function generaEmbeddingsAmbReintents(
+  textos: string[],
+  voyageKey: string,
+  intents = 4
+): Promise<number[][]> {
+  for (let i = 0; i < intents; i++) {
+    try {
+      return await generaEmbeddings(textos, voyageKey);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const is429 = msg.includes("429");
+      if (is429 && i < intents - 1) {
+        const espera = 20000 * (i + 1); // 20s, 40s, 60s
+        console.log(`Voyage AI 429 — esperant ${espera / 1000}s (intent ${i + 1}/${intents})...`);
+        await sleep(espera);
+      } else {
+        throw err;
+      }
+    }
+  }
+  throw new Error("Voyage AI: massa reintents");
+}
 
 async function processaBatch<T>(
   items: T[],
@@ -169,14 +196,16 @@ async function processaBatch<T>(
   voyageKey: string,
   supaUrl: string,
   supaKey: string
-): Promise<{ indexats: number; errors: number }> {
+): Promise<{ indexats: number; errors: number; firstError?: string }> {
   let indexats = 0;
   let errors = 0;
+  let firstError: string | undefined;
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const chunk = items.slice(i, i + BATCH_SIZE);
     try {
       const textos = chunk.map(getText);
-      const embeddings = await generaEmbeddings(textos, voyageKey);
+      const embeddings = await generaEmbeddingsAmbReintents(textos, voyageKey);
+      if (i > 0) await sleep(1000); // pausa entre batches per no saturar el rate limit
       await upsertBatch(
         chunk.map((item, j) => ({
           id: `${tipus}:${getId(item)}`,
@@ -190,11 +219,13 @@ async function processaBatch<T>(
       );
       indexats += chunk.length;
     } catch (err) {
-      console.error(`Error batch ${tipus} [${i}]:`, err);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`Error batch ${tipus} [${i}]:`, msg);
+      if (!firstError) firstError = `[${tipus} batch ${i}] ${msg}`;
       errors += chunk.length;
     }
   }
-  return { indexats, errors };
+  return { indexats, errors, firstError };
 }
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
@@ -246,6 +277,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const r = await processaBatch(rows, "equip", e => e.id, textEquip, e => ({ equipCode: e.equip_code, equipName: e.equip_name, gubimCode: e.gubim_code }), voyageKey, supaUrl!, supaKey!);
       totalIndexats += r.indexats; totalErrors += r.errors;
       send({ fase: "equip", estat: "fet", indexats: r.indexats, errors: r.errors });
+      if (r.firstError) send({ fase: "equip", warning: r.firstError });
     }
 
     // ── Fields ──
@@ -256,6 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const r = await processaBatch(rows, "field", f => f.col, textField, f => ({ col: f.col, codi: f.codi, tipus_dada: f.tipus_dada }), voyageKey, supaUrl!, supaKey!);
       totalIndexats += r.indexats; totalErrors += r.errors;
       send({ fase: "field", estat: "fet", indexats: r.indexats, errors: r.errors });
+      if (r.firstError) send({ fase: "field", warning: r.firstError });
     }
 
     // ── GuBIMClass ──
@@ -266,6 +299,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const r = await processaBatch(rows, "gubim", g => g.id, textGubim, g => ({ code: g.code, name: g.name }), voyageKey, supaUrl!, supaKey!);
       totalIndexats += r.indexats; totalErrors += r.errors;
       send({ fase: "gubim", estat: "fet", indexats: r.indexats, errors: r.errors });
+      if (r.firstError) send({ fase: "gubim", warning: r.firstError });
     }
 
     // ── Projectes + TAGs ──
@@ -280,6 +314,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const r = await processaBatch(projectes, "projecte", p => p.id, textProjecte, p => ({ codiProjecte: p.codi_projecte, nom: p.nom, status: p.status, codiInstallacio: p.codi_installacio }), voyageKey, supaUrl!, supaKey!);
       totalIndexats += r.indexats; totalErrors += r.errors;
       send({ fase: "projecte", estat: "fet", indexats: r.indexats, errors: r.errors });
+      if (r.firstError) send({ fase: "projecte", warning: r.firstError });
     }
 
     if (tipusTarget === "tot" || tipusTarget === "tag") {
@@ -290,6 +325,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const r = await processaBatch(tags, "tag", t => t.id, t => textTag(t, nomPerId[t.projecte_id] ?? t.projecte_id), t => ({ tagComplet: t.tag_complet, codiInstallacio: t.codi_installacio, status: t.status, ccm: t.ccm, funcio: t.funcio }), voyageKey, supaUrl!, supaKey!);
       totalIndexats += r.indexats; totalErrors += r.errors;
       send({ fase: "tag", estat: "fet", indexats: r.indexats, errors: r.errors });
+      if (r.firstError) send({ fase: "tag", warning: r.firstError });
     }
 
     send({ fet: true, indexats: totalIndexats, errors: totalErrors, temps_ms: Date.now() - t0 });
