@@ -9,7 +9,7 @@
 //   5. Crida Groq (~750 tokens en lloc de ~4.000+)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const config = { runtime: "edge" };
+import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -120,7 +120,7 @@ function buildSystemPrompt(ragResults: RagResult[], pageContext?: string): strin
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   const headers = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
@@ -128,9 +128,9 @@ export default async function handler(req: Request): Promise<Response> {
     "Access-Control-Allow-Headers": "Content-Type",
   };
 
-  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
+  if (req.method === "OPTIONS") { res.status(204).end(); return; }
   if (req.method !== "POST") {
-    return new Response(JSON.stringify({ error: "Mètode no permès" }), { status: 405, headers });
+    res.status(405).json({ error: "Mètode no permès" }); return;
   }
 
   // Variables d'entorn
@@ -139,21 +139,21 @@ export default async function handler(req: Request): Promise<Response> {
   const supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
   const supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!groqKey)   return new Response(JSON.stringify({ error: "Falta GROQ_API_KEY" }), { status: 500, headers });
-  if (!voyageKey) return new Response(JSON.stringify({ error: "Falta VOYAGE_API_KEY" }), { status: 500, headers });
-  if (!supaUrl)   return new Response(JSON.stringify({ error: "Falta SUPABASE_URL" }), { status: 500, headers });
-  if (!supaKey)   return new Response(JSON.stringify({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }), { status: 500, headers });
+  if (!groqKey)   res.status(500).json({ error: "Falta GROQ_API_KEY" }); return;
+  if (!voyageKey) res.status(500).json({ error: "Falta VOYAGE_API_KEY" }); return;
+  if (!supaUrl)   res.status(500).json({ error: "Falta SUPABASE_URL" }); return;
+  if (!supaKey)   res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }); return;
 
   let body: { messages?: MissatgeAPI[]; context?: { pageContext?: string } };
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "Body invàlid" }), { status: 400, headers });
+    res.status(400).json({ error: "Body invàlid" }); return;
   }
 
   const missatgesUsuari = body.messages ?? [];
   if (!Array.isArray(missatgesUsuari) || missatgesUsuari.length === 0) {
-    return new Response(JSON.stringify({ error: "Cap missatge rebut" }), { status: 400, headers });
+    res.status(400).json({ error: "Cap missatge rebut" }); return;
   }
 
   // Última pregunta de l'usuari per fer la cerca RAG
@@ -199,10 +199,7 @@ export default async function handler(req: Request): Promise<Response> {
 
     if (!groqRes.ok) {
       const errText = await groqRes.text();
-      return new Response(
-        JSON.stringify({ error: `Error Groq API: ${groqRes.status} — ${errText}` }),
-        { status: 502, headers }
-      );
+      res.status(502).json({ error: `Error Groq API: ${groqRes.status} — ${errText}` }); return;
     }
 
     const data = await groqRes.json() as {
@@ -210,10 +207,10 @@ export default async function handler(req: Request): Promise<Response> {
     };
 
     const reply = data.choices?.[0]?.message?.content ?? "";
-    return new Response(JSON.stringify({ reply }), { status: 200, headers });
+    res.status(200).json({ reply }); return;
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: msg }), { status: 500, headers });
+    res.status(500).json({ error: msg }); return;
   }
 }
