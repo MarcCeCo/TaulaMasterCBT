@@ -18,7 +18,6 @@ import {
 
   Users,
   X,
-  Droplets,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -123,16 +122,10 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
         onClick={() => { onSectionChange("dashboard"); setMobileOpen(false); }}
         title="Inici · Resum"
       >
-        {/* Logo mark */}
-        <div
-          className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-          style={{
-            background: "linear-gradient(135deg, rgba(77,201,216,0.25) 0%, rgba(26,175,192,0.15) 100%)",
-            border: "1px solid rgba(77,201,216,0.3)",
-            boxShadow: "0 0 16px rgba(77,201,216,0.12)",
-          }}
-        >
-          <Droplets className="h-[18px] w-[18px]" style={{ color: "#4DC9D8" }} />
+        {/* Logo CBT */}
+        <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 flex items-center justify-center"
+          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(77,201,216,0.2)" }}>
+          <img src="/LogoCBT.png" alt="Consorci Besòs Tordera" className="h-9 w-9 object-contain" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-[9px] font-semibold tracking-[0.16em] uppercase leading-none mb-[3px]" style={{ color: "rgba(77,201,216,0.6)" }}>
