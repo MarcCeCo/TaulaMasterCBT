@@ -36,7 +36,7 @@ async function embedQuery(text: string, voyageKey: string): Promise<number[]> {
       Authorization: `Bearer ${voyageKey}`,
     },
     body: JSON.stringify({
-      model: "voyage-3-lite",
+      model: "voyage-3",
       input: [text],
       input_type: "query",
     }),
