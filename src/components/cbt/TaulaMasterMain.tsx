@@ -344,7 +344,7 @@ export function TaulaMasterMain() {
       </div>
 
       {/* Assistent de suport (botó flotant + xat Groq) */}
-      <GroqChatWidget />
+      <GroqChatWidget pageContext={activeSection} pageLabel={sectionTitles[activeSection]?.title} />
     </div>
   );
 }
