@@ -1308,13 +1308,15 @@ function LludrigaIAPanel() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let totalIndexats = 0;
-      let totalErrors = 0;
+      let totalIndexats  = 0;
+      let totalEliminats = 0;
+      let totalOmesos    = 0;
+      let totalErrors    = 0;
       let tempMs = 0;
 
       const fasesLabel: Record<string, string> = {
         equip: "Equips", field: "Camps", gubim: "GuBIMClass",
-        projecte: "Projectes", tag: "TAGs",
+        projecte: "Projectes", tag: "TAGs projecte", rosmiman: "TAGs Rosmiman",
       };
 
       while (true) {
@@ -1328,8 +1330,9 @@ function LludrigaIAPanel() {
           if (!line.trim()) continue;
           try {
             const msg = JSON.parse(line) as {
-              fase?: string; estat?: string; total?: number;
-              indexats?: number; errors?: number; temps_ms?: number;
+              fase?: string; estat?: string; total?: number; nous?: number;
+              indexats?: number; eliminats?: number; omesos?: number;
+              errors?: number; temps_ms?: number;
               fet?: boolean; error?: string; detall?: string;
             };
 
@@ -1338,25 +1341,38 @@ function LludrigaIAPanel() {
               return;
             }
             if (msg.fet) {
-              totalIndexats = msg.indexats ?? totalIndexats;
-              totalErrors   = msg.errors   ?? totalErrors;
-              tempMs        = msg.temps_ms ?? tempMs;
+              totalIndexats  = msg.indexats  ?? totalIndexats;
+              totalEliminats = msg.eliminats ?? totalEliminats;
+              totalOmesos    = msg.omesos    ?? totalOmesos;
+              totalErrors    = msg.errors    ?? totalErrors;
+              tempMs         = msg.temps_ms  ?? tempMs;
               setProgres("");
             } else if (msg.fase && msg.estat) {
               const label = fasesLabel[msg.fase] ?? msg.fase;
-              if (msg.estat === "carregant")  setProgres(`Carregant ${label}...`);
-              if (msg.estat === "indexant")   setProgres(`Indexant ${label} (${msg.total ?? "?"} registres)...`);
-              if (msg.estat === "fet")        setProgres(`✓ ${label}: ${msg.indexats} indexats`);
-              if (msg.indexats != null)       totalIndexats += msg.indexats;
-              if (msg.errors   != null)       totalErrors   += msg.errors;
+              if (msg.estat === "carregant") setProgres(`Carregant ${label}...`);
+              if (msg.estat === "indexant")  setProgres(`Indexant ${label} (${msg.nous ?? "?"} nous de ${msg.total ?? "?"})...`);
+              if (msg.estat === "fet") {
+                const parts = [];
+                if (msg.indexats)  parts.push(`${msg.indexats} indexats`);
+                if (msg.eliminats) parts.push(`${msg.eliminats} eliminats`);
+                if (msg.omesos)    parts.push(`${msg.omesos} sense canvis`);
+                setProgres(`✓ ${label}: ${parts.join(", ")}`);
+                totalIndexats  += msg.indexats  ?? 0;
+                totalEliminats += msg.eliminats ?? 0;
+                totalOmesos    += msg.omesos    ?? 0;
+                totalErrors    += msg.errors    ?? 0;
+              }
             }
           } catch { /* línia malformada, ignorar */ }
         }
       }
 
+      const partsResum = [`${totalIndexats} indexats`];
+      if (totalEliminats) partsResum.push(`${totalEliminats} eliminats`);
+      if (totalOmesos)    partsResum.push(`${totalOmesos} sense canvis`);
       setResultat({
         ok: totalErrors === 0,
-        text: `${totalIndexats} registres indexats en ${(tempMs / 1000).toFixed(1)}s${totalErrors ? ` (${totalErrors} errors)` : ""}`,
+        text: `${partsResum.join(" · ")} en ${(tempMs / 1000).toFixed(1)}s${totalErrors ? ` (${totalErrors} errors)` : ""}`,
       });
     } catch (err) {
       setResultat({ ok: false, text: err instanceof Error ? err.message : String(err) });
