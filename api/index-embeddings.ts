@@ -280,11 +280,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Carrega tots els embeddings existents del tipus (o tots si és "tot")
   // → Map<embeddingId, indexed_at>
   const carregaExistents = async (tipus: string): Promise<Map<string, string>> => {
-    const filtre = tipus === "tot" ? "" : `&tipus=eq.${tipus}`;
+    const filtre = tipus === "tot" ? "" : `&tipus=eq.${encodeURIComponent(tipus)}`;
     const rows: EmbeddingRow[] = await supaFetch(
       `cbt_embeddings?select=id,indexed_at${filtre}&limit=100000`
     );
-    return new Map(rows.map(r => [r.id, r.indexed_at]));
+    return new Map(rows.map(r => [r.id, r.indexed_at ?? "1970-01-01"]));
   };
 
   const t0 = Date.now();
