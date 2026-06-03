@@ -4,7 +4,7 @@
 //
 // Runtime: Node.js via @vercel/node (maxDuration configurat a vercel.json)
 // Endpoint: POST /api/index-embeddings
-// Body:     { tipus?: 'equip'|'field'|'gubim'|'projecte'|'tag'|'tot' }
+// Body:     { tipus?: 'equip'|'field'|'gubim'|'projecte'|'tag'|'rosmiman'|'tot' }
 // Retorna:  stream NDJSON amb línies de progrés + línia final { fet: true, ... }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,13 @@ interface TagRow {
   comentari: string;
   equip_id: string;
   projecte_id: string;
+}
+
+interface RosmimanRow {
+  id: string;
+  tag: string;
+  descripcio: string;
+  codi_installacio: string;
 }
 
 interface ProjecteRow {
@@ -111,6 +118,14 @@ function textTag(r: TagRow, nomProjecte: string): string {
     r.duplicitat      ? `Duplicitat: ${r.duplicitat}`      : "",
     r.descripcio_equip ? `Equip: ${r.descripcio_equip}`   : "",
     r.comentari       ? `Comentari: ${r.comentari}`        : "",
+  ].filter(Boolean).join(" | ");
+}
+
+function textRosmiman(r: RosmimanRow): string {
+  return [
+    `TAG Rosmiman: ${r.tag}`,
+    `Instal·lació: ${r.codi_installacio}`,
+    r.descripcio ? `Descripció: ${r.descripcio}` : "",
   ].filter(Boolean).join(" | ");
 }
 
@@ -247,6 +262,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!supaKey)   { res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY a les variables d'entorn de Vercel" }); return; }
 
   const tipusTarget = (req.body as { tipus?: string })?.tipus ?? "tot";
+  const tipusValids = ["tot", "equip", "field", "gubim", "projecte", "tag", "rosmiman"];
+  if (!tipusValids.includes(tipusTarget)) {
+    res.status(400).json({ error: `tipus invàlid: ${tipusTarget}. Valors acceptats: ${tipusValids.join(", ")}` }); return;
+  }
 
   // Stream NDJSON — una línia JSON per cada fase de progrés
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -326,6 +345,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       totalIndexats += r.indexats; totalErrors += r.errors;
       send({ fase: "tag", estat: "fet", indexats: r.indexats, errors: r.errors });
       if (r.firstError) send({ fase: "tag", warning: r.firstError });
+    }
+
+    // ── TAGs Rosmiman (llistat global) ──
+    if (tipusTarget === "tot" || tipusTarget === "rosmiman") {
+      send({ fase: "rosmiman", estat: "carregant" });
+      const rows: RosmimanRow[] = await supaFetch("rosmiman_equips?select=id,tag,descripcio,codi_installacio&order=tag.asc&limit=50000");
+      send({ fase: "rosmiman", estat: "indexant", total: rows.length });
+      const r = await processaBatch(
+        rows, "rosmiman",
+        row => row.id,
+        textRosmiman,
+        row => ({ tag: row.tag, codiInstallacio: row.codi_installacio, descripcio: row.descripcio }),
+        voyageKey, supaUrl!, supaKey!
+      );
+      totalIndexats += r.indexats; totalErrors += r.errors;
+      send({ fase: "rosmiman", estat: "fet", indexats: r.indexats, errors: r.errors });
+      if (r.firstError) send({ fase: "rosmiman", warning: r.firstError });
     }
 
     send({ fet: true, indexats: totalIndexats, errors: totalErrors, temps_ms: Date.now() - t0 });
