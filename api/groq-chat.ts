@@ -190,6 +190,97 @@ Exemple: CCM=0, FUNCIO=0, DUPLICITAT=B → \`000B\`
 - **Rols de projecte**: viewer (només visualitza), editor_global (crea/edita TAGs), editor_caracteristiques (només omple camps de TAGs validats)
 
 ═══════════════════════════════════════════════
+## CODI D'INSTAL·LACIÓ EN UN TAG — REGLES
+═══════════════════════════════════════════════
+
+### Definició
+El codi d'instal·lació és el primer segment del TAG (5 car. alfanumèrics en majúscules, ex: ED008, GR001).
+Identifica la instal·lació física on es troba l'equip (EDAR, estació de bombeig, dipòsit, etc.).
+
+### Relació amb el projecte
+Cada projecte té una llista de codis d'instal·lació propis (un o més).
+Exemples: un projecte pot tenir ED008 i GR001 si afecta dues instal·lacions.
+
+### Quin codi s'assigna al TAG
+- Quan s'obre el diàleg de nou TAG, el codi d'instal·lació es **preomple automàticament** amb el primer codi d'instal·lació del projecte.
+- Si el projecte té **múltiples codis d'instal·lació**, l'usuari pot canviar-lo manualment per qualsevol dels codis del projecte.
+- El codi d'instal·lació del TAG **no ha de ser necessàriament** el primer del projecte, però **sí ha de pertànyer** als codis d'instal·lació definits al projecte.
+
+### Visualització agrupada
+Els TAGs dins d'un projecte es mostren **agrupats per codi d'instal·lació**. Cada grup mostra el codi, el nom de la instal·lació (si n'hi ha) i els TAGs que li pertanyen.
+
+### Canvi de codi d'instal·lació del projecte
+Si l'admin canvia el primer codi d'instal·lació d'un projecte que ja té TAGs:
+- El sistema mostra un **diàleg d'advertència**
+- Si confirma, **tots els TAGs existents** s'actualitzen automàticament amb el nou codi d'instal·lació i el nou TAG complet reconstruït
+- Tots els TAGs afectats tornen a estat **"pendent"** (cal re-validar)
+
+### Regla de format
+El codi d'instal·lació ha de complir: `/^[A-Z0-9]{5}$/` — exactament 5 caràcters alfanumèrics en majúscules.
+
+
+
+═══════════════════════════════════════════════
+## FLUX COMPLET DE CREACIÓ D'UN TAG EN UN PROJECTE
+═══════════════════════════════════════════════
+
+### Pas 1 — Obertura del diàleg
+L'usuari obre el diàleg "Nou TAG" des de la pàgina del projecte.
+El codi d'instal·lació es preomple automàticament amb el primer codi d'instal·lació del projecte.
+La duplicitat es preomple amb "A".
+
+### Pas 2 — Camps que l'usuari omple
+1. **Codi d'instal·lació**: preomplert, modificable. Ha de ser exactament 5 car. alfanumèrics (ex: ED008).
+2. **Equip**: selecció des del catàleg de la Taula Master (equipCode + nom).
+3. **CCM**: 1 dígit numèric (0-9).
+4. **Funció**: 1-2 dígits numèrics (00-99). S'emmagatzema sempre amb 2 dígits (padStart "0").
+5. **Duplicitat**: 1 lletra A-Z. Per defecte "A".
+6. **Descripció de l'equip**: text lliure opcional, es guarda en majúscules.
+7. **Comentari**: text lliure opcional.
+
+### Pas 3 — Construcció del TAG
+El sistema construeix el TAG amb:
+\`buildTag(codiInstallacio, equip.equipCode, ccm, funcio, duplicitat)\`
+→ \`CODIINSTALLACIO_CODIEQUIP_CCM+FUNCIO(2digits)+DUPLICITAT\`
+Exemple: ED008 + BM00 + CCM=1 + FUNCIO=1 + DUPLICITAT=A → \`ED008_BM00_101A\`
+
+### Pas 4 — Validacions (en ordre)
+1. Tots els camps han de ser vàlids (format correcte)
+2. El TAG construït NO pot existir ja en el projecte actual → error amb missatge
+3. El TAG construït NO pot existir al llistat Rosmiman global → error amb suggeriment de primera duplicitat lliure
+   - Si existeix, la plataforma busca automàticament la primera lletra lliure (A→B→C...) i la proposa
+
+### Pas 5 — Guardat
+Si passa totes les validacions, el TAG es guarda a Supabase (\`projecte_tags\`) amb:
+- status: **"pendent"** (estat inicial sempre)
+- fieldValues: {} (buit, s'omple posteriorment)
+- tots els camps en majúscules
+
+### Cicle de vida d'un TAG
+\`\`\`
+pendent → validat   (l'admin o editor_global revisa i valida)
+pendent → rebutjat  (l'admin o editor_global rebutja amb comentari)
+rebutjat → pendent  (es pot re-obrir)
+\`\`\`
+
+### Quan es valida un TAG — acció especial important
+Abans de validar, el sistema comprova una vegada més que el TAG no existeixi a Rosmiman.
+**Quan el DARRER tag pendent d'un projecte es valida** (tots queden validats):
+→ El sistema afegeix automàticament TOTS els tags validats del projecte al llistat Rosmiman global (\`rosmiman_equips\`).
+→ Es mostra un missatge: "Tots els tags validats ✓ — N tags afegits al llistat Rosmiman."
+→ Això garanteix que els TAGs del projecte queden registrats globalment i no es poden duplicar en futurs projectes.
+
+### Edició d'un TAG existent
+Segueix el mateix flux de validació que la creació. Si el codi d'instal·lació del projecte canvia i el projecte té TAGs, el sistema mostra un avís d'advertència abans de continuar.
+
+### Permisos necessaris per crear TAGs
+- **admin**: sempre pot crear, editar i validar TAGs
+- **editor_global**: pot crear tags nous, editar equips, omplir camps i validar
+- **editor_caracteristiques**: NOMÉS pot omplir camps tècnics de TAGs ja validats (no pot crear ni validar)
+- **viewer**: només visualització, sense cap acció
+
+`;
+═══════════════════════════════════════════════
 ## COM RESPONDRE
 ═══════════════════════════════════════════════
 - Usa la informació del context RAG proporcionat a continuació quan estigui disponible
