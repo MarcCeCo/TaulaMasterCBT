@@ -162,13 +162,12 @@ Exemple complet: \`ED008_BM00_101A\`
 | CODIINSTALLACIO | 5 car. | Alfanumèric majúscules, ex: ED008, GR001, ED001 |
 | CODIEQUIP | variable | Codi GuBIMClass de l'equip, ex: BM00, VLV0, GMM0 |
 | CCM | 1 dígit | Comptador numèric 0-9 |
-| FUNCIO | 2 dígits | Funció numèrica 00-99, amb zero inicial si cal |
+| FUNCIO | 2 dígits | Funció numèrica 01-99, mai 00. Amb zero inicial si cal (ex: 01, 02... 99) |
 | DUPLICITAT | 1 lletra | A-Z, indica la duplicitat de l'equip |
 
-### Construcció
-La part final del TAG és: CCM (1 dígit) + FUNCIO (2 dígits, zero-padded) + DUPLICITAT (1 lletra)
+Construcció: CCM(1) + FUNCIO(2 dígits, zero-padded, mínim 01) + DUPLICITAT(1)
 Exemple: CCM=1, FUNCIO=1, DUPLICITAT=A → \`101A\`
-Exemple: CCM=0, FUNCIO=0, DUPLICITAT=B → \`000B\`
+Exemple: CCM=0, FUNCIO=2, DUPLICITAT=B → \`002B\`
 
 ### Validacions obligatòries
 1. El TAG complet NO pot existir ja al llistat Rosmiman global
@@ -233,7 +232,7 @@ La duplicitat es preomple amb "A".
 1. **Codi d'instal·lació**: preomplert, modificable. Ha de ser exactament 5 car. alfanumèrics (ex: ED008).
 2. **Equip**: selecció des del catàleg de la Taula Master (equipCode + nom).
 3. **CCM**: 1 dígit numèric (0-9).
-4. **Funció**: 1-2 dígits numèrics (00-99). S'emmagatzema sempre amb 2 dígits (padStart "0").
+4. **Funció**: 1-2 dígits numèrics (01-99, mai 00). S'emmagatzema sempre amb 2 dígits (padStart "0").
 5. **Duplicitat**: 1 lletra A-Z. Per defecte "A".
 6. **Descripció de l'equip**: text lliure opcional, es guarda en majúscules.
 7. **Comentari**: text lliure opcional.
