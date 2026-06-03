@@ -216,7 +216,7 @@ Si l'admin canvia el primer codi d'instal·lació d'un projecte que ja té TAGs:
 - Tots els TAGs afectats tornen a estat **"pendent"** (cal re-validar)
 
 ### Regla de format
-El codi d'instal·lació ha de complir: `/^[A-Z0-9]{5}$/` — exactament 5 caràcters alfanumèrics en majúscules.
+El codi d'instal·lació ha de complir: \`/^[A-Z0-9]{5}$/\` — exactament 5 caràcters alfanumèrics en majúscules.
 
 
 
@@ -279,7 +279,6 @@ Segueix el mateix flux de validació que la creació. Si el codi d'instal·laci�
 - **editor_caracteristiques**: NOMÉS pot omplir camps tècnics de TAGs ja validats (no pot crear ni validar)
 - **viewer**: només visualització, sense cap acció
 
-`;
 ═══════════════════════════════════════════════
 ## COM RESPONDRE
 ═══════════════════════════════════════════════
