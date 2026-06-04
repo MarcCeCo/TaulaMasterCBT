@@ -589,13 +589,13 @@ async function executaTool(
           `Anàlisi de TAGs: instal·lació=${codiInst} | equip=${codiEq} | CCM=${ccm} | funció base=${funcioInici}`,
           `TAGs existents per a funció ${funcioInici}: ${tagsOpcioA.length > 0 ? tagsOpcioA.join(", ") : "cap"}`,
           ``,
-          `📌 Opció A — Mateixa funció (${funcioInici}), primera lletra lliure:`,
-          `   ${tagOpcioA ?? `❌ Totes les lletres A-Z esgotades per a la funció ${funcioInici}`}`,
-          `   Usa aquesta opció si és el mateix circuit/funció amb duplicitat física`,
+          `📌 Opció A — ${tagOpcioA ?? `❌ esgotada`}`,
+          `   Mateixa funció (${funcioInici}), lletra nova. Per a: 2a unitat idèntica del MATEIX circuit (redundància, backup, paral·lel).`,
+          `   Exemple: dues bombes iguals al mateix pou de bombament.`,
           ``,
-          `📌 Opció B — Primera funció completament lliure:`,
-          `   ${tagOpcioB ?? "❌ Totes les funcions 01-99 esgotades"}`,
-          `   Usa aquesta opció si és un equip nou amb funció diferent`,
+          `📌 Opció B — ${tagOpcioB ?? "❌ esgotada"}`,
+          `   Funció nova (lletra A). Per a: equip d'una funció o circuit DIFERENT dins la mateixa instal·lació.`,
+          `   Exemple: bomba de recirculació vs bomba de purga (funcions diferents).`,
         ];
 
         return lines.join("\n");
@@ -739,7 +739,8 @@ DADES DISPONIBLES (accés via tools, SEMPRE consulta la BD — mai inventes valo
 REGLES CRÍTIQUES:
 1. MAI inventes codis d'instal·lació, codis d'equip, TAGs o noms. Si no el trobes a la BD, digueu clarament.
 2. Per instal·lacions pel nom: usa SEMPRE cerca_installacio per obtenir el codi real. MAI assumeixis un codi d'instal·lació.
-3. Per calcular un TAG: OBLIGATORI cridar PRIMER cerca_equips. Si hi ha múltiples candidats, mostra'ls TOTS a l'usuari i demana confirmació — MAI tries sense confirmació. El codi a usar és el camp "equip_code", NO el gubim_code. Si cerca_equips retorna el catàleg complet (quan no troba coincidència), analitza'l i proposa els 2-3 equips més probables per a que l'usuari confirmi.
+3. Per calcular un TAG: OBLIGATORI cridar PRIMER cerca_equips per obtenir l'equip_code. Si el resultat té un candidat clar (màxima puntuació destacada), usa'l directament sense demanar confirmació. Només demana confirmació si dos candidats tenen la mateixa puntuació màxima. El codi a usar és el camp equip_code, NO el gubim_code.
+4b. SEMPRE crida primer_tag_disponible per calcular el TAG real — MAI proposis un TAG sense consultar la BD, ja que pot existir a rosmiman_equips o projecte_tags. La resposta final ha de ser el TAG retornat per primer_tag_disponible, no un TAG calculat manualment.
 4. El context de la conversa es pot reutilitzar NOMÉS si el codi va ser retornat explícitament per una tool en aquest mateix fil. Si hi ha cap dubte, torna a consultar.
 5. Si una cerca no retorna resultats, prova termes més curts o suggereix alternatives.
 6. Per a primer_tag_disponible: codi_installacio ve de cerca_installacio, codi_equip és l'equip_code de cerca_equips. MAI uses gubim_code com a codi_equip.
