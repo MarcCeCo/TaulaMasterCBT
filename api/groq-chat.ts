@@ -42,11 +42,12 @@ const TOOLS = [
     type: "function",
     function: {
       name: "cerca_equips",
-      description: "Cerca equips al catàleg Taula Master per nom, codi d'equip o GuBIMClass. Usa quan l'usuari pregunta sobre tipologies d'equips, quins equips hi ha, codis d'equip, etc.",
+      description: "Cerca equips al catàleg Taula Master per nom, tipus, codi d'equip o GuBIMClass. Usa quan l'usuari pregunta sobre tipologies d'equips, quins equips hi ha, codis d'equip, etc.",
       parameters: {
         type: "object",
         properties: {
-          nom: { type: "string", description: "Paraula clau del nom de l'equip (ex: 'bomba', 'vàlvula', 'motor')" },
+          nom: { type: "string", description: "Paraula clau o frase del nom/tipus de l'equip (ex: 'bomba', 'vàlvula', 'bomba centrífuga de cambra seca')" },
+          tipus: { type: "string", description: "Àlies de nom: tipus o descripció de l'equip (ex: 'bomba centrífuga', 'motor elèctric')" },
           equip_code: { type: "string", description: "Codi exacte de l'equip (ex: 'BM00')" },
           gubim_code: { type: "string", description: "Codi GuBIMClass (ex: 'BM00')" },
         },
@@ -179,16 +180,21 @@ async function executaTool(
 
       case "cerca_equips": {
         const filtres: string[] = ["select=equip_code,equip_name,gubim_code,revit_category", "order=equip_name.asc", "limit=50"];
-        if (args.nom) {
-          // Normalitzar: treure terminacions plurals/variants per fer stemming bàsic
-          // bombes→bomb, vàlvules→vàlvul, motors→motor, filtres→filtr, etc.
-          const nom = (args.nom as string)
-            .toLowerCase()
-            .replace(/es$/, "")   // bombes → bomb
-            .replace(/s$/, "")    // motors → motor
-            .replace(/ió$/, "")   // instal·lació → instal·laci
-            .trim();
-          filtres.push(`equip_name=ilike.${encodeURIComponent("*" + nom + "*")}`);
+        // Acceptar tant "nom" com "tipus" com a àlies (el model de vegades usa "tipus")
+        const cercaNom = (args.nom ?? args.tipus) as string | undefined;
+        if (cercaNom) {
+          const paraules = cercaNom.toLowerCase().trim().split(/\s+/);
+          if (paraules.length === 1) {
+            // Una sola paraula: aplicar stemming bàsic (bombes→bomb, motors→motor)
+            const stem = paraules[0]
+              .replace(/es$/, "")
+              .replace(/s$/, "")
+              .replace(/ió$/, "");
+            filtres.push(`equip_name=ilike.${encodeURIComponent("*" + stem + "*")}`);
+          } else {
+            // Frase de múltiples paraules: cercar la frase sencera primer (més precís)
+            filtres.push(`equip_name=ilike.${encodeURIComponent("*" + cercaNom.toLowerCase() + "*")}`);
+          }
         }
         if (args.equip_code) filtres.push(`equip_code=eq.${encodeURIComponent(args.equip_code as string)}`);
         if (args.gubim_code) filtres.push(`gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`);
