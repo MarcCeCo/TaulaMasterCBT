@@ -281,11 +281,12 @@ Segueix el mateix flux de validació que la creació. Si el codi d'instal·laci�
 ═══════════════════════════════════════════════
 ## COM RESPONDRE
 ═══════════════════════════════════════════════
-- Usa la informació del context RAG proporcionat a continuació quan estigui disponible
-- Si el RAG no conté la resposta exacta, utilitza el coneixement de la plataforma descrit aquí
-- Quan proposis un TAG nou, verifica sempre contra el llistat Rosmiman i el projecte actiu
-- Sigues concís però complet; usa llistes quan hi ha múltiples elements
-- Si no saps alguna cosa, digues-ho clarament en lloc d'inventar-te dades`;
+- La secció "Informació rellevant de la base de dades" que reps a cada consulta conté les dades reals de la plataforma. **Sempre prioritza aquesta informació per sobre de qualsevol altra.**
+- Si les dades estan al context RAG, respon directament amb elles. No diguis "no tinc accés" si tens la informació al context.
+- Si no tens prou informació al context RAG per respondre amb precisió, digues-ho clarament i demana que et concretin la pregunta.
+- Mai inventes dades, codis, TAGs o noms que no apareguin explícitament al context.
+- Quan proposis un TAG nou, verifica sempre contra la informació del context RAG.
+- Sigues concís però complet; usa llistes quan hi ha múltiples elements.`;
 
 function buildSystemPrompt(ragResults: RagResult[], pageContext?: string): string {
   const parts = [SYSTEM_BASE];
@@ -298,15 +299,106 @@ function buildSystemPrompt(ragResults: RagResult[], pageContext?: string): strin
     const lines = ragResults.map(r =>
       `[${r.tipus.toUpperCase()} | similitud: ${(r.similitud * 100).toFixed(0)}%]\n${r.contingut}`
     );
-    parts.push(`## Informació rellevant trobada\n\n${lines.join("\n\n")}`);
+    parts.push(`## Informació rellevant de la base de dades (${ragResults.length} resultats)\n\nUSA AQUESTA INFORMACIÓ per respondre. És la font de veritat.\n\n${lines.join("\n\n")}`);
   } else {
-    parts.push("## Nota\nNo s'ha trobat informació específica per a aquesta consulta a la base de dades.");
+    parts.push("## Nota\nNo s'ha trobat informació específica per a aquesta consulta. Respon només amb el que saps amb certesa, sense inventar dades.");
   }
 
   return parts.join("\n\n");
 }
 
-// ─── Handler ──────────────────────────────────────────────────────────────────
+// ─── Detecció i resolució de consultes sobre TAGs ────────────────────────────
+
+const TAG_PATTERN = /\b([A-Z0-9]{5})_([A-Z0-9]+)_?(\d)?(\d{1,2})?\b/i;
+const PREGUNTA_TAG = /(primer|disponible|lliure|existe|existeix|tag.*disponible|disponible.*tag|proposa.*tag|tag.*proposa|quin.*tag|tag.*equip)/i;
+
+async function consultaTagLookup(
+  pregunta: string,
+  supaUrl: string
+): Promise<string | null> {
+  if (!PREGUNTA_TAG.test(pregunta)) return null;
+
+  // Intentar extreure codiInstallacio i codiEquip de la pregunta
+  // Ex: "primer tag disponible per BCS0 a ED001 amb CCM=1 funció=1"
+  const matchInstallacio = pregunta.match(/\b([A-Z]{2}[0-9]{3}|[A-Z0-9]{5})\b/i);
+  const matchEquip       = pregunta.match(/\b([A-Z]{2,4}[0-9]{1,2})\b/g);
+  const matchCcm         = pregunta.match(/ccm[=:\s]*(\d)/i);
+  const matchFuncio      = pregunta.match(/funci[oó][=:\s]*(\d{1,2})/i);
+
+  if (!matchInstallacio || !matchEquip || matchEquip.length < 1) return null;
+
+  const codiInstallacio = matchInstallacio[1].toUpperCase();
+  // El codi equip sol ser el segon alfanumèric (el primer és la instal·lació)
+  const codiEquip = matchEquip.find(m => m.toUpperCase() !== codiInstallacio)?.toUpperCase();
+  if (!codiEquip) return null;
+
+  const ccm    = parseInt(matchCcm?.[1]    ?? "0");
+  const funcio = parseInt(matchFuncio?.[1] ?? "1");
+
+  try {
+    const r = await fetch(`${supaUrl.replace(/\/$/, "")}/api/tag-lookup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codiInstallacio, codiEquip, ccm, funcio }),
+    });
+    if (!r.ok) return null;
+    const data = await r.json() as {
+      prefix: string; disponible: boolean; tagProposat: string;
+      tagsExistents: string[]; totalExistents: number;
+    };
+    const lines = [
+      `## Consulta exacta de TAG (resultat verificat a la base de dades)`,
+      `Prefix consultat: ${data.prefix}`,
+      `TAGs existents amb aquest prefix: ${data.totalExistents > 0 ? data.tagsExistents.join(", ") : "cap"}`,
+      `Primer TAG disponible: **${data.tagProposat || "no disponible (A-Z exhaurits)"}**`,
+    ];
+    return lines.join("\n");
+  } catch {
+    return null;
+  }
+}
+
+
+
+// ─── Consulta de projectes per codi ──────────────────────────────────────────
+
+async function consultaProjecte(
+  pregunta: string,
+  supaUrl: string,
+  supaKey: string
+): Promise<string | null> {
+  const matchProjecte = pregunta.match(/\b(\d{4}-\d{1,4})\b/);
+  if (!matchProjecte) return null;
+
+  const codiProjecte = matchProjecte[1];
+  try {
+    const res = await fetch(
+      `${supaUrl}/rest/v1/projectes?select=codi_projecte,nom,status,codi_installacio,codis_installacio&codi_projecte=eq.${encodeURIComponent(codiProjecte)}&limit=1`,
+      { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` } }
+    );
+    if (!res.ok) return null;
+    const rows = await res.json() as {
+      codi_projecte: string; nom: string; status: string;
+      codi_installacio: string;
+      codis_installacio: { codi: string; nom: string }[] | null;
+    }[];
+
+    if (!rows.length) return `## Projecte ${codiProjecte}\nNo existeix cap projecte amb aquest codi.`;
+
+    const p = rows[0];
+    const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi) ?? [p.codi_installacio];
+
+    return [
+      `## Projecte ${p.codi_projecte} — dades verificades`,
+      `Nom: ${p.nom}`,
+      `Estat: ${p.status}`,
+      `Codis d\'instal·lació: ${codis.join(", ")}`,
+      `Codi principal: ${p.codi_installacio}`,
+    ].join("\n");
+  } catch {
+    return null;
+  }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const headers = {
@@ -353,16 +445,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let ragResults: RagResult[] = [];
   try {
     const queryEmbedding = await embedQuery(ultimaPregunta, voyageKey);
-    ragResults = await cercaRag(queryEmbedding, supaUrl, supaKey, 12);
+    ragResults = await cercaRag(queryEmbedding, supaUrl, supaKey, 20);
   } catch (err) {
     // Si el RAG falla, continuem sense context (millor que no respondre)
     console.error("RAG error:", err);
   }
 
-  const systemPrompt = buildSystemPrompt(
-    ragResults,
-    body.context?.pageContext
-  );
+  const systemPrompt = buildSystemPrompt(ragResults, body.context?.pageContext);
 
   // Historial limitat a 6 torns
   const missatgesTallats = missatgesUsuari.slice(-6);

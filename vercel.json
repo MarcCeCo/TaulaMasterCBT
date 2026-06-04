@@ -5,6 +5,9 @@
     },
     "api/groq-chat.ts": {
       "maxDuration": 60
+    },
+    "api/tag-lookup.ts": {
+      "maxDuration": 15
     }
   },
   "rewrites": [
