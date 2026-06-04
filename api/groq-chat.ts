@@ -117,7 +117,17 @@ const TOOLS = [
   {
     type: "function",
     function: {
-      name: "cerca_gubim",
+      name: "cerca_installacio",
+      description: "Cerca el codi d'instal·lació per nom. Usa SEMPRE quan l'usuari menciona una instal·lació pel nom (ex: 'Caldes de Montbui', 'EDAR Montornès') en lloc del codi exacte. MAI inventes codis d'instal·lació.",
+      parameters: {
+        type: "object",
+        required: ["nom"],
+        properties: {
+          nom: { type: "string", description: "Nom o part del nom de la instal·lació (ex: 'Caldes', 'Montornès', 'EDAR')" },
+        },
+      },
+    },
+  },
       description: "Cerca codis i noms GuBIMClass. Usa quan l'usuari pregunta sobre la classificació BIM d'un tipus d'equip.",
       parameters: {
         type: "object",
@@ -165,7 +175,17 @@ async function executaTool(
 
       case "cerca_equips": {
         const filtres: string[] = ["select=equip_code,equip_name,gubim_code,revit_category", "order=equip_name.asc", "limit=50"];
-        if (args.nom)        filtres.push(`equip_name=ilike.${encodeURIComponent("*" + args.nom + "*")}`);
+        if (args.nom) {
+          // Normalitzar: treure terminacions plurals/variants per fer stemming bàsic
+          // bombes→bomb, vàlvules→vàlvul, motors→motor, filtres→filtr, etc.
+          const nom = (args.nom as string)
+            .toLowerCase()
+            .replace(/es$/, "")   // bombes → bomb
+            .replace(/s$/, "")    // motors → motor
+            .replace(/ió$/, "")   // instal·lació → instal·laci
+            .trim();
+          filtres.push(`equip_name=ilike.${encodeURIComponent("*" + nom + "*")}`);
+        }
         if (args.equip_code) filtres.push(`equip_code=eq.${encodeURIComponent(args.equip_code as string)}`);
         if (args.gubim_code) filtres.push(`gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`);
         const rows = await supaGet(supaUrl, supaKey, `equipments?${filtres.join("&")}`) as { equip_code: string; equip_name: string; gubim_code: string; revit_category: string }[];
@@ -253,9 +273,54 @@ async function executaTool(
         return `TAGs Rosmiman trobats (${rows.length}):\n` + rows.map(r => `- ${r.tag}${r.descripcio ? `: ${r.descripcio}` : ""}`).join("\n");
       }
 
-      case "cerca_gubim": {
+      case "cerca_installacio": {
+        // Busca codis d'instal·lació a projectes i a rosmiman_equips
+        const [projRows, rosmimanRows] = await Promise.all([
+          supaGet(supaUrl, supaKey,
+            `projectes?select=codi_projecte,nom,codi_installacio,codis_installacio&nom=ilike.${encodeURIComponent("*" + args.nom + "*")}&limit=10`
+          ) as Promise<{codi_projecte:string;nom:string;codi_installacio:string;codis_installacio:{codi:string;nom:string}[]|null}[]>,
+          supaGet(supaUrl, supaKey,
+            `rosmiman_equips?select=codi_installacio&codi_installacio=not.is.null&limit=1000`
+          ) as Promise<{codi_installacio:string}[]>,
+        ]);
+
+        const resultats: string[] = [];
+
+        if (projRows.length > 0) {
+          projRows.forEach(p => {
+            const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio;
+            resultats.push(`Projecte "${p.nom}" (${p.codi_projecte}): codis instal·lació = ${codis}`);
+          });
+        }
+
+        // Buscar també als noms de codis_installacio de tots els projectes
+        const totsProjRows = await supaGet(supaUrl, supaKey,
+          `projectes?select=codi_projecte,nom,codi_installacio,codis_installacio&limit=200`
+        ) as {codi_projecte:string;nom:string;codi_installacio:string;codis_installacio:{codi:string;nom:string}[]|null}[];
+
+        const nomBuscat = (args.nom as string).toLowerCase();
+        totsProjRows.forEach(p => {
+          if (p.codis_installacio) {
+            p.codis_installacio.forEach(c => {
+              if (c.nom && c.nom.toLowerCase().includes(nomBuscat)) {
+                resultats.push(`Instal·lació "${c.nom}": codi = ${c.codi} (projecte ${p.codi_projecte} "${p.nom}")`);
+              }
+            });
+          }
+        });
+
+        if (resultats.length === 0) {
+          return `No s'ha trobat cap instal·lació amb el nom "${args.nom}". Demana a l'usuari el codi exacte de 5 caràcters.`;
+        }
+        return `Instal·lacions trobades:\n${[...new Set(resultats)].join("\n")}`;
+      }
+
+
         const filtres: string[] = ["select=code,name", "order=code.asc", "limit=50"];
-        if (args.nom)  filtres.push(`name=ilike.${encodeURIComponent("*" + args.nom + "*")}`);
+        if (args.nom) {
+          const nom = (args.nom as string).toLowerCase().replace(/es$/, "").replace(/s$/, "").trim();
+          filtres.push(`name=ilike.${encodeURIComponent("*" + nom + "*")}`);
+        }
         if (args.codi) filtres.push(`code=eq.${encodeURIComponent(args.codi as string)}`);
         const rows = await supaGet(supaUrl, supaKey, `gubim_class?${filtres.join("&")}`) as {code:string;name:string}[];
         if (!rows.length) return "No s'ha trobat cap codi GuBIMClass amb aquests criteris.";
@@ -264,7 +329,10 @@ async function executaTool(
 
       case "cerca_camps": {
         const filtres: string[] = ["select=col,codi,tipus_dada,disciplina,agrupacio_revit", "order=col.asc", "limit=50"];
-        if (args.nom)        filtres.push(`col=ilike.${encodeURIComponent("*" + args.nom + "*")}`);
+        if (args.nom) {
+          const nom = (args.nom as string).toLowerCase().replace(/es$/, "").replace(/s$/, "").trim();
+          filtres.push(`col=ilike.${encodeURIComponent("*" + nom + "*")}`);
+        }
         if (args.disciplina) filtres.push(`disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}`);
         const rows = await supaGet(supaUrl, supaKey, `fields?${filtres.join("&")}`) as {col:string;codi:string;tipus_dada:string;disciplina:string}[];
         if (!rows.length) return "No s'han trobat camps amb aquests criteris.";
@@ -310,6 +378,7 @@ Respon sempre en català. Si et pregunten en castellà o anglès, respon en aque
 
 Tens accés a les següents eines per consultar la base de dades en temps real:
 - \`cerca_equips\`: tipologies d'equips del catàleg
+- \`cerca_installacio\`: busca el codi d'instal·lació pel nom. USA SEMPRE quan l'usuari mencioni una instal·lació pel nom
 - \`cerca_projecte\`: informació de projectes (nom, estat, codis d'instal·lació)
 - \`cerca_tags_projecte\`: TAGs assignats a un projecte
 - \`primer_tag_disponible\`: calcula el primer TAG Rosmiman lliure
@@ -317,14 +386,16 @@ Tens accés a les següents eines per consultar la base de dades en temps real:
 - \`cerca_gubim\`: codis GuBIMClass
 - \`cerca_camps\`: diccionari de paràmetres BIM
 
-REGLES IMPORTANTS:
-- Sempre usa les eines per respondre preguntes sobre dades concretes. MAI inventes codis, TAGs, noms o dades.
-- Si no trobes la informació amb una eina, digues-ho clarament.
-- Pots cridar múltiples eines en seqüència si cal.
+REGLES CRÍTIQUES:
+1. MAI inventes codis d'instal·lació, codis d'equip, TAGs o noms. Si no el trobes a la BD, pregunta a l'usuari.
+2. Quan l'usuari mencioni una instal·lació pel nom (ex: "Caldes de Montbui"), crida SEMPRE \`cerca_installacio\` per obtenir el codi real.
+3. Quan l'usuari faci una pregunta de seguiment ("penja del CCM 2", "i per la instal·lació X?"), mantén el context de la conversa anterior: recorda l'equip, instal·lació i paràmetres discutits.
+4. Si en un torn anterior has identificat un codi d'equip o instal·lació, usa'l en els torns següents sense tornar a preguntar.
+5. Per calcular TAGs, primer verifica el codi d'equip amb \`cerca_equips\` i el codi d'instal·lació amb \`cerca_installacio\` si no els tens confirmats.
 
 FORMAT TAG ROSMIMAN: \`CODIINSTALLACIO_CODIEQUIP_CCM+FUNCIO(2digits)+DUPLICITAT\`
-- CODIINSTALLACIO: 5 car. (ex: ED008)
-- CODIEQUIP: codi GuBIMClass (ex: BM00)
+- CODIINSTALLACIO: 5 car. exactes (ex: ED008) — SEMPRE verificat a la BD
+- CODIEQUIP: codi GuBIMClass (ex: BM00) — SEMPRE verificat a la BD
 - CCM: 1 dígit (0-9)
 - FUNCIO: 2 dígits (01-99, mai 00)
 - DUPLICITAT: A-Z seqüencial
