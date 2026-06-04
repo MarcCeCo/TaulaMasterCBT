@@ -186,15 +186,15 @@ const TOOLS = [
     type: "function",
     function: {
       name: "primer_tag_disponible",
-      description: "Calcula el primer TAG Rosmiman disponible (no usat ni a projectes ni a Rosmiman) per a un equip en una instal·lació.",
+      description: "Calcula el primer TAG Rosmiman disponible (primera lletra de duplicitat A-Z lliure) per a una combinació instal·lació+equip+ccm+funció. El codi_equip és l'equip_code de la taula equipments (ex: 'BCS0'), obtingut de cerca_equips.",
       parameters: {
         type: "object",
         required: ["codi_installacio", "codi_equip"],
         properties: {
-          codi_installacio: { type: "string", description: "Codi instal·lació 5 car. (ex: 'ED001')" },
-          codi_equip:       { type: "string", description: "Codi GuBIMClass de l'equip (ex: 'BCS0')" },
-          ccm:              { type: "number", description: "CCM 0-9, per defecte 1" },
-          funcio:           { type: "number", description: "Funció 01-99, per defecte 1" },
+          codi_installacio: { type: "string", description: "Codi instal·lació 5 car. (ex: 'ED014') — obtingut de cerca_installacio" },
+          codi_equip:       { type: "string", description: "equip_code de la taula equipments (ex: 'BCS0') — obtingut de cerca_equips, camp equip_code" },
+          ccm:              { type: "string", description: "CCM: 1 dígit 0-9, per defecte '1'" },
+          funcio:           { type: "string", description: "Funció: 1-2 dígits 01-99 (mai 00), per defecte '01'" },
         },
       },
     },
@@ -471,37 +471,90 @@ async function executaTool(
       }
 
       // ── primer_tag_disponible ──────────────────────────────────────────────
+      // Replica la lògica del frontend: buildTag + primeraDuplicitatLliure
+      // TAG format: CODIINST_CODIEQUIP_CCM + FUNCIO(2digits) + DUPLICITAT(A-Z)
+      // codi_equip = equip_code de la taula equipments (NO gubim_code)
+      //
+      // Ofereix dues opcions:
+      //   Opció A — mateixa funció, primera lletra lliure (duplicant funció)
+      //             ex: ja existeix ED014_BCS0_101A → proposa ED014_BCS0_101B
+      //   Opció B — primera funció completament lliure (funció nova, lletra A)
+      //             ex: funcio=02 si 01 ja té tagging
       case "primer_tag_disponible": {
-        const codiInst = (args.codi_installacio as string).toUpperCase();
-        const codiEq   = (args.codi_equip as string).toUpperCase();
-        const ccm      = (args.ccm as number) ?? 1;
-        const funcio   = (args.funcio as number) ?? 1;
-        const prefix   = `${codiInst}_${codiEq}_${ccm}${String(funcio).padStart(2, "0")}`;
+        const codiInst = (args.codi_installacio as string).trim().toUpperCase();
+        const codiEq   = (args.codi_equip as string).trim().toUpperCase();
+        const ccm      = String(args.ccm ?? "1").trim();
+        const funcioInici = String(args.funcio ?? "01").trim().padStart(2, "0");
 
+        // Validacions
+        if (!/^[A-Z0-9]{2,6}$/.test(codiInst)) return `Codi instal·lació invàlid: "${codiInst}". Ha de ser 5 car. (ex: ED014).`;
+        if (!/^\d$/.test(ccm)) return `CCM invàlid: "${ccm}". Ha de ser 1 dígit 0-9.`;
+        if (funcioInici === "00") return "La funció no pot ser 00.";
+
+        // Carregar TOTS els TAGs d'aquesta instal·lació+equip (projectes + Rosmiman)
+        const prefixGlobal = `${codiInst}_${codiEq}_${ccm}`;
         const [rosmiman, projecteTags] = await Promise.all([
-          supaGet(supaUrl, supaKey, `rosmiman_equips?select=tag&tag=like.${encodeURIComponent(codiInst + "_" + codiEq + "_%")}&limit=500`) as Promise<{tag:string}[]>,
-          supaGet(supaUrl, supaKey, `projecte_tags?select=tag_complet&tag_complet=like.${encodeURIComponent(codiInst + "_" + codiEq + "_%")}&limit=500`) as Promise<{tag_complet:string}[]>,
+          supaGet(supaUrl, supaKey,
+            `rosmiman_equips?select=tag&tag=like.${encodeURIComponent(prefixGlobal + "%")}&limit=500`
+          ) as Promise<{tag:string}[]>,
+          supaGet(supaUrl, supaKey,
+            `projecte_tags?select=tag_complet&tag_complet=like.${encodeURIComponent(prefixGlobal + "%")}&limit=500`
+          ) as Promise<{tag_complet:string}[]>,
         ]);
 
-        const usats = new Set([
+        const totsElsTags = new Set([
           ...(rosmiman as {tag:string}[]).map(r => r.tag),
           ...(projecteTags as {tag_complet:string}[]).map(r => r.tag_complet),
         ]);
 
-        let primerLliure = "";
-        outer: for (let fn = funcio; fn <= 99; fn++) {
-          for (const ll of "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
-            const candidat = `${codiInst}_${codiEq}_${ccm}${String(fn).padStart(2, "0")}${ll}`;
-            if (!usats.has(candidat)) { primerLliure = candidat; break outer; }
+        // Funció auxiliar: primera lletra lliure per a un prefix INST_EQUIP_CCMfuncio
+        function primerLletraLliure(prefix: string): string | null {
+          for (let i = 0; i < 26; i++) {
+            const candidat = prefix + String.fromCharCode(65 + i);
+            if (!totsElsTags.has(candidat)) return String.fromCharCode(65 + i);
+          }
+          return null;
+        }
+
+        // ── Opció A: mateixa funció, primera lletra lliure ─────────────────
+        const prefixFuncioActual = `${codiInst}_${codiEq}_${ccm}${funcioInici}`;
+        const lletraOpcioA = primerLletraLliure(prefixFuncioActual);
+        const tagOpcioA = lletraOpcioA ? prefixFuncioActual + lletraOpcioA : null;
+
+        // Tags existents per a la funció actual (per mostrar context)
+        const tagsOpcioA = [...totsElsTags]
+          .filter(t => t.startsWith(prefixFuncioActual) && t.length === prefixFuncioActual.length + 1)
+          .sort();
+
+        // ── Opció B: primera funció completament lliure (cap TAG amb lletra A) ─
+        let tagOpcioB: string | null = null;
+        for (let fn = 1; fn <= 99; fn++) {
+          const fnStr = String(fn).padStart(2, "0");
+          const prefixFn = `${codiInst}_${codiEq}_${ccm}${fnStr}`;
+          // Una funció és "lliure" si no té cap TAG existent amb cap lletra
+          const teFuncioUsada = [...totsElsTags].some(t =>
+            t.startsWith(prefixFn) && t.length === prefixFn.length + 1
+          );
+          if (!teFuncioUsada) {
+            tagOpcioB = prefixFn + "A";
+            break;
           }
         }
 
-        const existents = [...usats].filter(t => t.startsWith(prefix)).sort();
-        return [
-          `Cerca de TAG per: instal·lació=${codiInst}, equip=${codiEq}, CCM=${ccm}, funció=${funcio}`,
-          `TAGs existents amb prefix ${codiInst}_${codiEq}_: ${existents.length > 0 ? existents.join(", ") : "cap"}`,
-          `Primer TAG disponible: ${primerLliure || "no disponible (A-Z exhaurits)"}`,
-        ].join("\n");
+        const lines = [
+          `Anàlisi de TAGs: instal·lació=${codiInst} | equip=${codiEq} | CCM=${ccm} | funció base=${funcioInici}`,
+          `TAGs existents per a funció ${funcioInici}: ${tagsOpcioA.length > 0 ? tagsOpcioA.join(", ") : "cap"}`,
+          ``,
+          `📌 Opció A — Mateixa funció (${funcioInici}), primera lletra lliure:`,
+          `   ${tagOpcioA ?? `❌ Totes les lletres A-Z esgotades per a la funció ${funcioInici}`}`,
+          `   Usa aquesta opció si és el mateix circuit/funció amb duplicitat física`,
+          ``,
+          `📌 Opció B — Primera funció completament lliure:`,
+          `   ${tagOpcioB ?? "❌ Totes les funcions 01-99 esgotades"}`,
+          `   Usa aquesta opció si és un equip nou amb funció diferent`,
+        ];
+
+        return lines.join("\n");
       }
 
       // ── cerca_visor3d ──────────────────────────────────────────────────────
@@ -641,18 +694,19 @@ DADES DISPONIBLES (accés via tools, SEMPRE consulta la BD — mai inventes valo
 
 REGLES CRÍTIQUES:
 1. MAI inventes codis d'instal·lació, codis d'equip, TAGs o noms. Si no el trobes a la BD, digueu clarament.
-2. Per instal·lacions pel nom: usa SEMPRE cerca_installacio per obtenir el codi real de visor3d_installacions.
-3. Manté el context de la conversa: si ja has identificat un codi d'equip/instal·lació, usa'l sense tornar a preguntar.
-4. Per calcular TAGs: primer verifica el codi equip amb cerca_equips i el codi instal·lació amb cerca_installacio.
+2. Per instal·lacions pel nom: usa SEMPRE cerca_installacio per obtenir el codi real. MAI assumeixis un codi d'instal·lació.
+3. Per calcular un TAG: OBLIGATORI cridar PRIMER cerca_equips amb el nom exacte de l'equip. El codi a usar és el camp "equip_code" (ex: BCS0), NO el gubim_code. MAI assumeixis cap codi d'equip — SEMPRE verifica a la BD.
+4. El context de la conversa es pot reutilitzar NOMÉS si el codi va ser retornat explícitament per una tool en aquest mateix fil. Si hi ha cap dubte, torna a consultar.
 5. Si una cerca no retorna resultats, prova termes més curts o suggereix alternatives.
+6. Per a primer_tag_disponible: codi_installacio ve de cerca_installacio, codi_equip és l'equip_code de cerca_equips. MAI uses gubim_code com a codi_equip.
 
 FORMAT TAG ROSMIMAN: \`CODIINSTALLACIO_CODIEQUIP_CCM+FUNCIO(2digits)+DUPLICITAT\`
-- CODIINSTALLACIO: 5 car. exactes (ex: ED008) — SEMPRE verificat a la BD
-- CODIEQUIP: codi GuBIMClass (ex: BM00) — SEMPRE verificat a la BD
+- CODIINSTALLACIO: 5 car. exactes — obtingut de cerca_installacio
+- CODIEQUIP: camp equip_code de la taula equipments — obtingut de cerca_equips (camp equip_code, NO gubim_code)
 - CCM: 1 dígit (0-9)
-- FUNCIO: 2 dígits (01-99, mai 00)
+- FUNCIO: 2 dígits (01-99, MAI 00)
 - DUPLICITAT: A-Z seqüencial
-Exemple: \`ED008_BM00_101A\`
+Exemple de format (els codis són ficticis): XXXXX_YYYY_101A
 
 CICLE DE VIDA TAG: pendent → validat / rebutjat → pendent
 Quan tots els TAGs d'un projecte es validen → s'afegeixen automàticament al llistat Rosmiman global.`;
