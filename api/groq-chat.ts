@@ -119,7 +119,7 @@ const TOOLS = [
     type: "function",
     function: {
       name: "cerca_installacio",
-      description: "Cerca el codi d'instal·lació per nom. Usa SEMPRE quan l'usuari menciona una instal·lació pel nom (ex: 'Caldes de Montbui', 'EDAR Montornès') en lloc del codi exacte. MAI inventes codis d'instal·lació.",
+      description: "Cerca instal·lacions per nom a la taula visor3d_installacions. Usa SEMPRE quan l'usuari mencioni una instal·lació pel nom (ex: 'Caldes de Montbui', 'EDAR Montornès'). Retorna codi_installacio (ex: ED008) i nom. MAI inventes codis.",
       parameters: {
         type: "object",
         required: ["nom"],
@@ -360,70 +360,38 @@ async function executaTool(
       }
 
       case "cerca_installacio": {
-        // Paraules significatives (>2 car.) per fer cerca flexible multi-paraula
-        const STOP_WORDS = new Set(["de", "del", "la", "el", "els", "les", "i", "a", "al"]);
-        const paraulesCerca = (args.nom as string)
-          .toLowerCase()
-          .split(/\s+/)
-          .filter(p => p.length > 2 && !STOP_WORDS.has(p));
+        // Font principal: taula visor3d_installacions (té totes les instal·lacions amb nom i codi)
+        type InstRow = { codi_installacio: string; nom: string; descripcio: string | null };
+        const termes = paraulesCerca(args.nom as string);
 
-        // Si no queden paraules útils, usar el nom sencer
-        const termesEfectius = paraulesCerca.length > 0 ? paraulesCerca : [(args.nom as string).toLowerCase()];
+        // Estratègia 1: frase completa ilike directe a la BD
+        let rows = await supaGet(supaUrl, supaKey,
+          `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + (args.nom as string) + "*")}&order=codi_installacio.asc&limit=20`
+        ) as InstRow[];
 
-        // Carregar tots els projectes (màx 200) i filtrar a memòria per cada paraula
-        const totsProjRows = await supaGet(supaUrl, supaKey,
-          `projectes?select=codi_projecte,nom,codi_installacio,codis_installacio&limit=200`
-        ) as {codi_projecte:string;nom:string;codi_installacio:string;codis_installacio:{codi:string;nom:string}[]|null}[];
-
-        const resultats: string[] = [];
-        const vists = new Set<string>();
-
-        totsProjRows.forEach(p => {
-          // Cercar als noms de codis_installacio (camp estructurat amb nom de la instal·lació)
-          if (p.codis_installacio) {
-            p.codis_installacio.forEach(c => {
-              if (!c.nom) return;
-              const nomInst = c.nom.toLowerCase();
-              // Totes les paraules de cerca han de ser presents al nom de la instal·lació
-              const coincideix = termesEfectius.every(t => nomInst.includes(t));
-              if (coincideix && !vists.has(c.codi)) {
-                vists.add(c.codi);
-                resultats.push(`Instal·lació "${c.nom}": codi = ${c.codi} (projecte ${p.codi_projecte} "${p.nom}")`);
-              }
-            });
-          }
-          // Cercar també al nom del projecte com a fallback
-          const nomProj = p.nom.toLowerCase();
-          const coincideixProj = termesEfectius.every(t => nomProj.includes(t));
-          if (coincideixProj) {
-            const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio;
-            if (codis && !vists.has(p.codi_installacio)) {
-              resultats.push(`Projecte "${p.nom}" (${p.codi_projecte}): codis instal·lació = ${codis}`);
-            }
-          }
-        });
-
-        if (resultats.length === 0) {
-          // Segon intent: cercar amb qualsevol paraula en lloc de totes (OR en comptes d'AND)
-          totsProjRows.forEach(p => {
-            if (p.codis_installacio) {
-              p.codis_installacio.forEach(c => {
-                if (!c.nom) return;
-                const nomInst = c.nom.toLowerCase();
-                const coincideix = termesEfectius.some(t => nomInst.includes(t));
-                if (coincideix && !vists.has(c.codi)) {
-                  vists.add(c.codi);
-                  resultats.push(`Instal·lació "${c.nom}": codi = ${c.codi} (projecte ${p.codi_projecte} "${p.nom}") [coincidència parcial]`);
-                }
-              });
-            }
-          });
+        // Estratègia 2: cerca per la primera paraula significant + filtre AND a memòria
+        if (!rows.length) {
+          const candidats = await supaGet(supaUrl, supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=codi_installacio.asc&limit=100`
+          ) as InstRow[];
+          rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "and"));
+          // Fallback OR
+          if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "or"));
         }
 
-        if (resultats.length === 0) {
-          return `No s'ha trobat cap instal·lació amb el nom "${args.nom}". Comprova l'ortografia o proporciona el codi exacte de 5 caràcters.`;
+        // Estratègia 3: cerca per codi_installacio si sembla un codi (ex: "ED008")
+        if (!rows.length && /^[A-Z]{2}\d{3}$/i.test((args.nom as string).trim())) {
+          rows = await supaGet(supaUrl, supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&codi_installacio=eq.${encodeURIComponent((args.nom as string).trim().toUpperCase())}&limit=1`
+          ) as InstRow[];
         }
-        return `Instal·lacions trobades:\n${resultats.join("\n")}`;
+
+        if (!rows.length) {
+          return `No s'ha trobat cap instal·lació amb el nom "${args.nom}". Comprova l'ortografia o proporciona el codi exacte (ex: ED008).`;
+        }
+        return `Instal·lacions trobades (${rows.length}):\n` + rows.map(r =>
+          `- ${r.codi_installacio}: ${r.nom}${r.descripcio ? ` | ${r.descripcio}` : ""}`
+        ).join("\n");
       }
 
       case "cerca_gubim": {
