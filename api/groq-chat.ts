@@ -1,12 +1,18 @@
 // api/groq-chat.ts
 // Vercel Serverless Function — Agent IA amb Function Calling + RAG
 //
-// Flux:
-//   1. Rep la pregunta
-//   2. Crida Groq amb tools disponibles (SQL directe a Supabase)
-//   3. Si el model crida una tool → executa la consulta SQL → retorna resultat
-//   4. Segona crida a Groq amb el resultat de la tool → resposta final
-//   5. RAG vectorial (Voyage AI) com a complement semàntic
+// Pàgines cobertes:
+//   dashboard         → estadístiques globals (equipments, fields, gubim_class)
+//   equips            → catàleg equipments + fields + gubim_class
+//   revit-bim         → documentació BIM (recursos estàtics, no BD)
+//   visualitzador-3d  → visor3d_sistemes + visor3d_installacions
+//   projectes-equips  → projectes + projecte_tags + rosmiman_equips
+//   rosmiman          → rosmiman_equips
+//
+// Taules Supabase cobertes:
+//   equipments, fields, gubim_class,
+//   projectes, projecte_tags, rosmiman_equips,
+//   visor3d_sistemes, visor3d_installacions
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -35,133 +41,8 @@ interface RagResult {
   similitud: number;
 }
 
-// ─── Tools disponibles per al model ──────────────────────────────────────────
+// ─── Utilitats de cerca ───────────────────────────────────────────────────────
 
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "cerca_equips",
-      description: "Cerca equips al catàleg Taula Master per nom, tipus, codi d'equip o GuBIMClass. Usa quan l'usuari pregunta sobre tipologies d'equips, quins equips hi ha, codis d'equip, etc.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom: { type: "string", description: "Paraula clau o frase del nom/tipus de l'equip (ex: 'bomba', 'vàlvula', 'bomba centrífuga de cambra seca')" },
-          tipus: { type: "string", description: "Àlies de nom: tipus o descripció de l'equip (ex: 'bomba centrífuga', 'motor elèctric')" },
-          equip_code: { type: "string", description: "Codi exacte de l'equip (ex: 'BM00')" },
-          gubim_code: { type: "string", description: "Codi GuBIMClass (ex: 'BM00')" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cerca_projecte",
-      description: "Obté informació d'un projecte: nom, estat, codis d'instal·lació. Usa quan l'usuari menciona un projecte pel nom o codi (format NNNN-N).",
-      parameters: {
-        type: "object",
-        required: [],
-        properties: {
-          codi_projecte: { type: "string", description: "Codi del projecte format NNNN-N (ex: '2024-1')" },
-          nom: { type: "string", description: "Nom o part del nom del projecte (ex: 'prova', 'EDAR')" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cerca_tags_projecte",
-      description: "Llista els TAGs Rosmiman d'un projecte concret. Usa quan l'usuari pregunta pels TAGs d'un projecte.",
-      parameters: {
-        type: "object",
-        required: ["codi_projecte"],
-        properties: {
-          codi_projecte: { type: "string", description: "Codi del projecte (ex: '2024-1')" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "primer_tag_disponible",
-      description: "Calcula el primer TAG Rosmiman disponible (no usat) per a un equip en una instal·lació. Usa quan l'usuari demana quin TAG pot assignar o quin és el primer lliure.",
-      parameters: {
-        type: "object",
-        required: ["codi_installacio", "codi_equip"],
-        properties: {
-          codi_installacio: { type: "string", description: "Codi instal·lació 5 car. (ex: 'ED001')" },
-          codi_equip: { type: "string", description: "Codi GuBIMClass de l'equip (ex: 'BCS0')" },
-          ccm: { type: "number", description: "CCM 0-9, per defecte 1" },
-          funcio: { type: "number", description: "Funció 01-99, per defecte 1" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cerca_tags_rosmiman",
-      description: "Cerca TAGs al llistat Rosmiman global per instal·lació o equip. Usa per verificar si un TAG existeix o llistar TAGs d'una instal·lació.",
-      parameters: {
-        type: "object",
-        properties: {
-          codi_installacio: { type: "string", description: "Codi instal·lació (ex: 'ED001')" },
-          codi_equip: { type: "string", description: "Codi GuBIMClass (ex: 'BCS0')" },
-          tag_exacte: { type: "string", description: "TAG complet per verificar si existeix (ex: 'ED001_BCS0_101A')" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cerca_installacio",
-      description: "Cerca instal·lacions per nom a la taula visor3d_installacions. Usa SEMPRE quan l'usuari mencioni una instal·lació pel nom (ex: 'Caldes de Montbui', 'EDAR Montornès'). Retorna codi_installacio (ex: ED008) i nom. MAI inventes codis.",
-      parameters: {
-        type: "object",
-        required: ["nom"],
-        properties: {
-          nom: { type: "string", description: "Nom o part del nom de la instal·lació (ex: 'Caldes', 'Montornès', 'EDAR')" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cerca_gubim",
-      description: "Cerca codis i noms GuBIMClass. Usa quan l'usuari pregunta sobre la classificació BIM d'un tipus d'equip.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom: { type: "string", description: "Paraula clau del nom GuBIMClass" },
-          codi: { type: "string", description: "Codi GuBIMClass exacte" },
-        },
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "cerca_camps",
-      description: "Cerca camps del diccionari de paràmetres BIM. Usa quan l'usuari pregunta sobre quins paràmetres o camps té un equip.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom: { type: "string", description: "Paraula clau del nom del camp" },
-          disciplina: { type: "string", description: "Disciplina (ex: 'MEP', 'HVAC')" },
-        },
-      },
-    },
-  },
-];
-
-// ─── Executors de tools ───────────────────────────────────────────────────────
-
-// Fetch wrapper: retorna array buit si la resposta no és ok, llança si hi ha excepció de xarxa
 async function supaGet(supaUrl: string, supaKey: string, path: string): Promise<unknown[]> {
   const r = await fetch(`${supaUrl}/rest/v1/${path}`, {
     headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` },
@@ -173,22 +54,182 @@ async function supaGet(supaUrl: string, supaKey: string, path: string): Promise<
   return r.json();
 }
 
-// Utilitat: cerca flexible per paraules (AND) amb fallback a OR
-// Retorna true si el text conté totes les paraules del terme buscat
-// Si el mode és "or", en té prou amb una sola paraula
-function coincideixFlexible(text: string, termes: string[], mode: "and" | "or" = "and"): boolean {
-  const t = text.toLowerCase();
-  return mode === "and"
-    ? termes.every(p => t.includes(p))
-    : termes.some(p => t.includes(p));
+const STOP_WORDS = new Set(["de","del","la","el","els","les","i","a","al","des","per","amb","una","uns","les","en","amb","o"]);
+
+function paraulesCerca(frase: string): string[] {
+  const ps = frase.toLowerCase().trim().split(/\s+/).filter(p => p.length > 2 && !STOP_WORDS.has(p));
+  return ps.length > 0 ? ps : [frase.toLowerCase().trim()];
 }
 
-// Extreu paraules significatives d'una frase (>2 car., sense stop words)
-function paraulesCerca(frase: string): string[] {
-  const STOP = new Set(["de", "del", "la", "el", "els", "les", "i", "a", "al", "des", "per", "amb", "una", "uns", "uns"]);
-  const paraules = frase.toLowerCase().trim().split(/\s+/).filter(p => p.length > 2 && !STOP.has(p));
-  return paraules.length > 0 ? paraules : [frase.toLowerCase().trim()];
+function coincideixFlexible(text: string, termes: string[], mode: "and" | "or" = "and"): boolean {
+  const t = text.toLowerCase();
+  return mode === "and" ? termes.every(p => t.includes(p)) : termes.some(p => t.includes(p));
 }
+
+// ─── Tools disponibles per al model ──────────────────────────────────────────
+
+const TOOLS = [
+  // ── INSTAL·LACIONS ─────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_installacio",
+      description: "Cerca instal·lacions (EDAR, estacions, etc.) per nom o codi a la BD. Retorna codi (ex: ED008) i nom. USA SEMPRE quan l'usuari mencioni una instal·lació pel nom. MAI inventes codis.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom: { type: "string", description: "Nom o part del nom (ex: 'Caldes', 'EDAR Montornès')" },
+          codi: { type: "string", description: "Codi exacte 5 car. (ex: 'ED008')" },
+        },
+      },
+    },
+  },
+  // ── EQUIPS ─────────────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_equips",
+      description: "Cerca equips al catàleg (taula equipments). Usa per: quins equips hi ha, codi d'un equip, equips d'un tipus. El paràmetre pot ser 'nom', 'tipus' o 'keyword.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom:        { type: "string", description: "Paraula clau o frase del nom/tipus (ex: 'bomba', 'bomba centrífuga de cambra seca')" },
+          tipus:      { type: "string", description: "Àlies de nom (el model a vegades usa 'tipus' en lloc de 'nom')" },
+          keyword:    { type: "string", description: "Àlies de nom" },
+          equip_code: { type: "string", description: "Codi exacte de l'equip (ex: 'BM00')" },
+          gubim_code: { type: "string", description: "Codi GuBIMClass exacte (ex: 'BM00')" },
+        },
+      },
+    },
+  },
+  // ── GuBIMClass ─────────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_gubim",
+      description: "Cerca codis i noms GuBIMClass (classificació BIM). Usa quan l'usuari pregunta sobre codis BIM d'un equip o vol saber la classificació d'un tipus d'equip.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom:  { type: "string", description: "Paraula clau del nom GuBIMClass" },
+          codi: { type: "string", description: "Codi GuBIMClass exacte" },
+        },
+      },
+    },
+  },
+  // ── CAMPS / DICCIONARI ─────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_camps",
+      description: "Cerca camps del diccionari de paràmetres BIM (taula fields). Usa quan l'usuari pregunta sobre quins paràmetres té un equip, quins camps hi ha, disciplines, etc.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom:        { type: "string", description: "Paraula clau del nom del camp" },
+          disciplina: { type: "string", description: "Disciplina (ex: 'MEP', 'HVAC')" },
+          codi:       { type: "string", description: "Codi de camp exacte" },
+        },
+      },
+    },
+  },
+  // ── PROJECTES ──────────────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_projecte",
+      description: "Cerca projectes actius o arxivats. Retorna nom, codi, estat i codis d'instal·lació. Usa quan l'usuari menciona un projecte pel nom o codi (format NNNN-N), o vol veure tots els projectes.",
+      parameters: {
+        type: "object",
+        properties: {
+          codi_projecte: { type: "string", description: "Codi del projecte (ex: '2024-1')" },
+          nom:           { type: "string", description: "Nom o part del nom del projecte" },
+          status:        { type: "string", description: "Filtre d'estat: 'actiu' o 'arxivat'" },
+        },
+      },
+    },
+  },
+  // ── TAGS DE PROJECTE ───────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_tags_projecte",
+      description: "Llista els TAGs Rosmiman d'un projecte concret. Usa quan l'usuari pregunta pels TAGs d'un projecte, quants té, quins estan validats, etc.",
+      parameters: {
+        type: "object",
+        required: ["codi_projecte"],
+        properties: {
+          codi_projecte: { type: "string", description: "Codi del projecte (ex: '2024-1')" },
+          status:        { type: "string", description: "Filtre opcional: 'pendent', 'validat' o 'rebutjat'" },
+        },
+      },
+    },
+  },
+  // ── TAGs ROSMIMAN GLOBALS ──────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_tags_rosmiman",
+      description: "Cerca TAGs al llistat Rosmiman global (rosmiman_equips). Usa per: verificar si un TAG existeix, llistar TAGs d'una instal·lació, comptar equips donats d'alta a Rosmiman.",
+      parameters: {
+        type: "object",
+        properties: {
+          codi_installacio: { type: "string", description: "Codi instal·lació (ex: 'ED001')" },
+          codi_equip:       { type: "string", description: "Codi GuBIMClass (ex: 'BCS0')" },
+          tag_exacte:       { type: "string", description: "TAG complet per verificar si existeix (ex: 'ED001_BCS0_101A')" },
+        },
+      },
+    },
+  },
+  // ── PRIMER TAG DISPONIBLE ──────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "primer_tag_disponible",
+      description: "Calcula el primer TAG Rosmiman disponible (no usat ni a projectes ni a Rosmiman) per a un equip en una instal·lació.",
+      parameters: {
+        type: "object",
+        required: ["codi_installacio", "codi_equip"],
+        properties: {
+          codi_installacio: { type: "string", description: "Codi instal·lació 5 car. (ex: 'ED001')" },
+          codi_equip:       { type: "string", description: "Codi GuBIMClass de l'equip (ex: 'BCS0')" },
+          ccm:              { type: "number", description: "CCM 0-9, per defecte 1" },
+          funcio:           { type: "number", description: "Funció 01-99, per defecte 1" },
+        },
+      },
+    },
+  },
+  // ── VISUALITZADOR 3D ───────────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "cerca_visor3d",
+      description: "Cerca sistemes i instal·lacions disponibles al Visualitzador 3D (visor3d_sistemes + visor3d_installacions). Usa quan l'usuari pregunta sobre models BIM, sistemes del visor, quines instal·lacions es poden visualitzar en 3D.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom:    { type: "string", description: "Nom o part del nom del sistema o instal·lació" },
+          codi:   { type: "string", description: "Codi d'instal·lació (ex: 'ED008')" },
+          sistema:{ type: "string", description: "Nom del sistema (ex: 'EDAR', 'Bombament')" },
+        },
+      },
+    },
+  },
+  // ── ESTADÍSTIQUES GLOBALS ──────────────────────────────────────────────────
+  {
+    type: "function",
+    function: {
+      name: "estadistiques_globals",
+      description: "Obté estadístiques globals de la plataforma: total d'equips, camps al diccionari, codis GuBIMClass, projectes actius, TAGs Rosmiman, instal·lacions al visor 3D. Usa quan l'usuari pregunta per resums, totals o estadístiques generals.",
+      parameters: {
+        type: "object",
+        properties: {},
+      },
+    },
+  },
+];
+
+// ─── Executors de tools ───────────────────────────────────────────────────────
 
 async function executaTool(
   name: string,
@@ -199,88 +240,187 @@ async function executaTool(
   try {
     switch (name) {
 
-      case "cerca_equips": {
-        // Acceptar "nom", "tipus" o "keyword" com a àlies (el model de vegades varia el nom del paràmetre)
-        const cercaNomRaw = (args.nom ?? args.tipus ?? args.keyword ?? args.equip_name) as string | undefined;
+      // ── cerca_installacio ──────────────────────────────────────────────────
+      case "cerca_installacio": {
+        type InstRow = { codi_installacio: string; nom: string; descripcio: string | null };
+        let rows: InstRow[] = [];
 
-        // Si no hi ha cap filtre, retornar tots (llista completa)
-        if (!cercaNomRaw && !args.equip_code && !args.gubim_code) {
-          const tots = await supaGet(supaUrl, supaKey, "equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200") as { equip_code: string; equip_name: string; gubim_code: string; revit_category: string }[];
-          if (!tots.length) return "El catàleg d'equips és buit.";
-          return `Catàleg complet (${tots.length} equips):\n` + tots.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
+        // Per codi exacte (prioritat màxima)
+        if (args.codi) {
+          rows = await supaGet(supaUrl, supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&codi_installacio=eq.${encodeURIComponent((args.codi as string).toUpperCase())}&limit=5`
+          ) as InstRow[];
         }
 
-        let rows: { equip_code: string; equip_name: string; gubim_code: string; revit_category: string }[] = [];
+        // Per nom: estratègia 1 → frase completa
+        if (!rows.length && args.nom) {
+          const nomRaw = args.nom as string;
+          const termes = paraulesCerca(nomRaw);
+          rows = await supaGet(supaUrl, supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + nomRaw + "*")}&order=codi_installacio.asc&limit=20`
+          ) as InstRow[];
 
-        // Cerca per codi exacte (prioritat màxima)
+          // Estratègia 2 → primera paraula significant + filtre AND memòria
+          if (!rows.length) {
+            const candidats = await supaGet(supaUrl, supaKey,
+              `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=codi_installacio.asc&limit=100`
+            ) as InstRow[];
+            rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "and"));
+            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "or"));
+          }
+        }
+
+        // Sense filtres → llista totes
+        if (!rows.length && !args.nom && !args.codi) {
+          rows = await supaGet(supaUrl, supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&order=codi_installacio.asc&limit=200`
+          ) as InstRow[];
+          if (!rows.length) return "No hi ha instal·lacions a la base de dades.";
+          return `Totes les instal·lacions (${rows.length}):\n` + rows.map(r => `- ${r.codi_installacio}: ${r.nom}`).join("\n");
+        }
+
+        if (!rows.length) return `No s'ha trobat cap instal·lació amb el nom/codi "${args.nom ?? args.codi}". Comprova l'ortografia o proporciona el codi exacte (ex: ED008).`;
+        return `Instal·lacions trobades (${rows.length}):\n` + rows.map(r => `- ${r.codi_installacio}: ${r.nom}${r.descripcio ? ` | ${r.descripcio}` : ""}`).join("\n");
+      }
+
+      // ── cerca_equips ───────────────────────────────────────────────────────
+      case "cerca_equips": {
+        type EquipRow = { equip_code: string; equip_name: string; gubim_code: string; revit_category: string };
+        const cercaNomRaw = (args.nom ?? args.tipus ?? args.keyword ?? args.equip_name) as string | undefined;
+        let rows: EquipRow[] = [];
+
         if (args.equip_code) {
-          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_code=eq.${encodeURIComponent(args.equip_code as string)}`) as typeof rows;
+          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_code=eq.${encodeURIComponent(args.equip_code as string)}`) as EquipRow[];
         }
         if (args.gubim_code && !rows.length) {
-          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`) as typeof rows;
+          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`) as EquipRow[];
         }
 
-        // Cerca per nom: 3 estratègies en cascada fins que troba resultats
         if (cercaNomRaw && !rows.length) {
           const termes = paraulesCerca(cercaNomRaw);
-
-          // Estratègia 1: frase completa ilike
-          const fraseUrl = `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + cercaNomRaw.toLowerCase() + "*")}&order=equip_name.asc&limit=50`;
-          rows = await supaGet(supaUrl, supaKey, fraseUrl) as typeof rows;
-
-          // Estratègia 2: stemming de la primera paraula significant
-          if (!rows.length && termes.length > 0) {
-            const stem = termes[0].replace(/es$/, "").replace(/s$/, "").replace(/ió$/, "").replace(/ions$/, "ió");
-            const stemUrl = `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + stem + "*")}&order=equip_name.asc&limit=100`;
-            const candidats = await supaGet(supaUrl, supaKey, stemUrl) as typeof rows;
-            // Filtrar a memòria: totes les paraules han de ser presents (AND)
-            rows = candidats.filter(e => coincideixFlexible(e.equip_name, termes, "and"));
-            // Fallback OR si AND no dona resultats
-            if (!rows.length) rows = candidats.filter(e => coincideixFlexible(e.equip_name, termes, "or"));
+          // Estratègia 1: frase completa
+          rows = await supaGet(supaUrl, supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + cercaNomRaw.toLowerCase() + "*")}&order=equip_name.asc&limit=50`
+          ) as EquipRow[];
+          // Estratègia 2: stemming primera paraula
+          if (!rows.length) {
+            const stem = termes[0].replace(/es$/, "").replace(/s$/, "").replace(/ió$/, "");
+            const candidats = await supaGet(supaUrl, supaKey,
+              `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + stem + "*")}&order=equip_name.asc&limit=150`
+            ) as EquipRow[];
+            rows = candidats.filter(r => coincideixFlexible(r.equip_name, termes, "and"));
+            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.equip_name, termes, "or")).slice(0, 30);
           }
-
-          // Estratègia 3: cerca cada paraula per separat i intersectar
+          // Estratègia 3: tots + filtre memòria
           if (!rows.length && termes.length > 1) {
-            const tots = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`) as typeof rows;
-            rows = tots.filter(e => coincideixFlexible(e.equip_name, termes, "and"));
-            if (!rows.length) rows = tots.filter(e => coincideixFlexible(e.equip_name, termes, "or")).slice(0, 20);
+            const tots = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`) as EquipRow[];
+            rows = tots.filter(r => coincideixFlexible(r.equip_name, termes, "and"));
+            if (!rows.length) rows = tots.filter(r => coincideixFlexible(r.equip_name, termes, "or")).slice(0, 20);
           }
         }
 
-        if (!rows.length) return `No s'han trobat equips per "${cercaNomRaw ?? args.equip_code ?? args.gubim_code}". Prova amb un terme més curt o diferent.`;
+        if (!cercaNomRaw && !args.equip_code && !args.gubim_code) {
+          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200`) as EquipRow[];
+          if (!rows.length) return "El catàleg d'equips és buit.";
+          return `Catàleg complet (${rows.length} equips):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
+        }
+
+        if (!rows.length) return `No s'han trobat equips per "${cercaNomRaw ?? args.equip_code ?? args.gubim_code}".`;
         return `Equips trobats (${rows.length}):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}${e.revit_category ? ` | Revit: ${e.revit_category}` : ""}`).join("\n");
       }
 
+      // ── cerca_gubim ────────────────────────────────────────────────────────
+      case "cerca_gubim": {
+        type GubimRow = { code: string; name: string };
+        let rows: GubimRow[] = [];
+        if (args.codi) {
+          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&code=eq.${encodeURIComponent(args.codi as string)}`) as GubimRow[];
+        }
+        if (!rows.length && args.nom) {
+          const termes = paraulesCerca(args.nom as string);
+          rows = await supaGet(supaUrl, supaKey,
+            `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + (args.nom as string).toLowerCase() + "*")}&order=code.asc&limit=50`
+          ) as GubimRow[];
+          if (!rows.length) {
+            const stem = termes[0].replace(/es$/, "").replace(/s$/, "");
+            const candidats = await supaGet(supaUrl, supaKey,
+              `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + stem + "*")}&order=code.asc&limit=100`
+            ) as GubimRow[];
+            rows = candidats.filter(r => coincideixFlexible(r.name, termes, "and"));
+            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.name, termes, "or")).slice(0, 20);
+          }
+        }
+        if (!rows.length && !args.codi && !args.nom) {
+          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&order=code.asc&limit=200`) as GubimRow[];
+        }
+        if (!rows.length) return `No s'ha trobat cap codi GuBIMClass per "${args.nom ?? args.codi}".`;
+        return `GuBIMClass trobats (${rows.length}):\n` + rows.map(r => `- ${r.code}: ${r.name}`).join("\n");
+      }
+
+      // ── cerca_camps ────────────────────────────────────────────────────────
+      case "cerca_camps": {
+        type CampRow = { col: string; codi: string; tipus_dada: string; disciplina: string; agrupacio_revit: string };
+        let rows: CampRow[] = [];
+        if (args.codi) {
+          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=eq.${encodeURIComponent(args.codi as string)}`) as CampRow[];
+        }
+        if (!rows.length && !args.nom && !args.disciplina && !args.codi) {
+          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&order=col.asc&limit=200`) as CampRow[];
+          if (!rows.length) return "El diccionari de camps és buit.";
+          return `Tots els camps (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
+        }
+        if (!rows.length && args.nom) {
+          const termes = paraulesCerca(args.nom as string);
+          let candidats = await supaGet(supaUrl, supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=100`
+          ) as CampRow[];
+          if (args.disciplina) candidats = candidats.filter(r => r.disciplina?.toLowerCase().includes((args.disciplina as string).toLowerCase()));
+          rows = candidats.filter(r => coincideixFlexible(r.col, termes, "and"));
+          if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.col, termes, "or")).slice(0, 30);
+          if (!rows.length) {
+            const perCodi = await supaGet(supaUrl, supaKey,
+              `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=50`
+            ) as CampRow[];
+            rows = perCodi;
+          }
+        }
+        if (!rows.length && args.disciplina && !args.nom) {
+          rows = await supaGet(supaUrl, supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}&order=col.asc&limit=100`
+          ) as CampRow[];
+        }
+        if (!rows.length) return `No s'han trobat camps per "${args.nom ?? args.disciplina ?? args.codi}".`;
+        return `Camps trobats (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}${r.agrupacio_revit ? ` | Revit: ${r.agrupacio_revit}` : ""}`).join("\n");
+      }
+
+      // ── cerca_projecte ─────────────────────────────────────────────────────
       case "cerca_projecte": {
         type ProjRow = { id: string; codi_projecte: string; nom: string; status: string; codi_installacio: string; codis_installacio: {codi:string;nom:string}[]|null };
         let rows: ProjRow[] = [];
 
         if (args.codi_projecte) {
-          // Cerca per codi exacte
-          rows = await supaGet(supaUrl, supaKey, `projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=5`) as ProjRow[];
+          rows = await supaGet(supaUrl, supaKey,
+            `projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=5`
+          ) as ProjRow[];
         }
 
         if (!rows.length) {
-          // Carregar tots i filtrar per paraules (nom del projecte o nom d'instal·lació)
-          const tots = await supaGet(supaUrl, supaKey, "projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&order=codi_projecte.desc&limit=200") as ProjRow[];
+          let query = "projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&order=codi_projecte.desc&limit=200";
+          if (args.status) query += `&status=eq.${encodeURIComponent(args.status as string)}`;
+          const tots = await supaGet(supaUrl, supaKey, query) as ProjRow[];
 
           if (args.nom) {
             const termes = paraulesCerca(args.nom as string);
-            // AND primer
             rows = tots.filter(p =>
               coincideixFlexible(p.nom, termes, "and") ||
               p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "and"))
             );
-            // OR com a fallback
-            if (!rows.length) {
-              rows = tots.filter(p =>
-                coincideixFlexible(p.nom, termes, "or") ||
-                p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "or"))
-              );
-            }
+            if (!rows.length) rows = tots.filter(p =>
+              coincideixFlexible(p.nom, termes, "or") ||
+              p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "or"))
+            );
           } else {
-            // Sense filtre: retornar els 10 més recents
-            rows = tots.slice(0, 10);
+            rows = tots.slice(0, 20);
           }
         }
 
@@ -291,20 +431,46 @@ async function executaTool(
         }).join("\n");
       }
 
+      // ── cerca_tags_projecte ────────────────────────────────────────────────
       case "cerca_tags_projecte": {
-        // Primer obtenim l'id del projecte
         const prRows = await supaGet(supaUrl, supaKey,
           `projectes?select=id,nom&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=1`
         ) as { id: string; nom: string }[];
         if (!prRows.length) return `No existeix el projecte ${args.codi_projecte}.`;
-        const tags = await supaGet(supaUrl, supaKey,
-          `projecte_tags?select=tag_complet,status,descripcio_equip,codi_installacio&projecte_id=eq.${encodeURIComponent(prRows[0].id)}&order=tag_complet.asc&limit=500`
-        ) as { tag_complet: string; status: string; descripcio_equip: string; codi_installacio: string }[];
-        if (!tags.length) return `El projecte ${args.codi_projecte} "${prRows[0].nom}" no té TAGs assignats.`;
+        let tagQuery = `projecte_tags?select=tag_complet,status,descripcio_equip,codi_installacio&projecte_id=eq.${encodeURIComponent(prRows[0].id)}&order=tag_complet.asc&limit=500`;
+        if (args.status) tagQuery += `&status=eq.${encodeURIComponent(args.status as string)}`;
+        const tags = await supaGet(supaUrl, supaKey, tagQuery) as { tag_complet: string; status: string; descripcio_equip: string; codi_installacio: string }[];
+        if (!tags.length) return `El projecte ${args.codi_projecte} "${prRows[0].nom}" no té TAGs${args.status ? ` amb estat "${args.status}"` : ""}.`;
+        const validats  = tags.filter(t => t.status === "validat").length;
+        const pendents  = tags.filter(t => t.status === "pendent").length;
+        const rebutjats = tags.filter(t => t.status === "rebutjat").length;
         const resum = tags.map(t => `- ${t.tag_complet} | ${t.status}${t.descripcio_equip ? ` | ${t.descripcio_equip}` : ""}`).join("\n");
-        return `TAGs del projecte ${args.codi_projecte} "${prRows[0].nom}" (${tags.length} TAGs):\n${resum}`;
+        return `TAGs del projecte ${args.codi_projecte} "${prRows[0].nom}" (${tags.length} TAGs — ${validats} validats, ${pendents} pendents, ${rebutjats} rebutjats):\n${resum}`;
       }
 
+      // ── cerca_tags_rosmiman ────────────────────────────────────────────────
+      case "cerca_tags_rosmiman": {
+        const filtres: string[] = ["select=tag,descripcio,codi_installacio", "order=tag.asc", "limit=100"];
+        if (args.tag_exacte) {
+          filtres.push(`tag=eq.${encodeURIComponent(args.tag_exacte as string)}`);
+        } else {
+          if (args.codi_installacio) filtres.push(`codi_installacio=eq.${encodeURIComponent((args.codi_installacio as string).toUpperCase())}`);
+          if (args.codi_equip) {
+            const ci = (args.codi_installacio as string ?? "").toUpperCase();
+            const ce = (args.codi_equip as string).toUpperCase();
+            filtres.push(`tag=like.${encodeURIComponent((ci ? ci + "_" : "") + ce + "_%")}`);
+          }
+        }
+        const rows = await supaGet(supaUrl, supaKey, `rosmiman_equips?${filtres.join("&")}`) as {tag:string;descripcio:string}[];
+        if (!rows.length) {
+          if (args.tag_exacte) return `El TAG ${args.tag_exacte} NO existeix al llistat Rosmiman.`;
+          return "No s'han trobat TAGs amb aquests criteris.";
+        }
+        if (args.tag_exacte) return `El TAG ${args.tag_exacte} SÍ existeix al llistat Rosmiman: ${rows[0].descripcio || "(sense descripció)"}`;
+        return `TAGs Rosmiman trobats (${rows.length}):\n` + rows.map(r => `- ${r.tag}${r.descripcio ? `: ${r.descripcio}` : ""}`).join("\n");
+      }
+
+      // ── primer_tag_disponible ──────────────────────────────────────────────
       case "primer_tag_disponible": {
         const codiInst = (args.codi_installacio as string).toUpperCase();
         const codiEq   = (args.codi_equip as string).toUpperCase();
@@ -338,125 +504,90 @@ async function executaTool(
         ].join("\n");
       }
 
-      case "cerca_tags_rosmiman": {
-        const filtres: string[] = ["select=tag,descripcio,codi_installacio", "order=tag.asc", "limit=100"];
-        if (args.tag_exacte) {
-          filtres.push(`tag=eq.${encodeURIComponent(args.tag_exacte as string)}`);
-        } else {
-          if (args.codi_installacio) filtres.push(`codi_installacio=eq.${encodeURIComponent((args.codi_installacio as string).toUpperCase())}`);
-          if (args.codi_equip) {
-            const ci = (args.codi_installacio as string ?? "").toUpperCase();
-            const ce = (args.codi_equip as string).toUpperCase();
-            filtres.push(`tag=like.${encodeURIComponent((ci ? ci + "_" : "") + ce + "_%")}`);
-          }
-        }
-        const rows = await supaGet(supaUrl, supaKey, `rosmiman_equips?${filtres.join("&")}`) as {tag:string;descripcio:string}[];
-        if (!rows.length) {
-          if (args.tag_exacte) return `El TAG ${args.tag_exacte} NO existeix al llistat Rosmiman.`;
-          return "No s'han trobat TAGs amb aquests criteris.";
-        }
-        if (args.tag_exacte) return `El TAG ${args.tag_exacte} SÍ existeix al llistat Rosmiman: ${rows[0].descripcio || "(sense descripció)"}`;
-        return `TAGs Rosmiman trobats (${rows.length}):\n` + rows.map(r => `- ${r.tag}${r.descripcio ? `: ${r.descripcio}` : ""}`).join("\n");
-      }
+      // ── cerca_visor3d ──────────────────────────────────────────────────────
+      case "cerca_visor3d": {
+        type SistRow = { id: string; nom: string; codi: string | null; color: string };
+        type Inst3DRow = { id: string; sistema_id: string; nom: string; codi_installacio: string | null; urn: string | null };
 
-      case "cerca_installacio": {
-        // Font principal: taula visor3d_installacions (té totes les instal·lacions amb nom i codi)
-        type InstRow = { codi_installacio: string; nom: string; descripcio: string | null };
-        const termes = paraulesCerca(args.nom as string);
+        const [sistemes, installacions] = await Promise.all([
+          supaGet(supaUrl, supaKey, `visor3d_sistemes?select=id,nom,codi,color&order=ordre.asc&limit=100`) as Promise<SistRow[]>,
+          supaGet(supaUrl, supaKey, `visor3d_installacions?select=id,sistema_id,nom,codi_installacio,urn&order=codi_installacio.asc&limit=200`) as Promise<Inst3DRow[]>,
+        ]);
 
-        // Estratègia 1: frase completa ilike directe a la BD
-        let rows = await supaGet(supaUrl, supaKey,
-          `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + (args.nom as string) + "*")}&order=codi_installacio.asc&limit=20`
-        ) as InstRow[];
+        if (!sistemes.length) return "No hi ha sistemes configurats al Visualitzador 3D.";
 
-        // Estratègia 2: cerca per la primera paraula significant + filtre AND a memòria
-        if (!rows.length) {
-          const candidats = await supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=codi_installacio.asc&limit=100`
-          ) as InstRow[];
-          rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "and"));
-          // Fallback OR
-          if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "or"));
-        }
-
-        // Estratègia 3: cerca per codi_installacio si sembla un codi (ex: "ED008")
-        if (!rows.length && /^[A-Z]{2}\d{3}$/i.test((args.nom as string).trim())) {
-          rows = await supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom,descripcio&codi_installacio=eq.${encodeURIComponent((args.nom as string).trim().toUpperCase())}&limit=1`
-          ) as InstRow[];
-        }
-
-        if (!rows.length) {
-          return `No s'ha trobat cap instal·lació amb el nom "${args.nom}". Comprova l'ortografia o proporciona el codi exacte (ex: ED008).`;
-        }
-        return `Instal·lacions trobades (${rows.length}):\n` + rows.map(r =>
-          `- ${r.codi_installacio}: ${r.nom}${r.descripcio ? ` | ${r.descripcio}` : ""}`
-        ).join("\n");
-      }
-
-      case "cerca_gubim": {
-        type GubimRow = {code:string;name:string};
-        let rows: GubimRow[] = [];
-
-        if (args.codi) {
-          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&code=eq.${encodeURIComponent(args.codi as string)}`) as GubimRow[];
-        }
-
-        if (!rows.length && args.nom) {
-          const termes = paraulesCerca(args.nom as string);
-          // Estratègia 1: frase completa
-          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + (args.nom as string).toLowerCase() + "*")}&order=code.asc&limit=50`) as GubimRow[];
-          // Estratègia 2: stemming de la primera paraula
-          if (!rows.length) {
-            const stem = termes[0].replace(/es$/, "").replace(/s$/, "");
-            const candidats = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + stem + "*")}&order=code.asc&limit=100`) as GubimRow[];
-            rows = candidats.filter(r => coincideixFlexible(r.name, termes, "and"));
-            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.name, termes, "or")).slice(0, 20);
+        // Filtrar si hi ha criteris de cerca
+        let instFiltrades = installacions;
+        if (args.nom || args.codi || args.sistema) {
+          const termes = paraulesCerca((args.nom ?? args.sistema ?? args.codi ?? "") as string);
+          if (args.codi) {
+            instFiltrades = installacions.filter(i => i.codi_installacio?.toUpperCase() === (args.codi as string).toUpperCase());
+          } else {
+            instFiltrades = installacions.filter(i =>
+              coincideixFlexible(i.nom, termes, "and") ||
+              (i.codi_installacio && coincideixFlexible(i.codi_installacio, termes, "or"))
+            );
+            if (!instFiltrades.length) instFiltrades = installacions.filter(i => coincideixFlexible(i.nom, termes, "or"));
           }
         }
 
-        if (!rows.length && !args.codi && !args.nom) {
-          // Llista completa si no hi ha filtres
-          rows = await supaGet(supaUrl, supaKey, "gubim_class?select=code,name&order=code.asc&limit=200") as GubimRow[];
+        const instPerSistema = new Map<string, Inst3DRow[]>();
+        for (const i of instFiltrades) {
+          const arr = instPerSistema.get(i.sistema_id) ?? [];
+          arr.push(i);
+          instPerSistema.set(i.sistema_id, arr);
         }
 
-        if (!rows.length) return `No s'ha trobat cap codi GuBIMClass per "${args.nom ?? args.codi}".`;
-        return `GuBIMClass trobats (${rows.length}):\n` + rows.map(r => `- ${r.code}: ${r.name}`).join("\n");
+        const sistemesFiltrats = args.sistema
+          ? sistemes.filter(s => coincideixFlexible(s.nom, paraulesCerca(args.sistema as string), "or"))
+          : sistemes;
+
+        const lines: string[] = [];
+        for (const s of sistemesFiltrats) {
+          const insts = instPerSistema.get(s.id) ?? [];
+          if (!insts.length && (args.nom || args.codi)) continue;
+          lines.push(`\nSistema: ${s.nom}${s.codi ? ` (${s.codi})` : ""}`);
+          if (!insts.length) { lines.push("  (sense instal·lacions)"); continue; }
+          for (const i of insts) {
+            lines.push(`  - ${i.codi_installacio ?? "—"}: ${i.nom}${i.urn ? " | Model BIM disponible" : ""}`);
+          }
+        }
+
+        if (!lines.length) return `No s'ha trobat cap instal·lació al Visor 3D per "${args.nom ?? args.codi ?? args.sistema}".`;
+        return `Contingut del Visualitzador 3D (${instFiltrades.length} instal·lacions en ${sistemesFiltrats.length} sistemes):${lines.join("\n")}`;
       }
 
-      case "cerca_camps": {
-        type CampRow = {col:string;codi:string;tipus_dada:string;disciplina:string;agrupacio_revit:string};
-        let rows: CampRow[] = [];
+      // ── estadistiques_globals ──────────────────────────────────────────────
+      case "estadistiques_globals": {
+        const [equips, camps, gubim, projectes, tags, rosmiman, inst3d] = await Promise.all([
+          supaGet(supaUrl, supaKey, "equipments?select=id&limit=1&offset=0").then(() =>
+            fetch(`${supaUrl}/rest/v1/equipments?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
+              .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?")
+          ),
+          fetch(`${supaUrl}/rest/v1/fields?select=col`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
+            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
+          fetch(`${supaUrl}/rest/v1/gubim_class?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
+            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
+          fetch(`${supaUrl}/rest/v1/projectes?select=id&status=eq.actiu`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
+            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
+          fetch(`${supaUrl}/rest/v1/projecte_tags?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
+            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
+          fetch(`${supaUrl}/rest/v1/rosmiman_equips?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
+            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
+          fetch(`${supaUrl}/rest/v1/visor3d_installacions?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
+            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
+        ]);
 
-        // Sense filtres: llista tots
-        if (!args.nom && !args.disciplina && !args.codi) {
-          rows = await supaGet(supaUrl, supaKey, "fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&order=col.asc&limit=200") as CampRow[];
-          if (!rows.length) return "El diccionari de camps és buit.";
-          return `Tots els camps (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
-        }
-
-        if (args.codi) {
-          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=eq.${encodeURIComponent(args.codi as string)}`) as CampRow[];
-        }
-
-        if (!rows.length && args.nom) {
-          const termes = paraulesCerca(args.nom as string);
-          // Cerca per nom de columna (col) i per codi
-          let candidats = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=100`) as CampRow[];
-          if (args.disciplina) candidats = candidats.filter(r => r.disciplina?.toLowerCase().includes((args.disciplina as string).toLowerCase()));
-          rows = candidats.filter(r => coincideixFlexible(r.col, termes, "and"));
-          if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.col, termes, "or")).slice(0, 30);
-          // Si encara no troba res, buscar per codi del camp
-          if (!rows.length) {
-            const perCodi = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=50`) as CampRow[];
-            rows = perCodi;
-          }
-        } else if (!rows.length && args.disciplina) {
-          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}&order=col.asc&limit=100`) as CampRow[];
-        }
-
-        if (!rows.length) return `No s'han trobat camps per "${args.nom ?? args.disciplina ?? args.codi}".`;
-        return `Camps trobats (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}${r.agrupacio_revit ? ` | Revit: ${r.agrupacio_revit}` : ""}`).join("\n");
+        return [
+          "Estadístiques globals de TaulaMaster CBT:",
+          `- Equips al catàleg (equipments): ${equips}`,
+          `- Camps al diccionari (fields): ${camps}`,
+          `- Codis GuBIMClass: ${gubim}`,
+          `- Projectes actius: ${projectes}`,
+          `- TAGs de projectes (projecte_tags): ${tags}`,
+          `- TAGs Rosmiman globals: ${rosmiman}`,
+          `- Instal·lacions al Visor 3D: ${inst3d}`,
+        ].join("\n");
       }
 
       default:
@@ -496,22 +627,24 @@ const SYSTEM_PROMPT = `Ets l'assistent de TaulaMaster CBT, la plataforma de gest
 
 Respon sempre en català. Si et pregunten en castellà o anglès, respon en aquell idioma.
 
-Tens accés a les següents eines per consultar la base de dades en temps real:
-- \`cerca_equips\`: tipologies d'equips del catàleg
-- \`cerca_installacio\`: busca el codi d'instal·lació pel nom. USA SEMPRE quan l'usuari mencioni una instal·lació pel nom
-- \`cerca_projecte\`: informació de projectes (nom, estat, codis d'instal·lació)
-- \`cerca_tags_projecte\`: TAGs assignats a un projecte
-- \`primer_tag_disponible\`: calcula el primer TAG Rosmiman lliure
-- \`cerca_tags_rosmiman\`: verifica si un TAG existeix al llistat global
-- \`cerca_gubim\`: codis GuBIMClass
-- \`cerca_camps\`: diccionari de paràmetres BIM
+DADES DISPONIBLES (accés via tools, SEMPRE consulta la BD — mai inventes valors):
+- cerca_installacio: instal·lacions de la BD (visor3d_installacions) amb codi i nom. Usa SEMPRE quan l'usuari mencioni una instal·lació pel nom.
+- cerca_equips: catàleg d'equips tècnics (equipments). Inclou equip_code, equip_name, gubim_code.
+- cerca_gubim: classificació BIM GuBIMClass (gubim_class).
+- cerca_camps: diccionari de paràmetres BIM (fields). Inclou nom, codi, tipus de dada, disciplina.
+- cerca_projecte: projectes actius i arxivats (projectes). Inclou codi, nom, estat, instal·lacions.
+- cerca_tags_projecte: TAGs Rosmiman d'un projecte (projecte_tags). Filtra per estat (pendent/validat/rebutjat).
+- cerca_tags_rosmiman: llistat global d'equips Rosmiman (rosmiman_equips). Verifica si un TAG existeix.
+- primer_tag_disponible: calcula el primer TAG Rosmiman lliure (comprova projectes + Rosmiman).
+- cerca_visor3d: sistemes i instal·lacions del Visualitzador 3D (visor3d_sistemes + visor3d_installacions).
+- estadistiques_globals: totals de totes les taules.
 
 REGLES CRÍTIQUES:
-1. MAI inventes codis d'instal·lació, codis d'equip, TAGs o noms. Si no el trobes a la BD, pregunta a l'usuari.
-2. Quan l'usuari mencioni una instal·lació pel nom (ex: "Caldes de Montbui"), crida SEMPRE \`cerca_installacio\` per obtenir el codi real.
-3. Quan l'usuari faci una pregunta de seguiment ("penja del CCM 2", "i per la instal·lació X?"), mantén el context de la conversa anterior: recorda l'equip, instal·lació i paràmetres discutits.
-4. Si en un torn anterior has identificat un codi d'equip o instal·lació, usa'l en els torns següents sense tornar a preguntar.
-5. Per calcular TAGs, primer verifica el codi d'equip amb \`cerca_equips\` i el codi d'instal·lació amb \`cerca_installacio\` si no els tens confirmats.
+1. MAI inventes codis d'instal·lació, codis d'equip, TAGs o noms. Si no el trobes a la BD, digueu clarament.
+2. Per instal·lacions pel nom: usa SEMPRE cerca_installacio per obtenir el codi real de visor3d_installacions.
+3. Manté el context de la conversa: si ja has identificat un codi d'equip/instal·lació, usa'l sense tornar a preguntar.
+4. Per calcular TAGs: primer verifica el codi equip amb cerca_equips i el codi instal·lació amb cerca_installacio.
+5. Si una cerca no retorna resultats, prova termes més curts o suggereix alternatives.
 
 FORMAT TAG ROSMIMAN: \`CODIINSTALLACIO_CODIEQUIP_CCM+FUNCIO(2digits)+DUPLICITAT\`
 - CODIINSTALLACIO: 5 car. exactes (ex: ED008) — SEMPRE verificat a la BD
@@ -558,14 +691,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const ultimaPregunta = missatgesUsuari.filter(m => m.role === "user").at(-1)?.content ?? "";
 
-  // ── RAG (semàntic — complement per preguntes conceptuals) ──────────────────
+  // ── RAG semàntic ───────────────────────────────────────────────────────────
   let ragContext = "";
   try {
     const embedding = await embedQuery(ultimaPregunta, voyageKey);
     const ragResults = await cercaRag(embedding, supaUrl, supaKey, 8);
     if (ragResults.length > 0) {
       const lines = ragResults
-        .filter(r => r.similitud > 0.85) // només resultats prou rellevants
+        .filter(r => r.similitud > 0.85)
         .map(r => `[${r.tipus.toUpperCase()} ${(r.similitud*100).toFixed(0)}%] ${r.contingut}`);
       if (lines.length > 0) ragContext = `\n\n## Context semàntic addicional\n${lines.join("\n")}`;
     }
@@ -573,22 +706,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error("RAG error:", err);
   }
 
-  const systemContent = SYSTEM_PROMPT + (body.context?.pageContext ? `\n\nPàgina actual: ${body.context.pageContext}` : "") + ragContext;
+  const systemContent = SYSTEM_PROMPT
+    + (body.context?.pageContext ? `\n\nPàgina actual de l'usuari: ${body.context.pageContext}` : "")
+    + ragContext;
 
-  // Historial limitat a 6 torns
+  // Historial limitat a 8 torns
   const historial: MissatgeAPI[] = [
     { role: "system", content: systemContent },
-    ...missatgesUsuari.slice(-6),
+    ...missatgesUsuari.slice(-8),
   ];
 
   try {
-    // ── Primera crida a Groq (amb tools) ──────────────────────────────────────
+    // ── Primera crida a Groq (amb tools) ────────────────────────────────────
     const groqRes1 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        max_tokens: 1000,
+        max_tokens: 1500,
         temperature: 0.1,
         tools: TOOLS,
         tool_choice: "auto",
@@ -607,11 +742,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const missatgeAssistent = data1.choices[0].message;
 
-    // ── Si el model crida tools → executar i fer segona crida ─────────────────
+    // ── Si el model crida tools → executar i fer segona crida ───────────────
     if (data1.choices[0].finish_reason === "tool_calls" && missatgeAssistent.tool_calls?.length) {
       const toolMessages: MissatgeAPI[] = [];
 
-      // Executar totes les tool calls en paral·lel
       const resultats = await Promise.all(
         missatgeAssistent.tool_calls.map(async tc => {
           const args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
@@ -629,13 +763,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       });
 
-      // Segona crida amb els resultats de les tools
       const groqRes2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
         body: JSON.stringify({
           model: "llama-3.3-70b-versatile",
-          max_tokens: 1000,
+          max_tokens: 1500,
           temperature: 0.1,
           messages: [
             ...historial,
@@ -657,7 +790,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       res.status(200).json({ reply: data2.choices[0].message.content ?? "" }); return;
     }
 
-    // ── Resposta directa sense tool calls ─────────────────────────────────────
+    // ── Resposta directa sense tool calls ────────────────────────────────────
     res.status(200).json({ reply: missatgeAssistent.content ?? "" }); return;
 
   } catch (err) {
