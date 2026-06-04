@@ -298,24 +298,68 @@ async function executaTool(
 
         if (cercaNomRaw && !rows.length) {
           const termes = paraulesCerca(cercaNomRaw);
-          // Estratègia 1: frase completa
+
+          // Estratègia 1: frase completa ilike
           rows = await supaGet(supaUrl, supaKey,
             `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + cercaNomRaw.toLowerCase() + "*")}&order=equip_name.asc&limit=50`
           ) as EquipRow[];
-          // Estratègia 2: stemming primera paraula
-          if (!rows.length) {
-            const stem = termes[0].replace(/es$/, "").replace(/s$/, "").replace(/ió$/, "");
-            const candidats = await supaGet(supaUrl, supaKey,
-              `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + stem + "*")}&order=equip_name.asc&limit=150`
-            ) as EquipRow[];
-            rows = candidats.filter(r => coincideixFlexible(r.equip_name, termes, "and"));
-            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.equip_name, termes, "or")).slice(0, 30);
+
+          // Estratègia 2+3: cerca per cada paraula en paral·lel + puntuació per coincidències
+          // Cada equip rep 1 punt per cada paraula que conté al seu nom (stemming inclòs)
+          // Ordena per puntuació descendent → els més rellevants primer
+          if (!rows.length && termes.length > 0) {
+            // Generar stems per cada terme (singular, sense terminació)
+            const stems = termes.map(t =>
+              t.replace(/es$/, "").replace(/s$/, "").replace(/ió$/, "").replace(/ons$/, "ó")
+            );
+
+            // Cercar per cada stem en paral·lel
+            const resultatsPerStem = await Promise.all(
+              stems.map(stem =>
+                supaGet(supaUrl, supaKey,
+                  `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + stem + "*")}&order=equip_name.asc&limit=100`
+                ) as Promise<EquipRow[]>
+              )
+            );
+
+            // Puntuar cada equip: +1 per cada stem que conté
+            const puntuacions = new Map<string, { equip: EquipRow; punts: number; coincidencies: string[] }>();
+            for (let i = 0; i < stems.length; i++) {
+              for (const equip of resultatsPerStem[i]) {
+                const existent = puntuacions.get(equip.equip_code);
+                if (existent) {
+                  existent.punts++;
+                  existent.coincidencies.push(termes[i]);
+                } else {
+                  puntuacions.set(equip.equip_code, { equip, punts: 1, coincidencies: [termes[i]] });
+                }
+              }
+            }
+
+            // Ordenar per puntuació i retornar
+            const ordenats = [...puntuacions.values()]
+              .sort((a, b) => b.punts - a.punts);
+
+            rows = ordenats.map(o => o.equip);
+
+            // Afegir info de puntuació al resultat per ajudar el model a triar
+            if (rows.length > 0) {
+              const maxPunts = ordenats[0].punts;
+              const resum = ordenats.slice(0, 15).map(o =>
+                `- ${o.equip.equip_code}: ${o.equip.equip_name} | GuBIMClass: ${o.equip.gubim_code} [${o.punts}/${stems.length} coincidències: ${o.coincidencies.join(", ")}]`
+              ).join("\n");
+              return `Resultats per "${cercaNomRaw}" (${rows.length} candidats, ordenats per rellevància):\n${resum}${rows.length > 15 ? `\n... i ${rows.length - 15} més` : ""}`;
+            }
           }
-          // Estratègia 3: tots + filtre memòria
-          if (!rows.length && termes.length > 1) {
-            const tots = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`) as EquipRow[];
-            rows = tots.filter(r => coincideixFlexible(r.equip_name, termes, "and"));
-            if (!rows.length) rows = tots.filter(r => coincideixFlexible(r.equip_name, termes, "or")).slice(0, 20);
+
+          // Estratègia 4 (últim recurs): catàleg complet
+          if (!rows.length) {
+            const tots = await supaGet(supaUrl, supaKey,
+              `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`
+            ) as EquipRow[];
+            return `No s'he trobat cap equip coincident amb "${cercaNomRaw}".\n` +
+              `Catàleg complet (${tots.length} equips):\n` +
+              tots.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
           }
         }
 
@@ -695,7 +739,7 @@ DADES DISPONIBLES (accés via tools, SEMPRE consulta la BD — mai inventes valo
 REGLES CRÍTIQUES:
 1. MAI inventes codis d'instal·lació, codis d'equip, TAGs o noms. Si no el trobes a la BD, digueu clarament.
 2. Per instal·lacions pel nom: usa SEMPRE cerca_installacio per obtenir el codi real. MAI assumeixis un codi d'instal·lació.
-3. Per calcular un TAG: OBLIGATORI cridar PRIMER cerca_equips amb el nom exacte de l'equip. El codi a usar és el camp "equip_code" (ex: BCS0), NO el gubim_code. MAI assumeixis cap codi d'equip — SEMPRE verifica a la BD.
+3. Per calcular un TAG: OBLIGATORI cridar PRIMER cerca_equips. Si hi ha múltiples candidats, mostra'ls TOTS a l'usuari i demana confirmació — MAI tries sense confirmació. El codi a usar és el camp "equip_code", NO el gubim_code. Si cerca_equips retorna el catàleg complet (quan no troba coincidència), analitza'l i proposa els 2-3 equips més probables per a que l'usuari confirmi.
 4. El context de la conversa es pot reutilitzar NOMÉS si el codi va ser retornat explícitament per una tool en aquest mateix fil. Si hi ha cap dubte, torna a consultar.
 5. Si una cerca no retorna resultats, prova termes més curts o suggereix alternatives.
 6. Per a primer_tag_disponible: codi_installacio ve de cerca_installacio, codi_equip és l'equip_code de cerca_equips. MAI uses gubim_code com a codi_equip.
