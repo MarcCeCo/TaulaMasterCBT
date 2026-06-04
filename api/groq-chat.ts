@@ -161,12 +161,33 @@ const TOOLS = [
 
 // ─── Executors de tools ───────────────────────────────────────────────────────
 
+// Fetch wrapper: retorna array buit si la resposta no és ok, llança si hi ha excepció de xarxa
 async function supaGet(supaUrl: string, supaKey: string, path: string): Promise<unknown[]> {
   const r = await fetch(`${supaUrl}/rest/v1/${path}`, {
     headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` },
   });
-  if (!r.ok) return [];
+  if (!r.ok) {
+    console.error(`supaGet error ${r.status} per a: ${path}`);
+    return [];
+  }
   return r.json();
+}
+
+// Utilitat: cerca flexible per paraules (AND) amb fallback a OR
+// Retorna true si el text conté totes les paraules del terme buscat
+// Si el mode és "or", en té prou amb una sola paraula
+function coincideixFlexible(text: string, termes: string[], mode: "and" | "or" = "and"): boolean {
+  const t = text.toLowerCase();
+  return mode === "and"
+    ? termes.every(p => t.includes(p))
+    : termes.some(p => t.includes(p));
+}
+
+// Extreu paraules significatives d'una frase (>2 car., sense stop words)
+function paraulesCerca(frase: string): string[] {
+  const STOP = new Set(["de", "del", "la", "el", "els", "les", "i", "a", "al", "des", "per", "amb", "una", "uns", "uns"]);
+  const paraules = frase.toLowerCase().trim().split(/\s+/).filter(p => p.length > 2 && !STOP.has(p));
+  return paraules.length > 0 ? paraules : [frase.toLowerCase().trim()];
 }
 
 async function executaTool(
@@ -179,39 +200,94 @@ async function executaTool(
     switch (name) {
 
       case "cerca_equips": {
-        const filtres: string[] = ["select=equip_code,equip_name,gubim_code,revit_category", "order=equip_name.asc", "limit=50"];
-        // Acceptar tant "nom" com "tipus" com a àlies (el model de vegades usa "tipus")
-        const cercaNom = (args.nom ?? args.tipus) as string | undefined;
-        if (cercaNom) {
-          const paraules = cercaNom.toLowerCase().trim().split(/\s+/);
-          if (paraules.length === 1) {
-            // Una sola paraula: aplicar stemming bàsic (bombes→bomb, motors→motor)
-            const stem = paraules[0]
-              .replace(/es$/, "")
-              .replace(/s$/, "")
-              .replace(/ió$/, "");
-            filtres.push(`equip_name=ilike.${encodeURIComponent("*" + stem + "*")}`);
-          } else {
-            // Frase de múltiples paraules: cercar la frase sencera primer (més precís)
-            filtres.push(`equip_name=ilike.${encodeURIComponent("*" + cercaNom.toLowerCase() + "*")}`);
+        // Acceptar "nom", "tipus" o "keyword" com a àlies (el model de vegades varia el nom del paràmetre)
+        const cercaNomRaw = (args.nom ?? args.tipus ?? args.keyword ?? args.equip_name) as string | undefined;
+
+        // Si no hi ha cap filtre, retornar tots (llista completa)
+        if (!cercaNomRaw && !args.equip_code && !args.gubim_code) {
+          const tots = await supaGet(supaUrl, supaKey, "equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200") as { equip_code: string; equip_name: string; gubim_code: string; revit_category: string }[];
+          if (!tots.length) return "El catàleg d'equips és buit.";
+          return `Catàleg complet (${tots.length} equips):\n` + tots.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
+        }
+
+        let rows: { equip_code: string; equip_name: string; gubim_code: string; revit_category: string }[] = [];
+
+        // Cerca per codi exacte (prioritat màxima)
+        if (args.equip_code) {
+          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_code=eq.${encodeURIComponent(args.equip_code as string)}`) as typeof rows;
+        }
+        if (args.gubim_code && !rows.length) {
+          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`) as typeof rows;
+        }
+
+        // Cerca per nom: 3 estratègies en cascada fins que troba resultats
+        if (cercaNomRaw && !rows.length) {
+          const termes = paraulesCerca(cercaNomRaw);
+
+          // Estratègia 1: frase completa ilike
+          const fraseUrl = `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + cercaNomRaw.toLowerCase() + "*")}&order=equip_name.asc&limit=50`;
+          rows = await supaGet(supaUrl, supaKey, fraseUrl) as typeof rows;
+
+          // Estratègia 2: stemming de la primera paraula significant
+          if (!rows.length && termes.length > 0) {
+            const stem = termes[0].replace(/es$/, "").replace(/s$/, "").replace(/ió$/, "").replace(/ions$/, "ió");
+            const stemUrl = `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + stem + "*")}&order=equip_name.asc&limit=100`;
+            const candidats = await supaGet(supaUrl, supaKey, stemUrl) as typeof rows;
+            // Filtrar a memòria: totes les paraules han de ser presents (AND)
+            rows = candidats.filter(e => coincideixFlexible(e.equip_name, termes, "and"));
+            // Fallback OR si AND no dona resultats
+            if (!rows.length) rows = candidats.filter(e => coincideixFlexible(e.equip_name, termes, "or"));
+          }
+
+          // Estratègia 3: cerca cada paraula per separat i intersectar
+          if (!rows.length && termes.length > 1) {
+            const tots = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`) as typeof rows;
+            rows = tots.filter(e => coincideixFlexible(e.equip_name, termes, "and"));
+            if (!rows.length) rows = tots.filter(e => coincideixFlexible(e.equip_name, termes, "or")).slice(0, 20);
           }
         }
-        if (args.equip_code) filtres.push(`equip_code=eq.${encodeURIComponent(args.equip_code as string)}`);
-        if (args.gubim_code) filtres.push(`gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`);
-        const rows = await supaGet(supaUrl, supaKey, `equipments?${filtres.join("&")}`) as { equip_code: string; equip_name: string; gubim_code: string; revit_category: string }[];
-        if (!rows.length) return "No s'han trobat equips amb aquests criteris.";
+
+        if (!rows.length) return `No s'han trobat equips per "${cercaNomRaw ?? args.equip_code ?? args.gubim_code}". Prova amb un terme més curt o diferent.`;
         return `Equips trobats (${rows.length}):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}${e.revit_category ? ` | Revit: ${e.revit_category}` : ""}`).join("\n");
       }
 
       case "cerca_projecte": {
-        const filtres: string[] = ["select=id,codi_projecte,nom,status,codi_installacio,codis_installacio", "limit=5"];
-        if (args.codi_projecte) filtres.push(`codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}`);
-        else if (args.nom)      filtres.push(`nom=ilike.${encodeURIComponent("*" + args.nom + "*")}`);
-        const rows = await supaGet(supaUrl, supaKey, `projectes?${filtres.join("&")}`) as { id: string; codi_projecte: string; nom: string; status: string; codi_installacio: string; codis_installacio: {codi:string;nom:string}[]|null }[];
-        if (!rows.length) return "No s'ha trobat cap projecte amb aquests criteris.";
+        type ProjRow = { id: string; codi_projecte: string; nom: string; status: string; codi_installacio: string; codis_installacio: {codi:string;nom:string}[]|null };
+        let rows: ProjRow[] = [];
+
+        if (args.codi_projecte) {
+          // Cerca per codi exacte
+          rows = await supaGet(supaUrl, supaKey, `projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=5`) as ProjRow[];
+        }
+
+        if (!rows.length) {
+          // Carregar tots i filtrar per paraules (nom del projecte o nom d'instal·lació)
+          const tots = await supaGet(supaUrl, supaKey, "projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&order=codi_projecte.desc&limit=200") as ProjRow[];
+
+          if (args.nom) {
+            const termes = paraulesCerca(args.nom as string);
+            // AND primer
+            rows = tots.filter(p =>
+              coincideixFlexible(p.nom, termes, "and") ||
+              p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "and"))
+            );
+            // OR com a fallback
+            if (!rows.length) {
+              rows = tots.filter(p =>
+                coincideixFlexible(p.nom, termes, "or") ||
+                p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "or"))
+              );
+            }
+          } else {
+            // Sense filtre: retornar els 10 més recents
+            rows = tots.slice(0, 10);
+          }
+        }
+
+        if (!rows.length) return args.nom ? `No s'ha trobat cap projecte amb el nom "${args.nom}".` : "No hi ha projectes a la base de dades.";
         return rows.map(p => {
-          const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio;
-          return `Projecte ${p.codi_projecte}: "${p.nom}" | Estat: ${p.status} | Codis instal·lació: ${codis}`;
+          const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio ?? "(sense codi)";
+          return `Projecte ${p.codi_projecte}: "${p.nom}" | Estat: ${p.status} | Instal·lacions: ${codis}`;
         }).join("\n");
       }
 
@@ -284,69 +360,135 @@ async function executaTool(
       }
 
       case "cerca_installacio": {
-        // Busca codis d'instal·lació a projectes i a rosmiman_equips
-        const [projRows, rosmimanRows] = await Promise.all([
-          supaGet(supaUrl, supaKey,
-            `projectes?select=codi_projecte,nom,codi_installacio,codis_installacio&nom=ilike.${encodeURIComponent("*" + args.nom + "*")}&limit=10`
-          ) as Promise<{codi_projecte:string;nom:string;codi_installacio:string;codis_installacio:{codi:string;nom:string}[]|null}[]>,
-          supaGet(supaUrl, supaKey,
-            `rosmiman_equips?select=codi_installacio&codi_installacio=not.is.null&limit=1000`
-          ) as Promise<{codi_installacio:string}[]>,
-        ]);
+        // Paraules significatives (>2 car.) per fer cerca flexible multi-paraula
+        const STOP_WORDS = new Set(["de", "del", "la", "el", "els", "les", "i", "a", "al"]);
+        const paraulesCerca = (args.nom as string)
+          .toLowerCase()
+          .split(/\s+/)
+          .filter(p => p.length > 2 && !STOP_WORDS.has(p));
 
-        const resultats: string[] = [];
+        // Si no queden paraules útils, usar el nom sencer
+        const termesEfectius = paraulesCerca.length > 0 ? paraulesCerca : [(args.nom as string).toLowerCase()];
 
-        if (projRows.length > 0) {
-          projRows.forEach(p => {
-            const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio;
-            resultats.push(`Projecte "${p.nom}" (${p.codi_projecte}): codis instal·lació = ${codis}`);
-          });
-        }
-
-        // Buscar també als noms de codis_installacio de tots els projectes
+        // Carregar tots els projectes (màx 200) i filtrar a memòria per cada paraula
         const totsProjRows = await supaGet(supaUrl, supaKey,
           `projectes?select=codi_projecte,nom,codi_installacio,codis_installacio&limit=200`
         ) as {codi_projecte:string;nom:string;codi_installacio:string;codis_installacio:{codi:string;nom:string}[]|null}[];
 
-        const nomBuscat = (args.nom as string).toLowerCase();
+        const resultats: string[] = [];
+        const vists = new Set<string>();
+
         totsProjRows.forEach(p => {
+          // Cercar als noms de codis_installacio (camp estructurat amb nom de la instal·lació)
           if (p.codis_installacio) {
             p.codis_installacio.forEach(c => {
-              if (c.nom && c.nom.toLowerCase().includes(nomBuscat)) {
+              if (!c.nom) return;
+              const nomInst = c.nom.toLowerCase();
+              // Totes les paraules de cerca han de ser presents al nom de la instal·lació
+              const coincideix = termesEfectius.every(t => nomInst.includes(t));
+              if (coincideix && !vists.has(c.codi)) {
+                vists.add(c.codi);
                 resultats.push(`Instal·lació "${c.nom}": codi = ${c.codi} (projecte ${p.codi_projecte} "${p.nom}")`);
               }
             });
           }
+          // Cercar també al nom del projecte com a fallback
+          const nomProj = p.nom.toLowerCase();
+          const coincideixProj = termesEfectius.every(t => nomProj.includes(t));
+          if (coincideixProj) {
+            const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio;
+            if (codis && !vists.has(p.codi_installacio)) {
+              resultats.push(`Projecte "${p.nom}" (${p.codi_projecte}): codis instal·lació = ${codis}`);
+            }
+          }
         });
 
         if (resultats.length === 0) {
-          return `No s'ha trobat cap instal·lació amb el nom "${args.nom}". Demana a l'usuari el codi exacte de 5 caràcters.`;
+          // Segon intent: cercar amb qualsevol paraula en lloc de totes (OR en comptes d'AND)
+          totsProjRows.forEach(p => {
+            if (p.codis_installacio) {
+              p.codis_installacio.forEach(c => {
+                if (!c.nom) return;
+                const nomInst = c.nom.toLowerCase();
+                const coincideix = termesEfectius.some(t => nomInst.includes(t));
+                if (coincideix && !vists.has(c.codi)) {
+                  vists.add(c.codi);
+                  resultats.push(`Instal·lació "${c.nom}": codi = ${c.codi} (projecte ${p.codi_projecte} "${p.nom}") [coincidència parcial]`);
+                }
+              });
+            }
+          });
         }
-        return `Instal·lacions trobades:\n${[...new Set(resultats)].join("\n")}`;
+
+        if (resultats.length === 0) {
+          return `No s'ha trobat cap instal·lació amb el nom "${args.nom}". Comprova l'ortografia o proporciona el codi exacte de 5 caràcters.`;
+        }
+        return `Instal·lacions trobades:\n${resultats.join("\n")}`;
       }
 
       case "cerca_gubim": {
-        const filtres: string[] = ["select=code,name", "order=code.asc", "limit=50"];
-        if (args.nom) {
-          const nom = (args.nom as string).toLowerCase().replace(/es$/, "").replace(/s$/, "").trim();
-          filtres.push(`name=ilike.${encodeURIComponent("*" + nom + "*")}`);
+        type GubimRow = {code:string;name:string};
+        let rows: GubimRow[] = [];
+
+        if (args.codi) {
+          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&code=eq.${encodeURIComponent(args.codi as string)}`) as GubimRow[];
         }
-        if (args.codi) filtres.push(`code=eq.${encodeURIComponent(args.codi as string)}`);
-        const rows = await supaGet(supaUrl, supaKey, `gubim_class?${filtres.join("&")}`) as {code:string;name:string}[];
-        if (!rows.length) return "No s'ha trobat cap codi GuBIMClass amb aquests criteris.";
+
+        if (!rows.length && args.nom) {
+          const termes = paraulesCerca(args.nom as string);
+          // Estratègia 1: frase completa
+          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + (args.nom as string).toLowerCase() + "*")}&order=code.asc&limit=50`) as GubimRow[];
+          // Estratègia 2: stemming de la primera paraula
+          if (!rows.length) {
+            const stem = termes[0].replace(/es$/, "").replace(/s$/, "");
+            const candidats = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + stem + "*")}&order=code.asc&limit=100`) as GubimRow[];
+            rows = candidats.filter(r => coincideixFlexible(r.name, termes, "and"));
+            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.name, termes, "or")).slice(0, 20);
+          }
+        }
+
+        if (!rows.length && !args.codi && !args.nom) {
+          // Llista completa si no hi ha filtres
+          rows = await supaGet(supaUrl, supaKey, "gubim_class?select=code,name&order=code.asc&limit=200") as GubimRow[];
+        }
+
+        if (!rows.length) return `No s'ha trobat cap codi GuBIMClass per "${args.nom ?? args.codi}".`;
         return `GuBIMClass trobats (${rows.length}):\n` + rows.map(r => `- ${r.code}: ${r.name}`).join("\n");
       }
 
       case "cerca_camps": {
-        const filtres: string[] = ["select=col,codi,tipus_dada,disciplina,agrupacio_revit", "order=col.asc", "limit=50"];
-        if (args.nom) {
-          const nom = (args.nom as string).toLowerCase().replace(/es$/, "").replace(/s$/, "").trim();
-          filtres.push(`col=ilike.${encodeURIComponent("*" + nom + "*")}`);
+        type CampRow = {col:string;codi:string;tipus_dada:string;disciplina:string;agrupacio_revit:string};
+        let rows: CampRow[] = [];
+
+        // Sense filtres: llista tots
+        if (!args.nom && !args.disciplina && !args.codi) {
+          rows = await supaGet(supaUrl, supaKey, "fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&order=col.asc&limit=200") as CampRow[];
+          if (!rows.length) return "El diccionari de camps és buit.";
+          return `Tots els camps (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
         }
-        if (args.disciplina) filtres.push(`disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}`);
-        const rows = await supaGet(supaUrl, supaKey, `fields?${filtres.join("&")}`) as {col:string;codi:string;tipus_dada:string;disciplina:string}[];
-        if (!rows.length) return "No s'han trobat camps amb aquests criteris.";
-        return `Camps trobats (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
+
+        if (args.codi) {
+          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=eq.${encodeURIComponent(args.codi as string)}`) as CampRow[];
+        }
+
+        if (!rows.length && args.nom) {
+          const termes = paraulesCerca(args.nom as string);
+          // Cerca per nom de columna (col) i per codi
+          let candidats = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=100`) as CampRow[];
+          if (args.disciplina) candidats = candidats.filter(r => r.disciplina?.toLowerCase().includes((args.disciplina as string).toLowerCase()));
+          rows = candidats.filter(r => coincideixFlexible(r.col, termes, "and"));
+          if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.col, termes, "or")).slice(0, 30);
+          // Si encara no troba res, buscar per codi del camp
+          if (!rows.length) {
+            const perCodi = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=50`) as CampRow[];
+            rows = perCodi;
+          }
+        } else if (!rows.length && args.disciplina) {
+          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}&order=col.asc&limit=100`) as CampRow[];
+        }
+
+        if (!rows.length) return `No s'han trobat camps per "${args.nom ?? args.disciplina ?? args.codi}".`;
+        return `Camps trobats (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}${r.agrupacio_revit ? ` | Revit: ${r.agrupacio_revit}` : ""}`).join("\n");
       }
 
       default:
