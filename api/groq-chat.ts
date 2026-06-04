@@ -128,6 +128,10 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "cerca_gubim",
       description: "Cerca codis i noms GuBIMClass. Usa quan l'usuari pregunta sobre la classificació BIM d'un tipus d'equip.",
       parameters: {
         type: "object",
@@ -315,7 +319,7 @@ async function executaTool(
         return `Instal·lacions trobades:\n${[...new Set(resultats)].join("\n")}`;
       }
 
-
+      case "cerca_gubim": {
         const filtres: string[] = ["select=code,name", "order=code.asc", "limit=50"];
         if (args.nom) {
           const nom = (args.nom as string).toLowerCase().replace(/es$/, "").replace(/s$/, "").trim();
