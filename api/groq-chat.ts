@@ -773,6 +773,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
             body: JSON.stringify({
               model: "llama-3.3-70b-versatile", max_tokens: 1500, temperature: 0,
+              // Sense tools a la 2a crida del reintent
               messages: [{ role: "system", content: systemContent }, ultimMissatge, retryMsg, ...toolMsgs],
             }),
           });
@@ -821,6 +822,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           model: "llama-3.3-70b-versatile",
           max_tokens: 1500,
           temperature: 0.1,
+          // Sense tools: la 2a crida nomes ha de formatar la resposta, no cridar tools
           messages: [
             ...historial,
             missatgeAssistent,
