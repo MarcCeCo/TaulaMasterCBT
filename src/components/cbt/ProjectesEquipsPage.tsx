@@ -1835,6 +1835,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             if (detallTag) { obrirEditTag(detallTag); }
             setDetallEquip(null);
           }}
+          canEditEquip={canEdit}
           canEditValues={
             // editor_global: pot omplir camps de tags en qualsevol estat
             // editor_caracteristiques: només pot omplir camps de tags ja validats
@@ -1859,6 +1860,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               fieldMap={fieldMap}
               fields={fields}
               onEdit={() => {}}
+              canEditEquip={false}
               canEditValues={canEditValidats}
               fieldValues={{}}
               onSaveValues={saveMultiFieldValues}

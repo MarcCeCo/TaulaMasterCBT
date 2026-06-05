@@ -23,6 +23,7 @@ interface Props {
   fieldMap: Map<string, FieldMeta>;
   fields: FieldMeta[];
   onEdit: () => void;
+  canEditEquip?: boolean;
   canEditValues?: boolean;
   fieldValues?: Record<string, string>;
   onSaveValues?: (values: Record<string, string>) => void;
@@ -31,7 +32,7 @@ interface Props {
 
 export function ProjecteEquipDetailDialog({
   open, onOpenChange, equipment, nodeMap, fields, onEdit,
-  canEditValues = false, fieldValues = {}, onSaveValues,
+  canEditEquip = false, canEditValues = false, fieldValues = {}, onSaveValues,
   multiSelectCount,
 }: Props) {
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
@@ -115,7 +116,7 @@ export function ProjecteEquipDetailDialog({
                   </Button>
                 </>
               )}
-              {!multiSelectCount && (
+              {!multiSelectCount && canEditEquip && (
                 <Button size="sm" variant="outline" onClick={onEdit} className="gap-1.5">
                   <Pencil className="h-3.5 w-3.5" /> Edita equip
                 </Button>
