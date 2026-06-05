@@ -176,6 +176,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [nouNom, setNouNom] = useState("");
   const [nouDesc, setNouDesc] = useState("");
   const [nouCodiProjecte, setNouCodiProjecte] = useState("");
+  const [nouCodiPart1, setNouCodiPart1] = useState("");
+  const [nouCodiPart2, setNouCodiPart2] = useState("");
   const [nouCodisInstallacio, setNouCodisInstallacio] = useState<InstallacioItem[]>([{ codi: "", nom: "" }]);
   const [nouProjecteError, setNouProjecteError] = useState<string | null>(null);
 
@@ -184,6 +186,8 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [editNom, setEditNom] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editCodiProjecte, setEditCodiProjecte] = useState("");
+  const [editCodiPart1, setEditCodiPart1] = useState("");
+  const [editCodiPart2, setEditCodiPart2] = useState("");
   const [editCodisInstallacio, setEditCodisInstallacio] = useState<InstallacioItem[]>([{ codi: "", nom: "" }]);
   const [editProjecteError, setEditProjecteError] = useState<string | null>(null);
   // Advertència canvi codi instal·lació quan el projecte té tags
@@ -235,7 +239,14 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         if (p.projectUsers.length === 0) return false; // accés tancat (només admins)
         return p.projectUsers.some(u => u.userId === myProfile.id);
       })
-      .sort((a, b) => b.createdAt - a.createdAt),
+      .sort((a, b) => {
+        // Ordenació per codiProjecte numèrica: NNNN-N → compara part1 i part2
+        const [a1 = "0", a2 = "0"] = (a.codiProjecte || "").split("-");
+        const [b1 = "0", b2 = "0"] = (b.codiProjecte || "").split("-");
+        const diff1 = parseInt(a1, 10) - parseInt(b1, 10);
+        if (diff1 !== 0) return diff1;
+        return parseInt(a2, 10) - parseInt(b2, 10);
+      }),
     [projectes, filtreStatus, isAdmin, myProfile]
   );
 
@@ -309,7 +320,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         status: "actiu",
       });
       setDialogNouProjecte(false);
-      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodisInstallacio([{ codi: "", nom: "" }]); setNouProjecteError(null);
+      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiPart1(""); setNouCodiPart2(""); setNouCodisInstallacio([{ codi: "", nom: "" }]); setNouProjecteError(null);
       toast.success("Projecte creat");
     } catch (e: any) {
       setNouProjecteError(e?.message ?? "Error en crear el projecte.");
@@ -386,6 +397,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     setEditNom(p.nom);
     setEditDesc(p.descripcio);
     setEditCodiProjecte(p.codiProjecte);
+    const [ep1 = "", ep2 = ""] = (p.codiProjecte || "").split("-");
+    setEditCodiPart1(ep1);
+    setEditCodiPart2(ep2);
     setEditCodisInstallacio(p.codisInstallacio.length > 0 ? p.codisInstallacio.map(i => ({ ...i })) : [{ codi: "", nom: "" }]);
     setEditProjecteError(null);
     setDialogEditProjecte(id);
@@ -1207,12 +1221,33 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-medium">Codi de projecte * <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
-                  <Input
-                    className="mt-1 font-mono"
-                    placeholder="2024-1"
-                    value={nouCodiProjecte}
-                    onChange={e => { setNouCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setNouProjecteError(null); }}
-                  />
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Input
+                      className="font-mono w-24 text-center"
+                      placeholder="2024"
+                      maxLength={6}
+                      value={nouCodiPart1}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setNouCodiPart1(v);
+                        setNouCodiProjecte(v && nouCodiPart2 ? `${v}-${nouCodiPart2}` : v ? v : "");
+                        setNouProjecteError(null);
+                      }}
+                    />
+                    <span className="text-slate-400 font-mono font-bold select-none">-</span>
+                    <Input
+                      className="font-mono w-20 text-center"
+                      placeholder="N"
+                      maxLength={4}
+                      value={nouCodiPart2}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setNouCodiPart2(v);
+                        setNouCodiProjecte(nouCodiPart1 && v ? `${nouCodiPart1}-${v}` : nouCodiPart1 ? nouCodiPart1 : "");
+                        setNouProjecteError(null);
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
@@ -1289,12 +1324,33 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs font-medium">Codi de projecte * <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
-                  <Input
-                    className="mt-1 font-mono"
-                    placeholder="2024-1"
-                    value={editCodiProjecte}
-                    onChange={e => { setEditCodiProjecte(e.target.value.replace(/[^0-9-]/g, "")); setEditProjecteError(null); }}
-                  />
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <Input
+                      className="font-mono w-24 text-center"
+                      placeholder="2024"
+                      maxLength={6}
+                      value={editCodiPart1}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setEditCodiPart1(v);
+                        setEditCodiProjecte(v && editCodiPart2 ? `${v}-${editCodiPart2}` : v ? v : "");
+                        setEditProjecteError(null);
+                      }}
+                    />
+                    <span className="text-slate-400 font-mono font-bold select-none">-</span>
+                    <Input
+                      className="font-mono w-20 text-center"
+                      placeholder="N"
+                      maxLength={4}
+                      value={editCodiPart2}
+                      onChange={e => {
+                        const v = e.target.value.replace(/[^0-9]/g, "");
+                        setEditCodiPart2(v);
+                        setEditCodiProjecte(editCodiPart1 && v ? `${editCodiPart1}-${v}` : editCodiPart1 ? editCodiPart1 : "");
+                        setEditProjecteError(null);
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="col-span-2">
                   <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
