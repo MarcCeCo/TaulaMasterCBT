@@ -48,14 +48,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // No es pot canviar el propi rol
-  if (user_id === user.id) {
+  const isSelf = user_id === user.id;
+  if (isSelf && role !== callerProfile?.role) {
     return res.status(400).json({ error: "No pots modificar el teu propi rol" });
   }
 
   const { error } = await supabaseAdmin
     .from("user_profiles")
     .update({
-      role,
+      // Si és el propi usuari, el rol no es toca (evitem qualsevol canvi accidental)
+      ...(isSelf ? {} : { role }),
       full_name:     full_name ?? undefined,
       allowed_views: role === "admin" ? null : (allowed_views ?? null),
       organisation:  organisation ?? null,

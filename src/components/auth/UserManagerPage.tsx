@@ -31,7 +31,7 @@ import {
 import {
   Pencil, Trash2, UserPlus, RefreshCw, Send, Check, X,
   Info, Users, Eye, EyeOff, Shield, ChevronDown, ChevronUp,
-  Building2, Search,
+  Building2, Search, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -703,13 +703,20 @@ export function UserManagerPage() {
                               </div>
                               <div className="space-y-1">
                                 <label className="text-xs font-medium text-slate-600">Tipus d'accés</label>
-                                <Select value={editLevel} onValueChange={(v) => setEditLevel(v as UserPermissionLevel)}>
-                                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
-                                    <SelectItem value="admin">Administrador (accés complet)</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                {isMe ? (
+                                  <div className="h-8 flex items-center px-2 rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-500 gap-1.5">
+                                    <Lock className="h-3 w-3 shrink-0" />
+                                    {editLevel === "admin" ? "Administrador (accés complet)" : "Usuari (permisos per finestra)"}
+                                  </div>
+                                ) : (
+                                  <Select value={editLevel} onValueChange={(v) => setEditLevel(v as UserPermissionLevel)}>
+                                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="user">Usuari (permisos per finestra)</SelectItem>
+                                      <SelectItem value="admin">Administrador (accés complet)</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                )}
                               </div>
                             </div>
 
