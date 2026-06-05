@@ -139,10 +139,10 @@ const DocumentacioCards = memo(function DocumentacioCards() {
               <FileText className="h-5 w-5 text-red-500" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800">Manual BIM CBT v2.x</p>
+              <p className="text-sm font-medium text-slate-800">CBT_MANUAL BIM</p>
               <p className="text-xs text-slate-500 mt-0.5">Protocol, estàndards i requisits de lliurament</p>
             </div>
-            <a href="/docs/CBT_MANUAL-BIM.pdf" download>
+            <a href="/docs/CBT_MANUAL BIM.pdf" download>
               <Button size="sm" variant="outline" className="gap-1.5 text-xs">
                 <Download className="h-3.5 w-3.5" /> PDF
               </Button>
@@ -164,7 +164,7 @@ const DocumentacioCards = memo(function DocumentacioCards() {
               <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800">PEB_CBT.xlsm</p>
+              <p className="text-sm font-medium text-slate-800">CBT_PEB.xlsm</p>
               <p className="text-xs text-slate-500 mt-0.5">Pla d'Execució BIM del Consorci Besòs Tordera</p>
             </div>
             <a href="/docs/CBT_PEB.xlsm" download>
