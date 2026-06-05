@@ -635,43 +635,43 @@ export function UserManagerPage() {
 
                       {/* Columna: Accions */}
                       <div className="flex items-center gap-0.5 justify-end shrink-0">
+                        {/* Editar: disponible per a tots els usuaris, inclòs un mateix */}
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                          onClick={() => {
+                            if (isEditing) { setEditingId(null); setExpanded(null); }
+                            else startEditing(u);
+                          }}
+                          title={isEditing ? "Cancel·la edició" : "Edita"}
+                        >
+                          {isEditing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                        </Button>
+                        {/* Eliminar: no disponible per a un mateix */}
                         {!isMe && (
-                          <>
-                            <Button
-                              size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                              onClick={() => {
-                                if (isEditing) { setEditingId(null); setExpanded(null); }
-                                else startEditing(u);
-                              }}
-                              title={isEditing ? "Cancel·la edició" : "Edita"}
-                            >
-                              {isEditing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-                            </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-red-600" title="Elimina">
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    S'eliminarà <strong>{u.email}</strong> de forma permanent.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    className="bg-destructive hover:bg-destructive/90"
-                                    onClick={() => handleDelete(u.id, u.email)}
-                                  >
-                                    Elimina
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
-                          </>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-red-600" title="Elimina">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Eliminar usuari?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  S'eliminarà <strong>{u.email}</strong> de forma permanent.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive hover:bg-destructive/90"
+                                  onClick={() => handleDelete(u.id, u.email)}
+                                >
+                                  Elimina
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         )}
                         <button
                           className="h-7 w-7 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
