@@ -344,7 +344,12 @@ export function TaulaMasterMain() {
       </div>
 
       {/* Assistent de suport (botó flotant + xat Groq) */}
-      <GroqChatWidget pageContext={activeSection} pageLabel={sectionTitles[activeSection]?.title} isAdmin={isAdmin} />
+      <GroqChatWidget
+        pageContext={activeSection}
+        pageLabel={sectionTitles[activeSection]?.title}
+        isAdmin={isAdmin}
+        sectionPermisos={profile?.section_permissions ?? undefined}
+      />
     </div>
   );
 }

@@ -614,7 +614,9 @@ async function cercaRag(queryEmbedding: number[], supaUrl: string, supaKey: stri
 
 const SYSTEM_PROMPT = `Assistent TaulaMaster CBT (Consorci Besòs Tordera). Respon en català.
 
-REGLES (obligatòries):
+AMBIT: Respons NOMES sobre TaulaMaster CBT (instal·lacions, equips, TAGs, projectes, BIM, Rosmiman). Si l'usuari pregunta sobre qualsevol altra cosa (politica, esport, cuina, historia, etc.), respon: "Nomes puc ajudar amb consultes de TaulaMaster CBT."
+
+REGLES (obligatories):
 1. MAI inventes codis. Sempre usa les tools per consultar la BD.
 2. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
 3. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
@@ -655,6 +657,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const missatgesUsuari = body.messages ?? [];
   if (!Array.isArray(missatgesUsuari) || missatgesUsuari.length === 0) {
     res.status(400).json({ error: "Cap missatge rebut" }); return;
+  }
+
+  // ── Permisos d'usuari ─────────────────────────────────────────────────────
+  const isAdmin: boolean = body.context?.isAdmin === true;
+  const seccions: Record<string,string> = body.context?.sectionPermisos ?? {};
+
+  const TOOL_SECCIO: Record<string, string> = {
+    cerca_equips:          "equips",
+    cerca_gubim:           "gubimclass",
+    cerca_camps:           "fields",
+    cerca_projecte:        "projectes",
+    cerca_tags_projecte:   "projectes",
+    primer_tag_disponible: "projectes",
+    cerca_tags_rosmiman:   "rosmiman",
+    cerca_visor3d:         "visor3d",
+  };
+
+  function teAcces(toolName: string): boolean {
+    if (isAdmin) return true;
+    const seccio = TOOL_SECCIO[toolName];
+    if (!seccio) return true;
+    return (seccions[seccio] ?? "none") !== "none";
+  }
+
+  const NOMS_SECCIO: Record<string,string> = {
+    equips:"Taula Master", gubimclass:"GuBIMClass", fields:"Diccionari de camps",
+    projectes:"Projectes i TAGs", rosmiman:"Llistat Rosmiman", visor3d:"Visualitzador 3D",
+  };
+
+  function missatgeDenegat(toolName: string): string {
+    const s = TOOL_SECCIO[toolName] ?? toolName;
+    return "No tens acces a la seccio \"" + (NOMS_SECCIO[s] ?? s) + "\". Contacta amb l\'administrador.";
   }
 
   const ultimaPregunta = missatgesUsuari.filter(m => m.role === "user").at(-1)?.content ?? "";
@@ -728,7 +762,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const toolMsgs: MissatgeAPI[] = [];
           const rets = await Promise.all(retryMsg.tool_calls.map(async tc => {
             const a = JSON.parse(tc.function.arguments) as Record<string, unknown>;
-            return { id: tc.id, name: tc.function.name, resultat: await executaTool(tc.function.name, a, supaUrl!, supaKey!) };
+            const resultat = teAcces(tc.function.name)
+              ? await executaTool(tc.function.name, a, supaUrl!, supaKey!)
+              : missatgeDenegat(tc.function.name);
+            return { id: tc.id, name: tc.function.name, resultat };
           }));
           rets.forEach(r => toolMsgs.push({ role: "tool", tool_call_id: r.id, name: r.name, content: r.resultat }));
           const gr2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -761,7 +798,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const resultats = await Promise.all(
         missatgeAssistent.tool_calls.map(async tc => {
           const args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
-          const resultat = await executaTool(tc.function.name, args, supaUrl!, supaKey!);
+          const resultat = teAcces(tc.function.name)
+            ? await executaTool(tc.function.name, args, supaUrl!, supaKey!)
+            : missatgeDenegat(tc.function.name);
           return { id: tc.id, name: tc.function.name, resultat };
         })
       );

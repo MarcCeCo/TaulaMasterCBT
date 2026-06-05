@@ -14,8 +14,10 @@ interface Missatge {
 }
 
 interface Props {
-  pageContext?: string;
-  pageLabel?:  string;
+  pageContext?:    string;
+  pageLabel?:      string;
+  isAdmin?:        boolean;
+  sectionPermisos?: Record<string, string>; // { equips: "editor"|"viewer"|"none", ... }
 }
 
 // ─── Suggeriments per secció ──────────────────────────────────────────────────
@@ -72,7 +74,7 @@ function formatHora(ts: number): string {
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
-export function GroqChatWidget({ pageContext, pageLabel }: Props) {
+export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermisos }: Props) {
   const [obert, setObert]             = useState(false);
   const [missatges, setMissatges]     = useState<Missatge[]>([]);
   const [input, setInput]             = useState("");
@@ -134,7 +136,7 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: historial.slice(-8).map(m => ({ role: m.rol, content: m.text })), // màx 4 torns
-          context: { pageContext: pageLabel ?? pageContext },
+          context: { pageContext: pageLabel ?? pageContext, isAdmin: isAdmin ?? false, sectionPermisos: sectionPermisos ?? {} },
         }),
       });
 
