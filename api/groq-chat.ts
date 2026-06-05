@@ -69,164 +69,56 @@ function coincideixFlexible(text: string, termes: string[], mode: "and" | "or" =
 // ─── Tools disponibles per al model ──────────────────────────────────────────
 
 const TOOLS = [
-  // ── INSTAL·LACIONS ─────────────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_installacio",
-      description: "Cerca instal·lacions (EDAR, estacions, etc.) per nom o codi a la BD. Retorna codi (ex: ED008) i nom. USA SEMPRE quan l'usuari mencioni una instal·lació pel nom. MAI inventes codis.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom: { type: "string", description: "Nom o part del nom (ex: 'Caldes', 'EDAR Montornès')" },
-          codi: { type: "string", description: "Codi exacte 5 car. (ex: 'ED008')" },
-        },
-      },
-    },
-  },
-  // ── EQUIPS ─────────────────────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_equips",
-      description: "Cerca equips al catàleg (taula equipments). Usa per: quins equips hi ha, codi d'un equip, equips d'un tipus. El paràmetre pot ser 'nom', 'tipus' o 'keyword.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom:        { type: "string", description: "Paraula clau o frase del nom/tipus (ex: 'bomba', 'bomba centrífuga de cambra seca')" },
-          tipus:      { type: "string", description: "Àlies de nom (el model a vegades usa 'tipus' en lloc de 'nom')" },
-          keyword:    { type: "string", description: "Àlies de nom" },
-          equip_code: { type: "string", description: "Codi exacte de l'equip (ex: 'BM00')" },
-          gubim_code: { type: "string", description: "Codi GuBIMClass exacte (ex: 'BM00')" },
-        },
-      },
-    },
-  },
-  // ── GuBIMClass ─────────────────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_gubim",
-      description: "Cerca codis i noms GuBIMClass (classificació BIM). Usa quan l'usuari pregunta sobre codis BIM d'un equip o vol saber la classificació d'un tipus d'equip.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom:  { type: "string", description: "Paraula clau del nom GuBIMClass" },
-          codi: { type: "string", description: "Codi GuBIMClass exacte" },
-        },
-      },
-    },
-  },
-  // ── CAMPS / DICCIONARI ─────────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_camps",
-      description: "Cerca camps del diccionari de paràmetres BIM (taula fields). Usa quan l'usuari pregunta sobre quins paràmetres té un equip, quins camps hi ha, disciplines, etc.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom:        { type: "string", description: "Paraula clau del nom del camp" },
-          disciplina: { type: "string", description: "Disciplina (ex: 'MEP', 'HVAC')" },
-          codi:       { type: "string", description: "Codi de camp exacte" },
-        },
-      },
-    },
-  },
-  // ── PROJECTES ──────────────────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_projecte",
-      description: "Cerca projectes actius o arxivats. Retorna nom, codi, estat i codis d'instal·lació. Usa quan l'usuari menciona un projecte pel nom o codi (format NNNN-N), o vol veure tots els projectes.",
-      parameters: {
-        type: "object",
-        properties: {
-          codi_projecte: { type: "string", description: "Codi del projecte (ex: '2024-1')" },
-          nom:           { type: "string", description: "Nom o part del nom del projecte" },
-          status:        { type: "string", description: "Filtre d'estat: 'actiu' o 'arxivat'" },
-        },
-      },
-    },
-  },
-  // ── TAGS DE PROJECTE ───────────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_tags_projecte",
-      description: "Llista els TAGs Rosmiman d'un projecte concret. Usa quan l'usuari pregunta pels TAGs d'un projecte, quants té, quins estan validats, etc.",
-      parameters: {
-        type: "object",
-        required: ["codi_projecte"],
-        properties: {
-          codi_projecte: { type: "string", description: "Codi del projecte (ex: '2024-1')" },
-          status:        { type: "string", description: "Filtre opcional: 'pendent', 'validat' o 'rebutjat'" },
-        },
-      },
-    },
-  },
-  // ── TAGs ROSMIMAN GLOBALS ──────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_tags_rosmiman",
-      description: "Cerca TAGs al llistat Rosmiman global (rosmiman_equips). Usa per: verificar si un TAG existeix, llistar TAGs d'una instal·lació, comptar equips donats d'alta a Rosmiman.",
-      parameters: {
-        type: "object",
-        properties: {
-          codi_installacio: { type: "string", description: "Codi instal·lació (ex: 'ED001')" },
-          codi_equip:       { type: "string", description: "Codi GuBIMClass (ex: 'BCS0')" },
-          tag_exacte:       { type: "string", description: "TAG complet per verificar si existeix (ex: 'ED001_BCS0_101A')" },
-        },
-      },
-    },
-  },
-  // ── PRIMER TAG DISPONIBLE ──────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "primer_tag_disponible",
-      description: "Calcula el primer TAG Rosmiman disponible (primera lletra de duplicitat A-Z lliure) per a una combinació instal·lació+equip+ccm+funció. El codi_equip és l'equip_code de la taula equipments (ex: 'BCS0'), obtingut de cerca_equips.",
-      parameters: {
-        type: "object",
-        required: ["codi_installacio", "codi_equip"],
-        properties: {
-          codi_installacio: { type: "string", description: "Codi instal·lació 5 car. (ex: 'ED014') — obtingut de cerca_installacio" },
-          codi_equip:       { type: "string", description: "equip_code de la taula equipments (ex: 'BCS0') — obtingut de cerca_equips, camp equip_code" },
-          ccm:              { type: "string", description: "CCM: 1 dígit 0-9, per defecte '1'" },
-          funcio:           { type: "string", description: "Funció: 1-2 dígits 01-99 (mai 00), per defecte '01'" },
-        },
-      },
-    },
-  },
-  // ── VISUALITZADOR 3D ───────────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "cerca_visor3d",
-      description: "Cerca sistemes i instal·lacions disponibles al Visualitzador 3D (visor3d_sistemes + visor3d_installacions). Usa quan l'usuari pregunta sobre models BIM, sistemes del visor, quines instal·lacions es poden visualitzar en 3D.",
-      parameters: {
-        type: "object",
-        properties: {
-          nom:    { type: "string", description: "Nom o part del nom del sistema o instal·lació" },
-          codi:   { type: "string", description: "Codi d'instal·lació (ex: 'ED008')" },
-          sistema:{ type: "string", description: "Nom del sistema (ex: 'EDAR', 'Bombament')" },
-        },
-      },
-    },
-  },
-  // ── ESTADÍSTIQUES GLOBALS ──────────────────────────────────────────────────
-  {
-    type: "function",
-    function: {
-      name: "estadistiques_globals",
-      description: "Obté estadístiques globals de la plataforma: total d'equips, camps al diccionari, codis GuBIMClass, projectes actius, TAGs Rosmiman, instal·lacions al visor 3D. Usa quan l'usuari pregunta per resums, totals o estadístiques generals.",
-      parameters: {
-        type: "object",
-        properties: {},
-      },
-    },
-  },
+  { type:"function", function:{ name:"cerca_installacio",
+    description:"Cerca installacions per nom o codi (visor3d_installacions). Retorna codi (ex:ED014) i nom.",
+    parameters:{ type:"object", properties:{
+      nom:{ type:"string" }, codi:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"cerca_equips",
+    description:"Cerca equips per nom/tipus (equipments). Retorna equip_code(ex:BCCS), equip_name, gubim_code. Params: nom, tipus, keyword, equip_code, gubim_code.",
+    parameters:{ type:"object", properties:{
+      nom:{ type:"string" }, tipus:{ type:"string" }, keyword:{ type:"string" },
+      equip_code:{ type:"string" }, gubim_code:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"cerca_gubim",
+    description:"Cerca codis GuBIMClass (gubim_class) per nom o codi.",
+    parameters:{ type:"object", properties:{
+      nom:{ type:"string" }, codi:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"cerca_camps",
+    description:"Cerca camps del diccionari BIM (fields) per nom, disciplina o codi.",
+    parameters:{ type:"object", properties:{
+      nom:{ type:"string" }, disciplina:{ type:"string" }, codi:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"cerca_projecte",
+    description:"Cerca projectes (projectes) per nom, codi o status(actiu/arxivat).",
+    parameters:{ type:"object", properties:{
+      codi_projecte:{ type:"string" }, nom:{ type:"string" }, status:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"cerca_tags_projecte",
+    description:"Llista TAGs d un projecte (projecte_tags). Requereix codi_projecte.",
+    parameters:{ type:"object", required:["codi_projecte"], properties:{
+      codi_projecte:{ type:"string" }, status:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"cerca_tags_rosmiman",
+    description:"Cerca TAGs Rosmiman globals (rosmiman_equips). Verifica si un TAG existeix.",
+    parameters:{ type:"object", properties:{
+      codi_installacio:{ type:"string" }, codi_equip:{ type:"string" }, tag_exacte:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"primer_tag_disponible",
+    description:"Calcula primer TAG disponible (lletra A-Z lliure). codi_equip=equip_code de cerca_equips. codi_installacio de cerca_installacio.",
+    parameters:{ type:"object", required:["codi_installacio","codi_equip"], properties:{
+      codi_installacio:{ type:"string" }, codi_equip:{ type:"string" },
+      ccm:{ type:"string" }, funcio:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"cerca_visor3d",
+    description:"Cerca sistemes i installacions del Visualitzador 3D.",
+    parameters:{ type:"object", properties:{
+      nom:{ type:"string" }, codi:{ type:"string" }, sistema:{ type:"string" }
+    }}}},
+  { type:"function", function:{ name:"estadistiques_globals",
+    description:"Totals de totes les taules de la plataforma.",
+    parameters:{ type:"object", properties:{} }}},
 ];
 
 // ─── Executors de tools ───────────────────────────────────────────────────────
@@ -812,7 +704,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // 400 tool_use_failed: model genera XML en lloc de JSON (historial massa llarg)
       // Reintenta amb NOMES l'ultim missatge i temperature 0
       if (groqRes1.status === 400 && errText.includes("tool_use_failed")) {
-        console.warn("tool_use_failed — reintentant amb historial redu�t");
+        console.warn("tool_use_failed — reintentant amb historial redu�t");
         const ultimMissatge = missatgesUsuari[missatgesUsuari.length - 1];
         const groqRetry = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
