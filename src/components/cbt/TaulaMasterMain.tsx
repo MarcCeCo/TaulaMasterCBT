@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ShieldOff, ChevronRight, GitBranch, Settings2 } from "lucide-react";
+import { ShieldOff, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
 import { GroqChatWidget } from "./GroqChatWidget";
@@ -209,7 +209,7 @@ export function TaulaMasterMain() {
     canviapwd:          { title: "Canvia contrasenya",    sub: "Actualitza les teves credencials d'accés" },
   };
 
-  const currentMeta = sectionTitles[activeSection] ?? { title: "TaulaMaster", sub: "" };
+
 
   const renderContent = () => {
     if (noAccessAtAll) {
@@ -281,48 +281,6 @@ export function TaulaMasterMain() {
       <AppSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
 
       <div className="flex-1 min-w-0 flex flex-col">
-
-        {/* Topbar */}
-        <div
-          className="h-[54px] shrink-0 flex items-center px-5 lg:px-7 gap-4 sticky top-0 z-30"
-          style={{
-            background: "rgba(255,255,255,0.9)",
-            backdropFilter: "blur(16px)",
-            WebkitBackdropFilter: "blur(16px)",
-            borderBottom: "1px solid rgba(0,90,99,0.08)",
-            boxShadow: "0 1px 0 rgba(0,90,99,0.04)",
-          }}
-        >
-          <div className="w-10 lg:w-0 shrink-0" />
-
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-[11.5px] text-slate-400 font-medium hidden sm:block">CBT</span>
-            <ChevronRight className="h-3 w-3 text-slate-300 hidden sm:block shrink-0" />
-            <span className="text-[14px] font-bold text-slate-800 leading-tight truncate tracking-tight">
-              {currentMeta.title}
-            </span>
-            {currentMeta.sub && (
-              <span className="hidden md:inline text-[12px] text-slate-400 ml-1 truncate">
-                — {currentMeta.sub}
-              </span>
-            )}
-          </div>
-
-          <div
-            className="hidden sm:flex items-center gap-1.5 text-[10.5px] font-medium px-3 py-1.5 rounded-full shrink-0"
-            style={{
-              background: "rgba(16,185,129,0.08)",
-              color: "#047857",
-              border: "1px solid rgba(16,185,129,0.18)",
-            }}
-          >
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-            </span>
-            Sistema operatiu
-          </div>
-        </div>
 
         {/* Contingut */}
         <main className="flex-1 px-4 lg:px-8 py-6 max-w-[1440px] w-full mx-auto">

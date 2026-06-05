@@ -80,7 +80,7 @@ const EquipmentRow = memo(function EquipmentRow({
             </Tooltip>
           )}
         </div>
-        {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate">↳ {parentName}</div>}
+        {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate hidden">↳ {parentName}</div>}
       </td>
       <td className="px-3 py-2 font-mono text-xs text-slate-600">
         {e.equipCode || <span className="text-slate-400 italic">—</span>}
@@ -581,9 +581,9 @@ export function EquipmentsTable() {
           style={{ maxHeight: TABLE_MAX_H }}
           onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
         >
-          <table className="w-full text-sm" style={{ minWidth: 900 }}>
+          <table className="w-full text-sm" style={{ minWidth: 960 }}>
             <colgroup>
-              <col style={{ width: 260 }} />
+              <col style={{ width: 160 }} />
               <col style={{ width: 110 }} />
               <col style={{ width: 180 }} />
               <col style={{ width: 70 }} />
