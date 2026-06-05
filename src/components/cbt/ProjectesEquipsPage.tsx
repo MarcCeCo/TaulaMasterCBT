@@ -11,8 +11,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import {
   Archive, ChevronRight, FolderOpen, FolderArchive,
   Plus, Trash2, Tags, CheckCircle2, XCircle, Pencil,
-  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen,
+  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen, Download,
 } from "lucide-react";
+import { exportDadesTraspas } from "@/lib/exportDadesTraspas";
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
@@ -760,6 +761,21 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40" onClick={() => obrirEditProjecte(projecteActiu!)}>
                   <Pencil className="h-3.5 w-3.5" /> Edita projecte
                 </Button>
+                {projecteSeleccionat && (
+                  <Button
+                    size="sm" variant="outline"
+                    className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
+                    onClick={async () => {
+                      try {
+                        await exportDadesTraspas(projecteSeleccionat, equipments, fieldMap);
+                      } catch {
+                        toast.error("Error exportant dades Rosmiman");
+                      }
+                    }}
+                  >
+                    <Download className="h-3.5 w-3.5" /> Exporta Rosmiman
+                  </Button>
+                )}
                 {projecteSeleccionat?.status === "actiu" && (
                   <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
                     <Tags className="h-3.5 w-3.5" /> Nou TAG
