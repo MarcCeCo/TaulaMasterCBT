@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Download, Eye, Layers, Pencil, Plus, Trash2, Upload, Search, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Download, Eye, Pencil, Plus, Trash2, Upload, Search, RefreshCw, X } from "lucide-react";
 import { useDataStore } from "@/lib/dataStore";
 import { codeLevel, parentCode } from "@/hooks/useGubimClass";
 import type { Equipment } from "@/hooks/useEquipments";
@@ -67,18 +67,7 @@ const EquipmentRow = memo(function EquipmentRow({
               <TooltipContent>Codi GuBIMClass no trobat</TooltipContent>
             </Tooltip>
           )}
-          {isSharedCode && isFirstInGroup && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge className="gap-1 text-[10px] px-1.5 py-0 bg-violet-600 hover:bg-violet-600 text-white border-transparent">
-                  <Layers className="h-2.5 w-2.5" />{groupSize}
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{groupSize} equips comparteixen aquest codi GuBIMClass</p>
-              </TooltipContent>
-            </Tooltip>
-          )}
+
         </div>
         {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate hidden">↳ {parentName}</div>}
       </td>
@@ -581,7 +570,7 @@ export function EquipmentsTable() {
           style={{ maxHeight: TABLE_MAX_H }}
           onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
         >
-          <table className="w-full text-sm" style={{ minWidth: 960 }}>
+          <table className="w-full text-sm" style={{ minWidth: 960, tableLayout: "fixed" }}>
             <colgroup>
               <col style={{ width: 160 }} />
               <col style={{ width: 110 }} />
