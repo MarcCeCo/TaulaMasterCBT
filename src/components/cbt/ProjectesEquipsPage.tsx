@@ -1166,7 +1166,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                                   </Tooltip>
                                 )}
                                 {/* Editar */}
-                                {canEditProjecte && projecteSeleccionat.status === "actiu" && tag.status !== "validat" && (
+                                {canEditProjecte && projecteSeleccionat.status === "actiu" && (
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
@@ -1835,7 +1835,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             if (detallTag) { obrirEditTag(detallTag); }
             setDetallEquip(null);
           }}
-          canEditEquip={canEdit}
+          canEditEquip={canEditProjecte && projecteSeleccionat?.status === "actiu"}
           canEditValues={
             // editor_global: pot omplir camps de tags en qualsevol estat
             // editor_caracteristiques: només pot omplir camps de tags ja validats
