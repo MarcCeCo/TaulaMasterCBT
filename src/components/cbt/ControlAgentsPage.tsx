@@ -356,7 +356,7 @@ function Visor3DPanel({
   const lastLog = logs[0] ?? null;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -469,7 +469,7 @@ function BimLocalPanel({ logs, loading, onRefresh }: BimLocalPanelProps) {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
 
       {/* Capçalera */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
@@ -555,7 +555,7 @@ function BimLocalPanel({ logs, loading, onRefresh }: BimLocalPanelProps) {
 
       {/* ── TAB: Crear Masters ──────────────────────────────────────────── */}
       {subtab === "crearMasters" && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {/* Descàrrega */}
           <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
             <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script pyRevit</p>
@@ -622,7 +622,7 @@ function BimLocalPanel({ logs, loading, onRefresh }: BimLocalPanelProps) {
 
       {/* ── TAB: BIM Sync USB ───────────────────────────────────────────── */}
       {subtab === "bimSync" && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           {/* Descàrrega */}
           <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
             <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script Python</p>
@@ -1071,7 +1071,7 @@ function CrearFamiliesPanel() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
 
       {/* Capçalera */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
@@ -1165,7 +1165,7 @@ function CrearFamiliesPanel() {
 
       {/* ── TAB: FULL Script ─────────────────────────────────────────────── */}
       {subtab === "fullScript" && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
             <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script FULL pyRevit</p>
             <p className="text-[12.5px] text-slate-500 mb-4 leading-relaxed">
@@ -1214,7 +1214,7 @@ function CrearFamiliesPanel() {
 
       {/* ── TAB: TEST Script ─────────────────────────────────────────────── */}
       {subtab === "testScript" && (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">
             <p className="text-[10.5px] font-semibold uppercase tracking-widest text-slate-400 mb-1">Script TEST pyRevit</p>
             <p className="text-[12.5px] text-slate-500 mb-4 leading-relaxed">
@@ -1383,7 +1383,7 @@ function LludrigaIAPanel() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
 
       {/* Capçalera */}
       <Card className="p-5 border-slate-100 shadow-sm bg-white rounded-2xl">

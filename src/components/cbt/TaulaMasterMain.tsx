@@ -41,7 +41,7 @@ const FieldsDictionaryDialog = lazy(() =>
 
 function PageSkeleton() {
   return (
-    <div className="space-y-5 p-6">
+    <div className="space-y-6">
       <div className="space-y-1.5">
         <Skeleton className="h-6 w-44" />
         <Skeleton className="h-3.5 w-64" />
@@ -88,7 +88,7 @@ function TaulaMasterPage() {
   if (!canSeeView("equips")) return <AccessDenied />;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Capçalera amb botons d'accés ràpid */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
@@ -128,7 +128,7 @@ function TaulaMasterPage() {
 
       {/* Pop-up GuBIMClass */}
       <Dialog open={gubimOpen} onOpenChange={setGubimOpen}>
-        <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader className="sr-only">
             <DialogTitle>GuBIMClass</DialogTitle>
           </DialogHeader>

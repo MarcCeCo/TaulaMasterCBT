@@ -113,7 +113,7 @@ function PermissionsMatrix({
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
       {!isAdmin && (
         <div className="flex gap-2 flex-wrap">
           <span className="text-[11px] text-slate-400 self-center mr-1">Assignar tot:</span>

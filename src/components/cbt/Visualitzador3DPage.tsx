@@ -1184,7 +1184,7 @@ export function Visualitzador3DPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
 
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
