@@ -646,8 +646,10 @@ export function UserManagerPage() {
                         >
                           {isEditing ? <X className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
                         </Button>
-                        {/* Eliminar: no disponible per a un mateix */}
-                        {!isMe && (
+                        {/* Eliminar: no disponible per a un mateix — placeholder per mantenir alineació */}
+                        {isMe ? (
+                          <div className="h-7 w-7 shrink-0" />
+                        ) : (
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button size="icon" variant="ghost" className="h-7 w-7 text-slate-400 hover:text-red-600" title="Elimina">
