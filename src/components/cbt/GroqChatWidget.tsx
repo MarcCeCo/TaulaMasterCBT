@@ -80,8 +80,13 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
   const [error, setError]             = useState<string | null>(null);
   const [nouMissatge, setNouMissatge] = useState(false);
 
-  const endRef   = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const endRef          = useRef<HTMLDivElement>(null);
+  const inputRef        = useRef<HTMLTextAreaElement>(null);
+  const ultimaActivitat = useRef<number>(Date.now());
+
+  // Neteja l'historial si han passat més de 30 minuts d'inactivitat
+  const TIMEOUT_MS = 30 * 60 * 1000; // 30 minuts
+  const actualitzaActivitat = () => { ultimaActivitat.current = Date.now(); };
 
   // ── Efectes UI ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -108,8 +113,15 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
     const text = input.trim();
     if (!text || carregant) return;
 
+    // Si han passat més de 30 min des de l'última consulta, nova conversa
+    const ara = Date.now();
+    if (ara - ultimaActivitat.current > TIMEOUT_MS && missatges.length > 0) {
+      setMissatges([]);
+    }
+    actualitzaActivitat();
+
     const nouUserMsg: Missatge = { rol: "user", text, ts: Date.now() };
-    const historial = [...missatges, nouUserMsg];
+    const historial = [...(ara - ultimaActivitat.current > TIMEOUT_MS ? [] : missatges), nouUserMsg];
 
     setMissatges(historial);
     setInput("");
@@ -121,7 +133,7 @@ export function GroqChatWidget({ pageContext, pageLabel }: Props) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: historial.map(m => ({ role: m.rol, content: m.text })),
+          messages: historial.slice(-8).map(m => ({ role: m.rol, content: m.text })), // màx 4 torns
           context: { pageContext: pageLabel ?? pageContext },
         }),
       });

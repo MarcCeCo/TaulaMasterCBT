@@ -720,41 +720,18 @@ async function cercaRag(queryEmbedding: number[], supaUrl: string, supaKey: stri
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Ets l'assistent de TaulaMaster CBT, la plataforma de gestió d'actius i instal·lacions del Consorci Besòs Tordera (CBT).
+const SYSTEM_PROMPT = `Assistent TaulaMaster CBT (Consorci Besòs Tordera). Respon en català.
 
-Respon sempre en català. Si et pregunten en castellà o anglès, respon en aquell idioma.
+REGLES (obligatòries):
+1. MAI inventes codis. Sempre usa les tools per consultar la BD.
+2. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
+3. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
+4. TAG → crida primer_tag_disponible amb codis de les tools. MAI calcules el TAG manualment.
+5. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
+6. Codis del fil actual reutilitzables només si venen d'una tool. Si hi ha dubte, consulta.
 
-DADES DISPONIBLES (accés via tools, SEMPRE consulta la BD — mai inventes valors):
-- cerca_installacio: instal·lacions de la BD (visor3d_installacions) amb codi i nom. Usa SEMPRE quan l'usuari mencioni una instal·lació pel nom.
-- cerca_equips: catàleg d'equips tècnics (equipments). Inclou equip_code, equip_name, gubim_code.
-- cerca_gubim: classificació BIM GuBIMClass (gubim_class).
-- cerca_camps: diccionari de paràmetres BIM (fields). Inclou nom, codi, tipus de dada, disciplina.
-- cerca_projecte: projectes actius i arxivats (projectes). Inclou codi, nom, estat, instal·lacions.
-- cerca_tags_projecte: TAGs Rosmiman d'un projecte (projecte_tags). Filtra per estat (pendent/validat/rebutjat).
-- cerca_tags_rosmiman: llistat global d'equips Rosmiman (rosmiman_equips). Verifica si un TAG existeix.
-- primer_tag_disponible: calcula el primer TAG Rosmiman lliure (comprova projectes + Rosmiman).
-- cerca_visor3d: sistemes i instal·lacions del Visualitzador 3D (visor3d_sistemes + visor3d_installacions).
-- estadistiques_globals: totals de totes les taules.
-
-REGLES CRÍTIQUES:
-1. MAI inventes codis d'instal·lació, codis d'equip, TAGs o noms. Si no el trobes a la BD, digueu clarament.
-2. Per instal·lacions pel nom: usa SEMPRE cerca_installacio per obtenir el codi real. MAI assumeixis un codi d'instal·lació.
-3. Per calcular un TAG: OBLIGATORI cridar PRIMER cerca_equips per obtenir l'equip_code. Si el resultat té un candidat clar (màxima puntuació destacada), usa'l directament sense demanar confirmació. Només demana confirmació si dos candidats tenen la mateixa puntuació màxima. El codi a usar és el camp equip_code, NO el gubim_code.
-4b. SEMPRE crida primer_tag_disponible per calcular el TAG real — MAI proposis un TAG sense consultar la BD, ja que pot existir a rosmiman_equips o projecte_tags. La resposta final ha de ser el TAG retornat per primer_tag_disponible, no un TAG calculat manualment.
-4. El context de la conversa es pot reutilitzar NOMÉS si el codi va ser retornat explícitament per una tool en aquest mateix fil. Si hi ha cap dubte, torna a consultar.
-5. Si una cerca no retorna resultats, prova termes més curts o suggereix alternatives.
-6. Per a primer_tag_disponible: codi_installacio ve de cerca_installacio, codi_equip és l'equip_code de cerca_equips. MAI uses gubim_code com a codi_equip.
-
-FORMAT TAG ROSMIMAN: \`CODIINSTALLACIO_CODIEQUIP_CCM+FUNCIO(2digits)+DUPLICITAT\`
-- CODIINSTALLACIO: 5 car. exactes — obtingut de cerca_installacio
-- CODIEQUIP: camp equip_code de la taula equipments — obtingut de cerca_equips (camp equip_code, NO gubim_code)
-- CCM: 1 dígit (0-9)
-- FUNCIO: 2 dígits (01-99, MAI 00)
-- DUPLICITAT: A-Z seqüencial
-Exemple de format (els codis són ficticis): XXXXX_YYYY_101A
-
-CICLE DE VIDA TAG: pendent → validat / rebutjat → pendent
-Quan tots els TAGs d'un projecte es validen → s'afegeixen automàticament al llistat Rosmiman global.`;
+FORMAT TAG: INST_EQUIP_CCMfu(2d)LLETRA  ex: ED014_BCCS_101B
+CCM=1digit(0-9) FUNCIO=2digits(01-99,mai00) LLETRA=A-Z`;
 
 // ─── Handler ──────────────────────────────────────────────────────────────────
 
@@ -831,8 +808,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     if (!groqRes1.ok) {
-      const err = await groqRes1.text();
-      res.status(502).json({ error: `Error Groq: ${groqRes1.status} — ${err}` }); return;
+      const errText = await groqRes1.text();
+      // 400 tool_use_failed: model genera XML en lloc de JSON (historial massa llarg)
+      // Reintenta amb NOMES l'ultim missatge i temperature 0
+      if (groqRes1.status === 400 && errText.includes("tool_use_failed")) {
+        console.warn("tool_use_failed — reintentant amb historial redu�t");
+        const ultimMissatge = missatgesUsuari[missatgesUsuari.length - 1];
+        const groqRetry = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            max_tokens: 1500,
+            temperature: 0,
+            tools: TOOLS,
+            tool_choice: "auto",
+            messages: [{ role: "system", content: systemContent }, ultimMissatge],
+          }),
+        });
+        if (!groqRetry.ok) {
+          const e2 = await groqRetry.text();
+          res.status(502).json({ error: `Error Groq (reintent): ${groqRetry.status} — ${e2}` }); return;
+        }
+        const retryData = await groqRetry.json() as { choices: { message: MissatgeAPI; finish_reason: string }[] };
+        const retryMsg = retryData.choices[0].message;
+        if (retryData.choices[0].finish_reason === "tool_calls" && retryMsg.tool_calls?.length) {
+          const toolMsgs: MissatgeAPI[] = [];
+          const rets = await Promise.all(retryMsg.tool_calls.map(async tc => {
+            const a = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+            return { id: tc.id, name: tc.function.name, resultat: await executaTool(tc.function.name, a, supaUrl!, supaKey!) };
+          }));
+          rets.forEach(r => toolMsgs.push({ role: "tool", tool_call_id: r.id, name: r.name, content: r.resultat }));
+          const gr2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+            body: JSON.stringify({
+              model: "llama-3.3-70b-versatile", max_tokens: 1500, temperature: 0,
+              messages: [{ role: "system", content: systemContent }, ultimMissatge, retryMsg, ...toolMsgs],
+            }),
+          });
+          if (!gr2.ok) { res.status(502).json({ error: "Error Groq reintent 2a crida" }); return; }
+          const d2 = await gr2.json() as { choices: { message: { content: string } }[] };
+          res.status(200).json({ reply: d2.choices[0].message.content ?? "" }); return;
+        }
+        res.status(200).json({ reply: retryMsg.content ?? "" }); return;
+      }
+      res.status(502).json({ error: `Error Groq: ${groqRes1.status} — ${errText}` }); return;
     }
 
     const data1 = await groqRes1.json() as {
