@@ -166,6 +166,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [allUsers, setAllUsers]           = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers]   = useState(false);
   const [selectedProjectUsers, setSelectedProjectUsers] = useState<ProjectUserAccess[]>([]);
+  const [userSearch, setUserSearch] = useState("");
 
   // Filtre
   const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("actiu");
@@ -324,6 +325,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     const validRoles = ["viewer", "editor_global", "editor_caracteristiques"];
     const cleanUsers = (p.projectUsers ?? []).filter(u => validRoles.includes(u.role));
     setSelectedProjectUsers(cleanUsers);
+    setUserSearch("");
     setDialogUsuaris(id);
     setLoadingUsers(true);
     try {
@@ -1807,132 +1809,180 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
           allEquipments={equipments}
         />
         {/* ── DIÀLEG: GESTIÓ D'ACCÉS PER USUARI (només admins) ──────────── */}
-        <Dialog open={!!dialogUsuaris} onOpenChange={(b) => { if (!b) setDialogUsuaris(null); }}>
-          <DialogContent className="max-w-lg">
+        <Dialog open={!!dialogUsuaris} onOpenChange={(b) => { if (!b) { setDialogUsuaris(null); setUserSearch(""); } }}>
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#0099A8]" />
                 Accés al projecte
+                {(() => {
+                  const nom = projectes.find(p => p.id === dialogUsuaris)?.nom;
+                  return nom ? <span className="font-normal text-slate-400">— {nom}</span> : null;
+                })()}
               </DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-2">
-              <p className="text-xs text-slate-500">
-                🔒 Accés restringit — assigna el rol de cada usuari per a aquest projecte. Els administradors sempre hi tenen accés complet.
-              </p>
+            <div className="space-y-3 py-1">
 
-              {/* Llegenda de rols */}
+              {/* Llegenda compacta de rols */}
               <div className="grid grid-cols-3 gap-2 text-[10px]">
-                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-slate-50 border border-slate-200">
                   <Eye className="h-3 w-3 text-slate-400 shrink-0" />
-                  <div>
-                    <p className="font-semibold text-slate-600">Visualitzador</p>
-                    <p className="text-slate-400 leading-tight">Veu projecte i tags. Sense cap edició.</p>
-                  </div>
+                  <div><p className="font-semibold text-slate-600">Visualitzador</p><p className="text-slate-400 leading-tight">Veu projecte i tags. Sense edició.</p></div>
                 </div>
-                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200">
                   <Pencil className="h-3 w-3 text-blue-500 shrink-0" />
-                  <div>
-                    <p className="font-semibold text-blue-700">Editor global</p>
-                    <p className="text-blue-400 leading-tight">Crea tags, edita equips, omple camps i valida.</p>
-                  </div>
+                  <div><p className="font-semibold text-blue-700">Editor global</p><p className="text-blue-400 leading-tight">Crea tags, edita, omple camps i valida.</p></div>
                 </div>
-                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-amber-50 border border-amber-200">
+                <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 border border-amber-200">
                   <ClipboardCheck className="h-3 w-3 text-amber-500 shrink-0" />
-                  <div>
-                    <p className="font-semibold text-amber-700">Ed. Característiques</p>
-                    <p className="text-amber-400 leading-tight">Omple camps tècnics només dels tags validats.</p>
-                  </div>
+                  <div><p className="font-semibold text-amber-700">Ed. Característiques</p><p className="text-amber-400 leading-tight">Omple camps dels tags validats.</p></div>
                 </div>
               </div>
 
+              {/* Cercador */}
+              <div className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-md bg-slate-50">
+                <Search className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                <input
+                  className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
+                  placeholder="Cerca per nom, correu electrònic…"
+                  value={userSearch}
+                  onChange={e => setUserSearch(e.target.value)}
+                  autoFocus
+                />
+                {userSearch && (
+                  <button onClick={() => setUserSearch("")} className="text-slate-400 hover:text-slate-600">
+                    <XCircle className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Taula d'usuaris */}
               {loadingUsers ? (
-                <p className="text-sm text-slate-400 text-center py-4">Carregant usuaris…</p>
-              ) : (
-                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                  {allUsers.filter(u => u.role !== "admin").map(u => {
-                    const entry = selectedProjectUsers.find(x => x.userId === u.id);
-                    const currentRole: ProjectRole | null = entry?.role ?? null;
-                    return (
-                      <div key={u.id} className={cn(
-                        "flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors",
-                        currentRole ? "bg-[#0099A8]/5 border-[#0099A8]/25" : "bg-slate-50 border-slate-100"
-                      )}>
-                        {/* Avatar */}
-                        <div className="h-7 w-7 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-xs font-bold text-slate-500">
-                          {((u.full_name || u.email || "?")[0]).toUpperCase()}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-slate-700 truncate">{u.full_name || u.email}</p>
-                          <p className="text-[10px] text-slate-400 font-mono">{u.email}</p>
-                        </div>
-                        {/* Selector de rol */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          {/* Sense accés */}
-                          <button
-                            type="button"
-                            title="Sense accés"
-                            onClick={() => setUserProjectRole(u.id, null)}
-                            className={cn(
-                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors",
-                              currentRole === null
-                                ? "bg-slate-200 border-slate-300 text-slate-700"
-                                : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
-                            )}
-                          >
-                            —
-                          </button>
-                          {/* Visualitzador */}
-                          <button
-                            type="button"
-                            title="Visualitzador"
-                            onClick={() => setUserProjectRole(u.id, "viewer")}
-                            className={cn(
-                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1",
-                              currentRole === "viewer"
-                                ? "bg-slate-600 border-slate-700 text-white"
-                                : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
-                            )}
-                          >
-                            <Eye className="h-2.5 w-2.5" /> Vis.
-                          </button>
-                          {/* Editor global */}
-                          <button
-                            type="button"
-                            title="Editor global — pot crear tags, editar equips, omplir camps tècnics i validar tags"
-                            onClick={() => setUserProjectRole(u.id, "editor_global")}
-                            className={cn(
-                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1",
-                              currentRole === "editor_global"
-                                ? "bg-blue-600 border-blue-700 text-white"
-                                : "bg-white border-slate-200 text-slate-400 hover:bg-blue-50"
-                            )}
-                          >
-                            <Pencil className="h-2.5 w-2.5" /> Editor
-                          </button>
-                          {/* Editor característiques */}
-                          <button
-                            type="button"
-                            title="Editor de característiques — pot omplir camps tècnics dels tags ja validats"
-                            onClick={() => setUserProjectRole(u.id, "editor_caracteristiques")}
-                            className={cn(
-                              "h-6 px-2 rounded text-[10px] font-medium border transition-colors flex items-center gap-1",
-                              currentRole === "editor_caracteristiques"
-                                ? "bg-amber-500 border-amber-600 text-white"
-                                : "bg-white border-slate-200 text-slate-400 hover:bg-amber-50"
-                            )}
-                          >
-                            <ClipboardCheck className="h-2.5 w-2.5" /> Caracts.
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {allUsers.filter(u => u.role !== "admin").length === 0 && (
-                    <p className="text-sm text-slate-400 text-center py-4">Cap usuari no-admin trobat</p>
-                  )}
-                </div>
-              )}
-              {(() => {
+                <p className="text-sm text-slate-400 text-center py-6">Carregant usuaris…</p>
+              ) : (() => {
+                const q = userSearch.toLowerCase().trim();
+                const usuarisBase = allUsers.filter(u => u.role !== "admin");
+                const usuarisFiltrats = q
+                  ? usuarisBase.filter(u =>
+                      (u.full_name ?? "").toLowerCase().includes(q) ||
+                      (u.email ?? "").toLowerCase().includes(q) ||
+                      (u.organisation ?? "").toLowerCase().includes(q)
+                    )
+                  : usuarisBase;
+
+                if (usuarisFiltrats.length === 0) {
+                  return (
+                    <p className="text-sm text-slate-400 text-center py-6">
+                      {q ? "Cap usuari coincideix amb la cerca" : "Cap usuari no-admin trobat"}
+                    </p>
+                  );
+                }
+
+                return (
+                  <div className="border border-slate-200 rounded-lg overflow-auto" style={{ maxHeight: 320 }}>
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                        <tr className="text-left">
+                          <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Usuari</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Correu</th>
+                          <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Rol al projecte</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usuarisFiltrats.map(u => {
+                          const entry = selectedProjectUsers.find(x => x.userId === u.id);
+                          const currentRole: ProjectRole | null = entry?.role ?? null;
+                          return (
+                            <tr key={u.id} className={cn(
+                              "border-t border-slate-100 transition-colors",
+                              currentRole ? "bg-[#0099A8]/5 hover:bg-[#0099A8]/10" : "hover:bg-slate-50/70"
+                            )}>
+                              {/* Usuari */}
+                              <td className="px-3 py-2.5">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-500">
+                                    {((u.full_name || u.email || "?")[0]).toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-xs font-medium text-slate-700 truncate">{u.full_name || "—"}</p>
+                                    {u.organisation && <p className="text-[10px] text-slate-400 truncate">{u.organisation}</p>}
+                                  </div>
+                                </div>
+                              </td>
+                              {/* Correu */}
+                              <td className="px-3 py-2.5">
+                                <span className="text-[11px] font-mono text-slate-500">{u.email}</span>
+                              </td>
+                              {/* Selector de rol */}
+                              <td className="px-3 py-2.5">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button type="button" onClick={() => setUserProjectRole(u.id, null)}
+                                        className={cn(
+                                          "h-6 w-6 rounded border transition-colors flex items-center justify-center text-[11px] font-bold",
+                                          currentRole === null
+                                            ? "bg-slate-200 border-slate-400 text-slate-700"
+                                            : "bg-white border-slate-200 text-slate-300 hover:bg-slate-50 hover:text-slate-500"
+                                        )}>—</button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Sense accés</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button type="button" onClick={() => setUserProjectRole(u.id, "viewer")}
+                                        className={cn(
+                                          "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
+                                          currentRole === "viewer"
+                                            ? "bg-slate-600 border-slate-700 text-white"
+                                            : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
+                                        )}>
+                                        <Eye className="h-2.5 w-2.5" /> Vis.
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Visualitzador — veu projecte i tags, sense edició</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button type="button" onClick={() => setUserProjectRole(u.id, "editor_global")}
+                                        className={cn(
+                                          "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
+                                          currentRole === "editor_global"
+                                            ? "bg-blue-600 border-blue-700 text-white"
+                                            : "bg-white border-slate-200 text-slate-400 hover:bg-blue-50"
+                                        )}>
+                                        <Pencil className="h-2.5 w-2.5" /> Editor
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Editor global — crea tags, edita equips, omple camps i valida</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <button type="button" onClick={() => setUserProjectRole(u.id, "editor_caracteristiques")}
+                                        className={cn(
+                                          "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
+                                          currentRole === "editor_caracteristiques"
+                                            ? "bg-amber-500 border-amber-600 text-white"
+                                            : "bg-white border-slate-200 text-slate-400 hover:bg-amber-50"
+                                        )}>
+                                        <ClipboardCheck className="h-2.5 w-2.5" /> Caracts.
+                                      </button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Ed. Característiques — omple camps tècnics dels tags validats</TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()}
+
+              {/* Resum assignacions */}
+              {!loadingUsers && (() => {
                 const assignats = selectedProjectUsers.filter(u =>
                   ["viewer","editor_global","editor_caracteristiques"].includes(u.role)
                 );
@@ -1940,15 +1990,15 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                   <p className="text-xs text-[#006E7A] font-medium">
                     {assignats.length} usuari{assignats.length !== 1 ? "s" : ""} amb accés assignat
                   </p>
-                ) : !loadingUsers ? (
+                ) : (
                   <p className="text-xs text-slate-400 italic">
                     🔒 Cap usuari assignat — només els administradors hi tindran accés
                   </p>
-                ) : null;
+                );
               })()}
             </div>
             <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => setDialogUsuaris(null)}>Cancel·la</Button>
+              <Button variant="outline" size="sm" onClick={() => { setDialogUsuaris(null); setUserSearch(""); }}>Cancel·la</Button>
               <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={guardarUsuaris} disabled={savingUsers}>
                 {savingUsers ? "Desant…" : "Desa permisos"}
               </Button>
