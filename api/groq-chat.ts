@@ -618,7 +618,7 @@ REGLES (obligatòries):
 1. MAI inventes codis. Sempre usa les tools per consultar la BD.
 2. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
 3. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
-4. TAG → crida primer_tag_disponible amb codis de les tools. MAI calcules el TAG manualment.
+4. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta. MAI calcules el TAG manualment ni esperes que l'usuari demani la segona opcio.
 5. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
 6. Codis del fil actual reutilitzables només si venen d'una tool. Si hi ha dubte, consulta.
 
