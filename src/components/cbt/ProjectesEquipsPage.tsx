@@ -168,7 +168,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [selectedProjectUsers, setSelectedProjectUsers] = useState<ProjectUserAccess[]>([]);
 
   // Filtre
-  const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("tots");
+  const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("actiu");
 
   // Formularis
   const [nouNom, setNouNom] = useState("");
@@ -785,100 +785,146 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
           <>
             {/* Filtre */}
             <div className="flex gap-2 flex-wrap">
-              {(["tots", "actiu", "arxivat"] as const).map(f => (
+              {(["actiu", "arxivat"] as const).map(f => (
                 <button key={f} onClick={() => setFiltreStatus(f)}
                   className={cn("text-xs px-3 py-1.5 rounded-full border transition-all",
                     filtreStatus === f
                       ? "bg-[#0099A8] text-white border-[#0099A8]"
                       : "bg-white text-slate-600 border-slate-200 hover:border-[#0099A8]/40"
                   )}>
-                  {f === "tots" ? "Tots" : f === "actiu" ? "Actius" : "Arxivats"}
+                  {f === "actiu" ? "Actius" : "Arxivats"}
                 </button>
               ))}
               <span className="text-xs text-slate-400 self-center ml-2">{projecteFiltrats.length} projecte{projecteFiltrats.length !== 1 ? "s" : ""}</span>
             </div>
 
-            {projecteFiltrats.length === 0 ? (
-              <Card className="p-12 border-0 shadow-sm bg-white flex flex-col items-center gap-3 text-center">
-                <FolderOpen className="h-10 w-10 text-slate-300" />
-                <p className="text-sm font-medium text-slate-500">Cap projecte trobat</p>
-                <p className="text-xs text-slate-400">Crea un nou projecte per començar a gestionar tags d'equips.</p>
-              </Card>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                {projecteFiltrats.map(p => {
-                  const total = p.tags.length;
-                  const validats = p.tags.filter(t => t.status === "validat").length;
-                  const pendents = p.tags.filter(t => t.status === "pendent").length;
-                  const rebutjats = p.tags.filter(t => t.status === "rebutjat").length;
-                  const pct = total > 0 ? Math.round((validats / total) * 100) : 0;
+            <div className="border border-slate-200 rounded-lg overflow-auto bg-white">
+              <table className="w-full text-sm" style={{ minWidth: 700 }}>
+                <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                  <tr className="text-left">
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Codi</th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nom del projecte</th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Instal·lació</th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Tags</th>
+                    {canEdit && <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Accions</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {projecteFiltrats.length === 0 ? (
+                    <tr>
+                      <td colSpan={canEdit ? 5 : 4} className="px-3 py-12 text-center">
+                        <div className="flex flex-col items-center gap-2 text-slate-400">
+                          <FolderOpen className="h-8 w-8 text-slate-300" />
+                          <p className="text-[13px]">Cap projecte trobat</p>
+                          <p className="text-xs text-slate-400">Crea un nou projecte per començar a gestionar tags d'equips.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : projecteFiltrats.map(p => {
+                    const total = p.tags.length;
+                    const validats = p.tags.filter(t => t.status === "validat").length;
+                    const pendents = p.tags.filter(t => t.status === "pendent").length;
+                    const rebutjats = p.tags.filter(t => t.status === "rebutjat").length;
+                    const pct = total > 0 ? Math.round((validats / total) * 100) : 0;
+                    const installacioText = p.codisInstallacio?.length > 0
+                      ? p.codisInstallacio.map(i => i.nom ? `${i.codi} — ${i.nom}` : i.codi).join(", ")
+                      : (p.codiInstallacio ?? "—");
 
-                  return (
-                    <Card key={p.id} className={cn("p-4 border-0 shadow-sm bg-white hover:shadow-md transition-shadow cursor-pointer group", p.status === "arxivat" && "opacity-70")}
-                      onClick={() => { setProjecteActiu(p.id); setVista("detail"); }}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <ProjectStatusBadge status={p.status} />
-                          </div>
-                          <p className="font-semibold text-slate-700 truncate">{p.nom}</p>
-                          {p.codiProjecte && <p className="text-[10px] font-mono text-[#006E7A] mt-0.5">#{p.codiProjecte}</p>}
-                          {p.descripcio && <p className="text-xs text-slate-400 truncate mt-0.5">{p.descripcio}</p>}
-                          {(p.codisInstallacio?.length > 0 || p.codiInstallacio) && (
-                            <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                              Instal·lació: {(p.codisInstallacio?.length > 0 ? p.codisInstallacio.map(i => i.nom ? `${i.codi} ${i.nom}` : i.codi) : [p.codiInstallacio]).join(" · ")}
-                            </p>
+                    return (
+                      <tr
+                        key={p.id}
+                        className={cn(
+                          "border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors group"
+                        )}
+                        onClick={() => { setProjecteActiu(p.id); setVista("detail"); }}
+                      >
+                        {/* Codi */}
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          {p.codiProjecte
+                            ? <span className="font-mono text-xs text-[#006E7A] font-semibold">#{p.codiProjecte}</span>
+                            : <span className="text-slate-300 text-xs">—</span>}
+                        </td>
+
+                        {/* Nom + descripció */}
+                        <td className="px-3 py-2.5">
+                          <p className="font-semibold text-slate-700 text-sm leading-tight">{p.nom}</p>
+                          {p.descripcio && (
+                            <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs truncate">{p.descripcio}</p>
                           )}
-                        </div>
-                        <ChevronRight className="h-4 w-4 text-slate-300 group-hover:text-[#0099A8] shrink-0 mt-1 transition-colors" />
-                      </div>
+                        </td>
 
-                      {/* Barra de progrés */}
-                      <div className="mt-3">
-                        <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                          <span>{total} tags</span>
-                          <span>{pct}% validats</span>
-                        </div>
-                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div className="h-full bg-emerald-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
-                        </div>
-                        <div className="flex gap-3 mt-1.5 text-[10px] text-slate-400">
-                          {validats > 0 && <span className="text-emerald-600">✓ {validats} validats</span>}
-                          {pendents > 0 && <span className="text-amber-600">◐ {pendents} pendents</span>}
-                          {rebutjats > 0 && <span className="text-red-500">✗ {rebutjats} rebutjats</span>}
-                        </div>
-                      </div>
+                        {/* Instal·lació */}
+                        <td className="px-3 py-2.5">
+                          <span className="font-mono text-[11px] text-slate-500">{installacioText}</span>
+                        </td>
 
-                      {/* Accions ràpides */}
-                      {canEdit && (
-                        <div className="flex gap-1.5 mt-3 pt-3 border-t border-slate-100" onClick={e => e.stopPropagation()}>
-                          <Button variant="outline" size="sm" className="h-7 text-[11px] border-slate-200 text-slate-600"
-                            onClick={() => obrirEditProjecte(p.id)}>
-                            <Pencil className="h-3 w-3" />
-                          </Button>
-                          {isAdmin && (
-                            <Button variant="outline" size="sm"
-                              className="h-7 text-[11px] border-slate-200 text-slate-600"
-                              onClick={() => obrirDialogUsuaris(p.id)}
-                              title={p.projectUsers ? "Accés restringit · Gestionar usuaris" : "Accés obert · Gestionar usuaris"}>
-                              {p.projectUsers ? <Lock className="h-3 w-3 text-amber-500" /> : <LockOpen className="h-3 w-3" />}
-                            </Button>
+                        {/* Tags (total) */}
+                        <td className="px-3 py-2.5 text-center">
+                          {total > 0 ? (
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="text-sm font-semibold text-slate-700">{total}</span>
+                              <div className="flex gap-1.5 text-[10px]">
+                                {validats > 0 && <span className="text-emerald-600">✓{validats}</span>}
+                                {pendents > 0 && <span className="text-amber-600">◐{pendents}</span>}
+                                {rebutjats > 0 && <span className="text-red-500">✗{rebutjats}</span>}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-300 text-xs">—</span>
                           )}
-                          <Button variant="outline" size="sm" className="h-7 text-[11px] flex-1 border-slate-200"
-                            onClick={() => setDialogArxivar(p.id)}>
-                            <Archive className="h-3 w-3 mr-1" />{p.status === "arxivat" ? "Desarxivar" : "Arxivar"}
-                          </Button>
-                          <Button variant="outline" size="sm" className="h-7 text-[11px] border-red-200 text-red-500 hover:bg-red-50"
-                            onClick={() => setDialogEliminarProjecte(p.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      )}
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
+                        </td>
+
+                        {/* Accions */}
+                        {canEdit && (
+                          <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
+                            <div className="flex gap-1 items-center">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                    onClick={() => obrirEditProjecte(p.id)}>
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Editar projecte</TooltipContent>
+                              </Tooltip>
+                              {isAdmin && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                      onClick={() => obrirDialogUsuaris(p.id)}>
+                                      {p.projectUsers ? <Lock className="h-3.5 w-3.5 text-amber-500" /> : <LockOpen className="h-3.5 w-3.5" />}
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>{p.projectUsers ? "Accés restringit · Gestionar usuaris" : "Accés obert · Gestionar usuaris"}</TooltipContent>
+                                </Tooltip>
+                              )}
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                    onClick={() => setDialogArxivar(p.id)}>
+                                    <Archive className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>{p.status === "arxivat" ? "Desarxivar" : "Arxivar"}</TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500"
+                                    onClick={() => setDialogEliminarProjecte(p.id)}>
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Eliminar projecte</TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </>
         )}
 
