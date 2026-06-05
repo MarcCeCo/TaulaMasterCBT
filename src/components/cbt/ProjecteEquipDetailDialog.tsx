@@ -93,7 +93,7 @@ export function ProjecteEquipDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[92vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-hidden flex flex-col">
 
         {/* Capçalera */}
         <DialogHeader>

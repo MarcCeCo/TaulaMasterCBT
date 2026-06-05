@@ -115,7 +115,7 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>{editing ? "Edita camp" : "Nou camp"}</DialogTitle></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
 

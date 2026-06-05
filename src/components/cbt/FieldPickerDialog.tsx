@@ -81,7 +81,7 @@ export function FieldPickerDialog({ open, onOpenChange, fields, initialSelected,
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl" onKeyDown={(e) => { if (e.key === "Escape") e.stopPropagation(); }}>
+      <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto" onKeyDown={(e) => { if (e.key === "Escape") e.stopPropagation(); }}>
         <DialogHeader><DialogTitle>Selecciona els camps de la taula</DialogTitle></DialogHeader>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
           <Input placeholder="Cerca…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />

@@ -128,7 +128,7 @@ function TaulaMasterPage() {
 
       {/* Pop-up GuBIMClass */}
       <Dialog open={gubimOpen} onOpenChange={setGubimOpen}>
-        <DialogContent className="max-w-6xl w-full max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
           <DialogHeader className="sr-only">
             <DialogTitle>GuBIMClass</DialogTitle>
           </DialogHeader>

@@ -772,7 +772,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
         {/* Pop-up TAGs Rosmiman */}
         <Dialog open={rosmimanOpen} onOpenChange={setRosmimanOpen}>
-          <DialogContent className="max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader className="sr-only">
               <DialogTitle>TAGs Rosmiman</DialogTitle>
             </DialogHeader>
@@ -1177,7 +1177,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
         {/* ── DIÀLEG: NOU PROJECTE ────────────────────────────────────────── */}
         <Dialog open={dialogNouProjecte} onOpenChange={(b) => { setDialogNouProjecte(b); if (!b) setNouProjecteError(null); }}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Nou projecte</DialogTitle></DialogHeader>
             <div className="space-y-3 py-2">
               <div>
@@ -1259,7 +1259,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
         {/* ── DIÀLEG: EDITAR PROJECTE ────────────────────────────────────── */}
         <Dialog open={!!dialogEditProjecte} onOpenChange={(b) => { if (!b) { setDialogEditProjecte(null); setEditProjecteError(null); } }}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Editar projecte</DialogTitle></DialogHeader>
             <div className="space-y-3 py-2">
               <div>
@@ -1345,7 +1345,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         {/* ── DIÀLEG: NOU / EDITAR TAG ────────────────────────────────────── */}
         {(dialogNouTag || dialogEditTag) && (
           <Dialog open onOpenChange={() => { setDialogNouTag(false); setDialogEditTag(null); }}>
-            <DialogContent className="max-w-lg">
+            <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>{dialogEditTag ? "Editar TAG" : "Nou TAG d'equip"}</DialogTitle>
                 <p className="text-xs text-slate-500 mt-1">
@@ -1595,7 +1595,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         {/* ── DIÀLEG: VALIDAR TAG ─────────────────────────────────────────── */}
         {dialogValidar && (
           <Dialog open onOpenChange={() => setDialogValidar(null)}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Validar TAG</DialogTitle>
                 <p className="font-mono text-sm bg-slate-100 px-2 py-1.5 rounded mt-2">{dialogValidar.tagComplet}</p>
@@ -1621,7 +1621,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
         {/* ── DIÀLEG: ADVERTÈNCIA CANVI CODI INSTAL·LACIÓ ──────────────── */}
         <AlertDialog open={!!dialogCanviInstallacio} onOpenChange={(o) => { if (!o) setDialogCanviInstallacio(null); }}>
-          <AlertDialogContent className="max-w-md">
+          <AlertDialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-amber-500" />
@@ -1810,7 +1810,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         />
         {/* ── DIÀLEG: GESTIÓ D'ACCÉS PER USUARI (només admins) ──────────── */}
         <Dialog open={!!dialogUsuaris} onOpenChange={(b) => { if (!b) { setDialogUsuaris(null); setUserSearch(""); } }}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#0099A8]" />

@@ -53,7 +53,7 @@ export function EquipmentDetailDialog({ open, onOpenChange, equipment, nodeMap, 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-hidden flex flex-col">
 
         {/* Capçalera estàndard — igual que GubimClassManager i FieldsDictionaryDialog */}
         <DialogHeader>

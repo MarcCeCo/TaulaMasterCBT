@@ -162,7 +162,7 @@ export function EquipmentFormDialog({ open, onOpenChange, editing, nodes, nodeMa
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="border-b pb-3">
           <DialogTitle className="text-base font-semibold">
             {editing ? "Edita equip" : "Nou equip"}
