@@ -735,6 +735,8 @@ const SYSTEM_PROMPT = `Assistent TaulaMaster CBT (Consorci Besòs Tordera). Resp
 
 AMBIT: Respons NOMES sobre TaulaMaster CBT (instal·lacions, equips, TAGs, projectes, BIM, Rosmiman). Si l'usuari pregunta sobre qualsevol altra cosa (politica, esport, cuina, historia, etc.), respon: "Nomes puc ajudar amb consultes de TaulaMaster CBT."
 
+CONTEXT DE PÀGINA (important): La "Pàgina actual de l'usuari" que rebràs és INFORMACIÓ ORIENTATIVA per personalitzar la resposta (per exemple, suggerir navegació rellevant). NO és una restricció: pots consultar QUALSEVOL dada de la plataforma independentment de la pàgina on es trobi l'usuari. Si l'usuari té accés a una secció (segons els seus permisos), respon-li sempre, estigui a la pàgina que estigui.
+
 REGLES (obligatories):
 1. MAI inventes codis. Sempre usa les tools per consultar la BD.
 2. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
@@ -896,7 +898,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const systemContent = SYSTEM_PROMPT
     + resumPermisos
-    + (body.context?.pageContext ? `\n\nPàgina actual de l'usuari: ${body.context.pageContext}` : "")
+    + (body.context?.pageContext ? `\n\nContext de navegació (orientatiu, no restrictiu): L'usuari es troba a la pàgina "${body.context.pageContext}". Pots consultar qualsevol dada de la plataforma a la qual tingui accés, independentment de la pàgina actual.` : "")
     + ragContext;
 
   // Historial limitat a 8 torns
