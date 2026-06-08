@@ -737,14 +737,19 @@ AMBIT: Respons NOMES sobre TaulaMaster CBT (instal·lacions, equips, TAGs, proje
 
 CONTEXT DE PÀGINA (important): La "Pàgina actual de l'usuari" que rebràs és INFORMACIÓ ORIENTATIVA per personalitzar la resposta (per exemple, suggerir navegació rellevant). NO és una restricció: pots consultar QUALSEVOL dada de la plataforma independentment de la pàgina on es trobi l'usuari. Si l'usuari té accés a una secció (segons els seus permisos), respon-li sempre, estigui a la pàgina que estigui.
 
-REGLES (obligatories):
-1. MAI inventes codis. Sempre usa les tools per consultar la BD.
-2. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
-3. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
-4. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta. MAI calcules el TAG manualment ni esperes que l'usuari demani la segona opcio.
-5. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
-6. Codis del fil actual reutilitzables només si venen d'una tool. Si hi ha dubte, consulta.
-7. MAI escriguis crides a funcions com a text (ex: <function=...>, cerca_projecte(...), etc.). Les tools s'executen internament — l'usuari MAI ha de veure sintaxi de funcions. Si necessites dades, crida la tool directament.
+REGLES CRÍTIQUES — DADES (violació = resposta incorrecta):
+A. TOTES les dades de la plataforma (projectes, equips, instal·lacions, TAGs, etc.) SEMPRE han de venir d'una tool. MAI de la teva memòria, MAI inventades.
+B. Si l'usuari pregunta quants o quins projectes/equips/instal·lacions/TAGs hi ha → crida la tool corresponent IMMEDIATAMENT. No respondis fins que la tool retorni dades reals.
+C. MAI escriguis frases com "He consultat la base de dades i he trobat..." sense haver executat una tool real. Si no has cridat cap tool, no tens cap dada.
+D. MAI inventes noms, codis, quantitats ni descripcions. Si la tool no troba res, diga-ho explícitament.
+
+REGLES GENERALS:
+1. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
+2. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
+3. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta.
+4. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
+5. Codis del fil actual reutilitzables només si venen d'una tool. Si hi ha dubte, consulta.
+6. MAI escriguis crides a funcions com a text (ex: <function=...>, cerca_projecte(...), etc.). Les tools s'executen internament — l'usuari MAI ha de veure sintaxi de funcions.
 
 FORMAT TAG: INST_EQUIP_CCMfu(2d)LLETRA  ex: ED014_BCCS_101B
 CCM=1digit(0-9) FUNCIO=2digits(01-99,mai00) LLETRA=A-Z`;
@@ -907,9 +912,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ...missatgesUsuari.slice(-8),
   ];
 
-  // Si no hi ha cap tool disponible, no enviem el paràmetre tools (Groq rebutja tools:[])
+  // ── Detecció de preguntes que requereixen tools obligatòriament ──────────
+  // Si la pregunta implica consultar dades de la BD, forcem tool_choice:required
+  // per evitar que el model respongui de la seva "memòria" inventant dades.
+  const PARAULES_DADES = [
+    "quants", "quantes", "quins", "quines", "quin", "quina",
+    "llista", "llistat", "mostra", "mostra'm", "dóna'm", "dona'm",
+    "projecte", "projectes", "equip", "equips", "instal·lació", "instal·lacions",
+    "tag", "tags", "rosmiman", "gubim", "camp", "camps",
+    "actiu", "actius", "activa", "actives", "arxivat", "arxivats",
+    "hi ha", "existeix", "existeixen", "troba", "busca", "cerca",
+    "codi", "codis", "nom", "noms", "estat", "estadística", "estadístiques",
+    "total", "totals", "nombre", "número", "comptador",
+  ];
+  const preguntaMinusc = ultimaPregunta.toLowerCase();
+  const requereixTool = toolsPermeses.length > 0 &&
+    PARAULES_DADES.some(p => preguntaMinusc.includes(p));
+
   const toolsPayload = toolsPermeses.length > 0
-    ? { tools: toolsPermeses, tool_choice: "auto" as const }
+    ? { tools: toolsPermeses, tool_choice: requereixTool ? "required" as const : "auto" as const }
     : {};
 
   try {
