@@ -742,6 +742,7 @@ REGLES (obligatories):
 4. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta. MAI calcules el TAG manualment ni esperes que l'usuari demani la segona opcio.
 5. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
 6. Codis del fil actual reutilitzables només si venen d'una tool. Si hi ha dubte, consulta.
+7. MAI escriguis crides a funcions com a text (ex: <function=...>, cerca_projecte(...), etc.). Les tools s'executen internament — l'usuari MAI ha de veure sintaxi de funcions. Si necessites dades, crida la tool directament.
 
 FORMAT TAG: INST_EQUIP_CCMfu(2d)LLETRA  ex: ED014_BCCS_101B
 CCM=1digit(0-9) FUNCIO=2digits(01-99,mai00) LLETRA=A-Z`;
@@ -968,9 +969,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
           if (!gr2.ok) { res.status(502).json({ error: "Error Groq reintent 2a crida" }); return; }
           const d2 = await gr2.json() as { choices: { message: { content: string } }[] };
-          res.status(200).json({ reply: d2.choices[0].message.content ?? "" }); return;
+          const reintentResp = d2.choices[0].message.content ?? "";
+          const teFuncioReintent = /<function=\w+\(/.test(reintentResp) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(reintentResp);
+          res.status(200).json({ reply: teFuncioReintent ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." : reintentResp }); return;
         }
-        res.status(200).json({ reply: retryMsg.content ?? "" }); return;
+        const retryContent = retryMsg.content ?? "";
+        const teFuncioRetry = /<function=\w+\(/.test(retryContent) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(retryContent);
+        res.status(200).json({ reply: teFuncioRetry ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." : retryContent }); return;
       }
       res.status(502).json({ error: `Error Groq: ${groqRes1.status} — ${errText}` }); return;
     }
@@ -1029,11 +1034,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         choices: { message: { content: string } }[];
       };
 
-      res.status(200).json({ reply: data2.choices[0].message.content ?? "" }); return;
+      const respostaFinal = data2.choices[0].message.content ?? "";
+      const teFuncioInline2 = /<function=\w+\(/.test(respostaFinal) ||
+        /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(respostaFinal);
+
+      res.status(200).json({
+        reply: teFuncioInline2
+          ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta."
+          : respostaFinal,
+      }); return;
     }
 
     // ── Resposta directa sense tool calls ────────────────────────────────────
-    res.status(200).json({ reply: missatgeAssistent.content ?? "" }); return;
+    // Defensa addicional: de vegades llama-3.3 escriu la crida a tool com a text
+    // en lloc d'usar el mecanisme tool_calls (ex: "<function=cerca_projecte(...)>").
+    // En aquest cas ho detectem, netejem el text i retornem un missatge neutral.
+    const contingutFinal = missatgeAssistent.content ?? "";
+    const teniaFuncioInline = /<function=\w+\(/.test(contingutFinal) ||
+      /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(contingutFinal);
+
+    if (teniaFuncioInline) {
+      // El model ha intentat cridar una tool però no ha usat el mecanisme correcte.
+      // Retornem un missatge genèric en lloc d'exposar sintaxi interna.
+      res.status(200).json({ reply: "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." }); return;
+    }
+
+    res.status(200).json({ reply: contingutFinal }); return;
 
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
