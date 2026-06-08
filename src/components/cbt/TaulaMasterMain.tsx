@@ -158,7 +158,7 @@ function TaulaMasterPage() {
 }
 
 export function TaulaMasterMain() {
-  const { canSeeView, profile, user, isAdmin, loading: authLoading } = useAuth();
+  const { canSeeView, profile, user, isAdmin, loading: authLoading, getToken } = useAuth();
 
   const VALID_SECTIONS = [
     "dashboard","equips","revit-bim","visualitzador-3d",
@@ -307,6 +307,7 @@ export function TaulaMasterMain() {
         pageLabel={sectionTitles[activeSection]?.title}
         isAdmin={isAdmin}
         sectionPermisos={profile?.section_permissions ?? undefined}
+        getToken={getToken}
       />
     </div>
   );

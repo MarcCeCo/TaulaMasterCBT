@@ -331,36 +331,48 @@ async function executaTool(
 
       // ── cerca_projecte ─────────────────────────────────────────────────────
       case "cerca_projecte": {
-        type ProjRow = { id: string; codi_projecte: string; nom: string; status: string; codi_installacio: string; codis_installacio: {codi:string;nom:string}[]|null };
+        type ProjRow = { id: string; codi_projecte: string; nom: string; status: string; codi_installacio: string; codis_installacio: {codi:string;nom:string}[]|null; allowed_users: unknown };
         let rows: ProjRow[] = [];
 
         if (args.codi_projecte) {
           rows = await supaGet(supaUrl, supaKey,
-            `projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=5`
+            `projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio,allowed_users&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=5`
           ) as ProjRow[];
         }
 
         if (!rows.length) {
-          let query = "projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio&order=codi_projecte.desc&limit=200";
+          let query = "projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio,allowed_users&order=codi_projecte.desc&limit=500";
           if (args.status) query += `&status=eq.${encodeURIComponent(args.status as string)}`;
           const tots = await supaGet(supaUrl, supaKey, query) as ProjRow[];
 
+          // ── Filtre d'accés per userId ──────────────────────────────────────
+          // allowed_users === null → accés obert (tothom el veu)
+          // allowed_users === []   → accés tancat (només admins)
+          // allowed_users = [{userId, role},...] → accés restringit
+          const visibles = isAdmin ? tots : tots.filter(p => {
+            if (p.allowed_users === null) return true;               // obert
+            if (!Array.isArray(p.allowed_users)) return false;       // format inesperat
+            if ((p.allowed_users as unknown[]).length === 0) return false; // tancat
+            if (!userId) return false;
+            return (p.allowed_users as { userId: string }[]).some(u => u.userId === userId);
+          });
+
           if (args.nom) {
             const termes = paraulesCerca(args.nom as string);
-            rows = tots.filter(p =>
+            rows = visibles.filter(p =>
               coincideixFlexible(p.nom, termes, "and") ||
               p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "and"))
             );
-            if (!rows.length) rows = tots.filter(p =>
+            if (!rows.length) rows = visibles.filter(p =>
               coincideixFlexible(p.nom, termes, "or") ||
               p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "or"))
             );
           } else {
-            rows = tots.slice(0, 20);
+            rows = visibles.slice(0, 20);
           }
         }
 
-        if (!rows.length) return args.nom ? `No s'ha trobat cap projecte amb el nom "${args.nom}".` : "No hi ha projectes a la base de dades.";
+        if (!rows.length) return args.nom ? `No s'ha trobat cap projecte accessible amb el nom "${args.nom}".` : "No tens accés a cap projecte o no n'hi ha a la base de dades.";
         return rows.map(p => {
           const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio ?? "(sense codi)";
           return `Projecte ${p.codi_projecte}: "${p.nom}" | Estat: ${p.status} | Instal·lacions: ${codis}`;
@@ -370,9 +382,23 @@ async function executaTool(
       // ── cerca_tags_projecte ────────────────────────────────────────────────
       case "cerca_tags_projecte": {
         const prRows = await supaGet(supaUrl, supaKey,
-          `projectes?select=id,nom&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=1`
-        ) as { id: string; nom: string }[];
+          `projectes?select=id,nom,allowed_users&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=1`
+        ) as { id: string; nom: string; allowed_users: unknown }[];
         if (!prRows.length) return `No existeix el projecte ${args.codi_projecte}.`;
+
+        // Verifica accés de l'usuari al projecte concret
+        if (!isAdmin) {
+          const au = prRows[0].allowed_users;
+          const esTancat = Array.isArray(au) && (au as unknown[]).length === 0;
+          const esRestringit = Array.isArray(au) && (au as unknown[]).length > 0;
+          if (esTancat) {
+            return `No tens accés al projecte ${args.codi_projecte}. Contacta amb l'administrador.`;
+          }
+          if (esRestringit && (!userId || !(au as { userId: string }[]).some(u => u.userId === userId))) {
+            return `No tens accés al projecte ${args.codi_projecte}. Contacta amb l'administrador.`;
+          }
+        }
+
         let tagQuery = `projecte_tags?select=tag_complet,status,descripcio_equip,codi_installacio&projecte_id=eq.${encodeURIComponent(prRows[0].id)}&order=tag_complet.asc&limit=500`;
         if (args.status) tagQuery += `&status=eq.${encodeURIComponent(args.status as string)}`;
         const tags = await supaGet(supaUrl, supaKey, tagQuery) as { tag_complet: string; status: string; descripcio_equip: string; codi_installacio: string }[];
@@ -548,7 +574,30 @@ async function executaTool(
 
       // ── estadistiques_globals ──────────────────────────────────────────────
       case "estadistiques_globals": {
-        const [equips, camps, gubim, projectes, tags, rosmiman, inst3d] = await Promise.all([
+        // El recompte de projectes actius s'ha de filtrar per accés d'usuari.
+        // Per a admins usem count=exact (ràpid); per a usuaris normals carguem
+        // les files amb allowed_users i comptem manualment.
+        const comptaProjectesActius = async (): Promise<string> => {
+          if (isAdmin) {
+            return fetch(`${supaUrl}/rest/v1/projectes?select=id&status=eq.actiu`, {
+              headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" }
+            }).then(r => r.headers.get("content-range")?.split("/")[1] ?? "?");
+          }
+          // Usuari normal: carrega tots els projectes actius amb allowed_users
+          const tots = await supaGet(supaUrl, supaKey,
+            "projectes?select=id,allowed_users&status=eq.actiu&limit=500"
+          ) as { id: string; allowed_users: unknown }[];
+          const accessibles = tots.filter(p => {
+            if (p.allowed_users === null) return true;
+            if (!Array.isArray(p.allowed_users)) return false;
+            if ((p.allowed_users as unknown[]).length === 0) return false;
+            if (!userId) return false;
+            return (p.allowed_users as { userId: string }[]).some(u => u.userId === userId);
+          });
+          return String(accessibles.length);
+        };
+
+        const [equips, camps, gubim, projectesActius, tags, rosmiman, inst3d] = await Promise.all([
           supaGet(supaUrl, supaKey, "equipments?select=id&limit=1&offset=0").then(() =>
             fetch(`${supaUrl}/rest/v1/equipments?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
               .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?")
@@ -557,8 +606,7 @@ async function executaTool(
             .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
           fetch(`${supaUrl}/rest/v1/gubim_class?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
             .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
-          fetch(`${supaUrl}/rest/v1/projectes?select=id&status=eq.actiu`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
-            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
+          comptaProjectesActius(),
           fetch(`${supaUrl}/rest/v1/projecte_tags?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
             .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
           fetch(`${supaUrl}/rest/v1/rosmiman_equips?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
@@ -572,7 +620,7 @@ async function executaTool(
           `- Equips al catàleg (equipments): ${equips}`,
           `- Camps al diccionari (fields): ${camps}`,
           `- Codis GuBIMClass: ${gubim}`,
-          `- Projectes actius: ${projectes}`,
+          `- Projectes actius (accessibles): ${projectesActius}`,
           `- TAGs de projectes (projecte_tags): ${tags}`,
           `- TAGs Rosmiman globals: ${rosmiman}`,
           `- Instal·lacions al Visor 3D: ${inst3d}`,
@@ -585,6 +633,77 @@ async function executaTool(
   } catch (err) {
     return `Error executant ${name}: ${err instanceof Error ? err.message : String(err)}`;
   }
+}
+
+// ─── Verificació JWT ──────────────────────────────────────────────────────────
+// Valida el JWT de Supabase contra l'endpoint /auth/v1/user.
+// Retorna el perfil complet de l'usuari (id, role, allowed_views) o null si el token és invàlid.
+// Això garanteix que ningú pot suplantar un altre usuari falsificant el body.
+
+interface SupabaseUserRow {
+  id: string;
+  role: string;
+  user_metadata?: Record<string, unknown>;
+}
+
+interface UserPerfilVerificat {
+  userId: string;
+  isAdmin: boolean;
+  seccions: Record<string, string>; // { equips: "editor"|"viewer"|"none", ... }
+}
+
+async function verificaJWT(
+  jwt: string,
+  supaUrl: string,
+  supaAnonKey: string,      // clau anon per a /auth/v1/user
+  supaServiceKey: string,   // clau service_role per a /rest/v1/user_profiles
+): Promise<UserPerfilVerificat | null> {
+  // 1. Valida el JWT contra Supabase Auth
+  const authRes = await fetch(`${supaUrl}/auth/v1/user`, {
+    headers: {
+      apikey: supaAnonKey,
+      Authorization: `Bearer ${jwt}`,
+    },
+  });
+  if (!authRes.ok) return null;
+
+  const authUser = await authRes.json() as SupabaseUserRow;
+  const userId = authUser?.id;
+  if (!userId) return null;
+
+  // 2. Llegeix el perfil de user_profiles per obtenir role i allowed_views
+  const profileRes = await fetch(
+    `${supaUrl}/rest/v1/user_profiles?select=role,allowed_views&id=eq.${encodeURIComponent(userId)}&limit=1`,
+    {
+      headers: {
+        apikey: supaServiceKey,
+        Authorization: `Bearer ${supaServiceKey}`,
+      },
+    }
+  );
+
+  let isAdmin = false;
+  let seccions: Record<string, string> = {};
+
+  if (profileRes.ok) {
+    const rows = await profileRes.json() as { role: string; allowed_views: unknown }[];
+    if (rows.length > 0) {
+      const row = rows[0];
+      isAdmin = row.role === "admin";
+
+      // Parseja allowed_views (objecte { equips: "editor", ... })
+      if (!isAdmin && row.allowed_views && typeof row.allowed_views === "object" && !Array.isArray(row.allowed_views)) {
+        seccions = row.allowed_views as Record<string, string>;
+      } else if (!isAdmin && Array.isArray(row.allowed_views)) {
+        // Format llegacy: array de strings → viewer per a cada secció
+        for (const v of row.allowed_views as string[]) {
+          seccions[v] = "viewer";
+        }
+      }
+    }
+  }
+
+  return { userId, isAdmin, seccions };
 }
 
 // ─── Embedding + RAG ──────────────────────────────────────────────────────────
@@ -637,17 +756,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "OPTIONS") { res.status(204).end(); return; }
   if (req.method !== "POST")   { res.status(405).json({ error: "Mètode no permès" }); return; }
 
-  const groqKey   = process.env.GROQ_API_KEY;
-  const voyageKey = process.env.VOYAGE_API_KEY;
-  const supaUrl   = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const supaKey   = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const groqKey    = process.env.GROQ_API_KEY;
+  const voyageKey  = process.env.VOYAGE_API_KEY;
+  const supaUrl    = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const supaKey    = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supaAnon   = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
 
   if (!groqKey)   { res.status(500).json({ error: "Falta GROQ_API_KEY" }); return; }
   if (!voyageKey) { res.status(500).json({ error: "Falta VOYAGE_API_KEY" }); return; }
   if (!supaUrl)   { res.status(500).json({ error: "Falta SUPABASE_URL" }); return; }
   if (!supaKey)   { res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }); return; }
 
-  let body: { messages?: MissatgeAPI[]; context?: { pageContext?: string } };
+  let body: {
+    messages?: MissatgeAPI[];
+    context?: {
+      pageContext?: string;
+      sectionPermisos?: Record<string, string>; // hint del client (usat si no hi ha JWT)
+    };
+  };
   try {
     body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
   } catch {
@@ -659,11 +785,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.status(400).json({ error: "Cap missatge rebut" }); return;
   }
 
-  // ── Permisos d'usuari ─────────────────────────────────────────────────────
-  const isAdmin: boolean = body.context?.isAdmin === true;
-  const seccions: Record<string,string> = body.context?.sectionPermisos ?? {};
+  // ── Verificació d'identitat: JWT → perfil real del servidor ───────────────
+  // El JWT viatja a la capçalera Authorization: Bearer <token>.
+  // Si és vàlid, la identitat i permisos provenen de Supabase (font de veritat).
+  // Si no n'hi ha (context embegut, tests), es fa servir el hint del body com a
+  // fallback —menys segur, però compatible amb entorns sense autenticació.
+  let isAdmin  = false;
+  let seccions: Record<string, string> = {};
+  let userId: string | null = null;
+
+  const authHeader = req.headers?.authorization ?? req.headers?.Authorization ?? "";
+  const jwt = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : "";
+
+  if (jwt && supaAnon) {
+    // Ruta segura: verifica el JWT contra Supabase i n'extreu el perfil real
+    const perfil = await verificaJWT(jwt, supaUrl, supaAnon, supaKey);
+    if (!perfil) {
+      res.status(401).json({ error: "Token invàlid o caducat. Torna a iniciar sessió." }); return;
+    }
+    isAdmin  = perfil.isAdmin;
+    seccions = perfil.seccions;
+    userId   = perfil.userId;
+  } else {
+    // Fallback: usa el hint del client (sectionPermisos del body).
+    // NOTA: aquest camí NO és segur per producció si supaAnon no està configurat.
+    console.warn("groq-chat: sense JWT o SUPABASE_ANON_KEY — usant permisos del body (mode insegur)");
+    seccions = body.context?.sectionPermisos ?? {};
+    isAdmin  = false; // sense JWT no podem confirmar admin
+    userId   = null;
+  }
 
   const TOOL_SECCIO: Record<string, string> = {
+    cerca_installacio:     "visor3d",
     cerca_equips:          "equips",
     cerca_gubim:           "gubimclass",
     cerca_camps:           "fields",
@@ -672,12 +827,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     primer_tag_disponible: "projectes",
     cerca_tags_rosmiman:   "rosmiman",
     cerca_visor3d:         "visor3d",
+    // estadistiques_globals: accessible a tothom (no necessita seccio restringida)
   };
 
   function teAcces(toolName: string): boolean {
     if (isAdmin) return true;
     const seccio = TOOL_SECCIO[toolName];
-    if (!seccio) return true;
+    if (!seccio) return true; // tools sense seccio (estadistiques_globals) sempre accessibles
     return (seccions[seccio] ?? "none") !== "none";
   }
 
@@ -688,7 +844,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   function missatgeDenegat(toolName: string): string {
     const s = TOOL_SECCIO[toolName] ?? toolName;
-    return "No tens acces a la seccio \"" + (NOMS_SECCIO[s] ?? s) + "\". Contacta amb l\'administrador.";
+    return "No tens acces a la seccio \"" + (NOMS_SECCIO[s] ?? s) + "\". Contacta amb l'administrador.";
+  }
+
+  // ── Filtra les tools per permisos (el model no veu eines inaccessibles) ───
+  const toolsPermeses = TOOLS.filter(t => teAcces(t.function.name));
+
+  // ── Resum de permisos per injectar al system prompt ───────────────────────
+  let resumPermisos: string;
+  if (isAdmin) {
+    resumPermisos = "\n\nROL: Administrador. Tens accés complet a totes les seccions i dades.";
+  } else {
+    const accessibles: string[] = ["Dashboard (estadístiques globals)"];
+    const negades: string[] = [];
+    const mapa: Array<[string, string]> = [
+      ["equips",     "Taula Master (equips, GuBIMClass, diccionari de camps)"],
+      ["gubimclass", "GuBIMClass"],
+      ["fields",     "Diccionari de camps"],
+      ["projectes",  "Projectes i TAGs"],
+      ["rosmiman",   "Llistat Rosmiman"],
+      ["visor3d",    "Visualitzador 3D i instal·lacions"],
+    ];
+    for (const [clau, nom] of mapa) {
+      const perm = seccions[clau] ?? "none";
+      if (perm !== "none") { accessibles.push(`${nom} (${perm})`); }
+      else { negades.push(nom); }
+    }
+    resumPermisos = `\n\nPERMISOS D'AQUEST USUARI:\nSeccions accessibles: ${accessibles.join(", ")}.\nSeccions SENSE accés: ${negades.length > 0 ? negades.join(", ") : "cap (accés total)"}.` +
+      (negades.length > 0
+        ? "\nIMPORTANT: Si l'usuari pregunta sobre una secció sense accés, respon exactament: \"No tens accés a la secció [nom]. Contacta amb l'administrador.\" No proporcionis cap dada d'aquestes seccions."
+        : "");
   }
 
   const ultimaPregunta = missatgesUsuari.filter(m => m.role === "user").at(-1)?.content ?? "";
@@ -709,6 +894,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const systemContent = SYSTEM_PROMPT
+    + resumPermisos
     + (body.context?.pageContext ? `\n\nPàgina actual de l'usuari: ${body.context.pageContext}` : "")
     + ragContext;
 
@@ -717,6 +903,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     { role: "system", content: systemContent },
     ...missatgesUsuari.slice(-8),
   ];
+
+  // Si no hi ha cap tool disponible, no enviem el paràmetre tools (Groq rebutja tools:[])
+  const toolsPayload = toolsPermeses.length > 0
+    ? { tools: toolsPermeses, tool_choice: "auto" as const }
+    : {};
 
   try {
     // ── Primera crida a Groq (amb tools) ────────────────────────────────────
@@ -727,8 +918,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         model: "llama-3.3-70b-versatile",
         max_tokens: 1500,
         temperature: 0.1,
-        tools: TOOLS,
-        tool_choice: "auto",
+        ...toolsPayload,
         messages: historial,
       }),
     });
@@ -747,8 +937,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             model: "llama-3.3-70b-versatile",
             max_tokens: 1500,
             temperature: 0,
-            tools: TOOLS,
-            tool_choice: "auto",
+            ...toolsPayload,
             messages: [{ role: "system", content: systemContent }, ultimMissatge],
           }),
         });

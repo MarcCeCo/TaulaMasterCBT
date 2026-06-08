@@ -18,6 +18,7 @@ interface Props {
   pageLabel?:      string;
   isAdmin?:        boolean;
   sectionPermisos?: Record<string, string>; // { equips: "editor"|"viewer"|"none", ... }
+  getToken?:       () => string; // Retorna el JWT de Supabase per verificació server-side
 }
 
 // ─── Suggeriments per secció ──────────────────────────────────────────────────
@@ -74,7 +75,7 @@ function formatHora(ts: number): string {
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
-export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermisos }: Props) {
+export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermisos, getToken }: Props) {
   const [obert, setObert]             = useState(false);
   const [missatges, setMissatges]     = useState<Missatge[]>([]);
   const [input, setInput]             = useState("");
@@ -131,12 +132,16 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
     setError(null);
 
     try {
+      const jwt = getToken?.() ?? "";
       const res = await fetch("/api/groq-chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
+        },
         body: JSON.stringify({
           messages: historial.slice(-8).map(m => ({ role: m.rol, content: m.text })), // màx 4 torns
-          context: { pageContext: pageLabel ?? pageContext, isAdmin: isAdmin ?? false, sectionPermisos: sectionPermisos ?? {} },
+          context: { pageContext: pageLabel ?? pageContext, sectionPermisos: sectionPermisos ?? {} },
         }),
       });
 
