@@ -631,6 +631,7 @@ async function executaTool(
         return `Tool desconeguda: ${name}`;
     }
   } catch (err) {
+    console.error(`groq-chat: executaTool ERROR [${name}]:`, err instanceof Error ? err.message : String(err));
     return `Error executant ${name}: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
@@ -1019,6 +1020,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       );
 
       resultats.forEach(r => {
+        console.log(`groq-chat: tool [${r.name}] resultat="${r.resultat.slice(0,120)}"`);
         toolMessages.push({
           role: "tool",
           tool_call_id: r.id,
