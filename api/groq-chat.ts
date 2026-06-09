@@ -809,17 +809,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Ruta segura: verifica el JWT contra Supabase i n'extreu el perfil real
     const perfil = await verificaJWT(jwt, supaUrl, supaAnon, supaKey);
     if (!perfil) {
+      console.error("groq-chat: JWT invàlid o caducat");
       res.status(401).json({ error: "Token invàlid o caducat. Torna a iniciar sessió." }); return;
     }
     isAdmin  = perfil.isAdmin;
     seccions = perfil.seccions;
     userId   = perfil.userId;
+    console.log(`groq-chat: userId=${userId} isAdmin=${isAdmin} seccions=${JSON.stringify(seccions)}`);
   } else {
     // Fallback: usa el hint del client (sectionPermisos del body).
-    // NOTA: aquest camí NO és segur per producció si supaAnon no està configurat.
-    console.warn("groq-chat: sense JWT o SUPABASE_ANON_KEY — usant permisos del body (mode insegur)");
+    console.warn(`groq-chat: sense JWT (jwt=${!!jwt}) o SUPABASE_ANON_KEY (anon=${!!supaAnon}) — mode insegur`);
     seccions = body.context?.sectionPermisos ?? {};
-    isAdmin  = false; // sense JWT no podem confirmar admin
+    isAdmin  = false;
     userId   = null;
   }
 
@@ -911,11 +912,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   ];
 
   // Si no hi ha cap tool disponible, no enviem el paràmetre tools (Groq rebutja tools:[])
+  // Per a preguntes que clarament demanen dades de la BD, forcem tool_choice:"required"
+  // per evitar que el model respongui de memòria sense consultar. Per a preguntes de
+  // cortesia o conversacionals, usem "auto" per no forçar una crida innecessària.
+  const ultimPregunta = (missatgesUsuari[missatgesUsuari.length - 1]?.content ?? "").toLowerCase();
+  const semblaPreguntaDeDades = /\b(quant[s]?|quin[s]?|quina[s]?|llista|mostra|cerca|busca|existeix|hi ha|quins|troba|dame|dóna|actiu|activa|estat|status|projecte|equip|instal·laci|tag|rosmiman|visor|gubim|camp[s]?)\b/.test(ultimPregunta);
+
+  const toolChoiceValue = semblaPreguntaDeDades ? "required" : "auto";
   const toolsPayload = toolsPermeses.length > 0
-    ? { tools: toolsPermeses, tool_choice: "auto" as const }
+    ? { tools: toolsPermeses, tool_choice: toolChoiceValue as "required" | "auto" }
     : {};
 
   try {
+    console.log(`groq-chat: toolsPermeses=${toolsPermeses.length} tool_choice=${toolChoiceValue || "none"} pregunta="${ultimPregunta.slice(0,60)}"`);
     // ── Primera crida a Groq (amb tools) ────────────────────────────────────
     const groqRes1 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
