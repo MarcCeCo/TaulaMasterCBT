@@ -736,10 +736,10 @@ const SYSTEM_PROMPT = `Assistent TaulaMaster CBT (Consorci Besòs Tordera). Resp
 AMBIT: Respons NOMES sobre TaulaMaster CBT (instal·lacions, equips, TAGs, projectes, BIM, Rosmiman). Si l'usuari pregunta sobre qualsevol altra cosa (politica, esport, cuina, historia, etc.), respon: "Nomes puc ajudar amb consultes de TaulaMaster CBT."
 
 REGLA FONAMENTAL — INVENTAR DADES ESTÀ TOTALMENT PROHIBIT:
-- Si necessites dades de la BD (projectes, equips, instal·lacions, TAGs, etc.) → crida la tool corresponent. SEMPRE. Sense excepció.
-- Si no cridas la tool → NO pots donar cap dada, nom, codi ni xifra. Zero.
-- Resposta sense tool per a preguntes de dades = "No puc respondre sense consultar la base de dades. [crida la tool]"
-- MAI inventes noms de projectes, codis, quantitats ni llistes. Si no vénen d'una tool, no existeixen.
+- Qualsevol pregunta sobre dades (quants, quins, llista, estat, codi...) requereix cridar la tool corresponent ABANS de respondre.
+- Si no has cridat cap tool, no pots donar cap xifra, nom, codi ni llista. Absolutament cap.
+- Si per algun motiu no pots cridar la tool, respon únicament: "Ho sento, no he pogut consultar la base de dades en aquest moment."
+- MAI escrius el nom d'una tool a la teva resposta. Les tools s'executen internament i l'usuari no les veu mai.
 
 REGLES ADDICIONALS:
 1. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
@@ -747,8 +747,7 @@ REGLES ADDICIONALS:
 3. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta.
 4. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
 5. Codis reutilitzables del fil actual només si venen d'una tool. Si hi ha dubte, consulta.
-6. MAI escriguis crides a funcions com a text (<function=...>, cerca_projecte(...), etc.). Les tools s'executen internament.
-7. La "pàgina actual" és ORIENTATIVA. Respon qualsevol consulta de les seccions accessibles, independentment de la pàgina oberta. MAI redirigeixis l'usuari si pots obtenir la informació amb les tools.
+6. La "pàgina actual" és ORIENTATIVA. Respon qualsevol consulta de les seccions accessibles, independentment de la pàgina oberta. MAI redirigeixis l'usuari si pots obtenir la informació amb les tools.
 
 FORMAT TAG: INST_EQUIP_CCMfu(2d)LLETRA  ex: ED014_BCCS_101B
 CCM=1digit(0-9) FUNCIO=2digits(01-99,mai00) LLETRA=A-Z`;
@@ -976,11 +975,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           if (!gr2.ok) { res.status(502).json({ error: "Error Groq reintent 2a crida" }); return; }
           const d2 = await gr2.json() as { choices: { message: { content: string } }[] };
           const reintentResp = d2.choices[0].message.content ?? "";
-          const teFuncioReintent = /<function=\w+\(/.test(reintentResp) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(reintentResp);
+          const _names = ["cerca_installacio","cerca_equips","cerca_gubim","cerca_camps","cerca_projecte","cerca_tags_projecte","cerca_tags_rosmiman","cerca_visor3d","primer_tag_disponible","estadistiques_globals"];
+          const teFuncioReintent = /<function=\w+\(/.test(reintentResp) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(reintentResp) || new RegExp("\\b(" + _names.join("|") + ")\\s*$").test(reintentResp.trim());
           res.status(200).json({ reply: teFuncioReintent ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." : reintentResp }); return;
         }
         const retryContent = retryMsg.content ?? "";
-        const teFuncioRetry = /<function=\w+\(/.test(retryContent) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(retryContent);
+        const _names2 = ["cerca_installacio","cerca_equips","cerca_gubim","cerca_camps","cerca_projecte","cerca_tags_projecte","cerca_tags_rosmiman","cerca_visor3d","primer_tag_disponible","estadistiques_globals"];
+        const teFuncioRetry = /<function=\w+\(/.test(retryContent) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(retryContent) || new RegExp("\\b(" + _names2.join("|") + ")\\s*$").test(retryContent.trim());
         res.status(200).json({ reply: teFuncioRetry ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." : retryContent }); return;
       }
       res.status(502).json({ error: `Error Groq: ${groqRes1.status} — ${errText}` }); return;
@@ -1054,20 +1055,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ── Resposta directa sense tool calls ────────────────────────────────────
     const contingutFinal = missatgeAssistent.content ?? "";
 
-    // Detecció 1: sintaxi de funció inline (el model ha escrit la crida com a text)
-    const teniaFuncioInline = /<function=\w+\(/.test(contingutFinal) ||
-      /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(contingutFinal);
+    // Detecció: el model ha escrit sintaxi de tool o nom de tool a la resposta
+    // en lloc d'usar el mecanisme tool_calls de l'API.
+    // Patrons detectats:
+    //   <function=cerca_projecte(...)>  → format XML inline
+    //   cerca_projecte(...)             → crida directa amb parèntesi
+    //   text acabat en "cerca_projecte" → model no ha sabut cridar la tool i ha escrit el nom
+    const NOMS_TOOLS = [
+      "cerca_installacio","cerca_equips","cerca_gubim","cerca_camps",
+      "cerca_projecte","cerca_tags_projecte","cerca_tags_rosmiman",
+      "cerca_visor3d","primer_tag_disponible","estadistiques_globals",
+    ];
+    const reToolInline  = /<function=\w+\(/;
+    const reToolParens  = /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/;
+    const reToolSolt    = new RegExp("\\b(" + NOMS_TOOLS.join("|") + ")\\s*$");
+    const teniaFuncioInline = reToolInline.test(contingutFinal) ||
+      reToolParens.test(contingutFinal) ||
+      reToolSolt.test(contingutFinal.trim());
 
-    // Detecció 2: possible al·lucinació de dades — el model dona llistes o xifres
-    // sense haver cridat cap tool. Detectem patrons típics de dades inventades:
-    // "X projectes", llistes amb guió/número, codis tipus ED001/MGR01, etc.
-    const semblaDonarDades = (
-      /\b\d+\s+(projectes?|equips?|instal·lacions?|tags?|registres?)\b/i.test(contingutFinal) ||
-      /^[\s\S]*[-•]\s+(Projecte|Equip|Instal·lació|TAG)\s+\d/im.test(contingutFinal) ||
-      /\b[A-Z]{2,4}\d{3,4}\b/.test(contingutFinal) // codis tipus ED001, MGR01, BCCS01...
-    );
-
-    if (teniaFuncioInline || semblaDonarDades) {
+    if (teniaFuncioInline) {
       res.status(200).json({ reply: "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." }); return;
     }
 
