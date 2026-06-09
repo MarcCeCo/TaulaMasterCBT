@@ -276,7 +276,6 @@ async function executaTool(
       // ── cerca_equips ───────────────────────────────────────────────────────
       case "cerca_equips": {
         type EquipRow = { equip_code: string; equip_name: string; gubim_code: string; revit_category: string };
-        const cercaNomRaw = (args.nom ?? args.tipus ?? args.keyword ?? args.equip_name) as string | undefined;
 
         // Codi exacte
         if (args.equip_code) {
@@ -290,11 +289,12 @@ async function executaTool(
           const rows = await supaGet(supaUrl, supaKey,
             `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`
           ) as EquipRow[];
-          if (rows.length) return `Equip: ${rows[0].equip_code}: ${rows[0].equip_name} | GuBIMClass: ${rows[0].gubim_code}`;
-          return `No s'ha trobat cap equip amb codi GuBIMClass "${args.gubim_code}".`;
+          if (rows.length) return `Equips amb GuBIMClass ${args.gubim_code} (${rows.length}):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name}`).join("\n");
+          return `No s'han trobat equips amb GuBIMClass "${args.gubim_code}".`;
         }
 
         // Sense cerca → catàleg complet
+        const cercaNomRaw = (args.nom ?? args.tipus ?? args.keyword ?? args.equip_name) as string | undefined;
         if (!cercaNomRaw) {
           const rows = await supaGet(supaUrl, supaKey,
             `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200`
@@ -303,37 +303,26 @@ async function executaTool(
           return `Catàleg complet (${rows.length} equips):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
         }
 
-        // Cerca fuzzy per nom
+        // Cerca per nom: carrega candidats per CADA terme i combina
+        // Usem tots els termes (no només el més llarg) per capturar plurals i variants
         const termes = paraulesCerca(cercaNomRaw);
 
-        // Carrega candidats buscant per la paraula més significativa (la més llarga)
-        const termePrincipal = [...termes].sort((a,b) => b.length - a.length)[0];
-        const candidats = await supaGet(supaUrl, supaKey,
-          `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=equip_name.asc&limit=300`
-        ) as EquipRow[];
+        const resultatsPerTerme = await Promise.all(
+          termes.map(t => supaGet(supaUrl, supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + t + "*")}&order=equip_name.asc&limit=200`
+          ) as Promise<EquipRow[]>)
+        );
 
-        // Si no hi ha prou candidats amb el terme principal, expandeix amb els altres
-        let tots = candidats;
-        if (tots.length < 5 && termes.length > 1) {
-          const extra = await Promise.all(
-            termes.filter(t => t !== termePrincipal).map(t =>
-              supaGet(supaUrl, supaKey,
-                `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + t + "*")}&order=equip_name.asc&limit=100`
-              ) as Promise<EquipRow[]>
-            )
-          );
-          const codisTots = new Set(tots.map(e => e.equip_code));
-          for (const llista of extra) for (const e of llista) if (!codisTots.has(e.equip_code)) { tots.push(e); codisTots.add(e.equip_code); }
+        // Combina sense duplicats
+        const codisTots = new Map<string, EquipRow>();
+        for (const llista of resultatsPerTerme) {
+          for (const e of llista) {
+            if (!codisTots.has(e.equip_code)) codisTots.set(e.equip_code, e);
+          }
         }
+        const tots = [...codisTots.values()];
 
-        if (!tots.length) {
-          // Últim recurs: catàleg complet
-          const tot = await supaGet(supaUrl, supaKey,
-            `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`
-          ) as EquipRow[];
-          return `No s'ha trobat cap equip per "${cercaNomRaw}".\nCatàleg complet (${tot.length} equips):\n` +
-            tot.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
-        }
+        if (!tots.length) return `No s'ha trobat cap equip per "${cercaNomRaw}".`;
 
         type EquipPunt = EquipRow & ResultatPuntuat;
         const puntuats: EquipPunt[] = tots.map(e => ({
@@ -349,7 +338,7 @@ async function executaTool(
         if (unic)        return `Equip: ${top[0].equip_code}: ${top[0].equip_name} | GuBIMClass: ${top[0].gubim_code}${top[0].revit_category ? ` | Revit: ${top[0].revit_category}` : ""}`;
 
         const prefix = empat
-          ? `Hi ha ${top.length} equips que coincideixen amb "${cercaNomRaw}" (puntuació similar). Presenta'ls a l'usuari:`
+          ? `Hi ha ${top.length} equips amb puntuació similar per "${cercaNomRaw}". Presenta'ls tots a l'usuari i demana que confirmi quin és:`
           : `S'han trobat ${top.length} equips per "${cercaNomRaw}" (ordenats per rellevància):`;
         return prefix + "\n" + top.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
       }
