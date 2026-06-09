@@ -1001,6 +1001,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     };
 
     const missatgeAssistent = data1.choices[0].message;
+    const finishReason1 = data1.choices[0].finish_reason;
+    console.log(`groq-chat: finish_reason=${finishReason1} tool_calls=${missatgeAssistent.tool_calls?.length ?? 0} content="${(missatgeAssistent.content ?? "").slice(0,100)}"`);
 
     // ── Si el model crida tools → executar i fer segona crida ───────────────
     if (data1.choices[0].finish_reason === "tool_calls" && missatgeAssistent.tool_calls?.length) {
