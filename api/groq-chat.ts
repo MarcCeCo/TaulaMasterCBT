@@ -735,15 +735,20 @@ const SYSTEM_PROMPT = `Assistent TaulaMaster CBT (Consorci Besòs Tordera). Resp
 
 AMBIT: Respons NOMES sobre TaulaMaster CBT (instal·lacions, equips, TAGs, projectes, BIM, Rosmiman). Si l'usuari pregunta sobre qualsevol altra cosa (politica, esport, cuina, historia, etc.), respon: "Nomes puc ajudar amb consultes de TaulaMaster CBT."
 
-REGLES (obligatories):
-1. MAI inventes codis. Sempre usa les tools per consultar la BD.
-2. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
-3. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
-4. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta. MAI calcules el TAG manualment ni esperes que l'usuari demani la segona opcio.
-5. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
-6. Codis del fil actual reutilitzables només si venen d'una tool. Si hi ha dubte, consulta.
-7. MAI escriguis crides a funcions com a text (ex: <function=...>, cerca_projecte(...), etc.). Les tools s'executen internament — l'usuari MAI ha de veure sintaxi de funcions. Si necessites dades, crida la tool directament.
-8. La "pàgina actual" és ORIENTATIVA. Pots i has de respondre qualsevol consulta de les seccions accessibles, independentment de quina pàgina estigui oberta. MAI redirigeixis l'usuari a una altra secció si pots obtenir la informació amb les tools disponibles.
+REGLA FONAMENTAL — INVENTAR DADES ESTÀ TOTALMENT PROHIBIT:
+- Si necessites dades de la BD (projectes, equips, instal·lacions, TAGs, etc.) → crida la tool corresponent. SEMPRE. Sense excepció.
+- Si no cridas la tool → NO pots donar cap dada, nom, codi ni xifra. Zero.
+- Resposta sense tool per a preguntes de dades = "No puc respondre sense consultar la base de dades. [crida la tool]"
+- MAI inventes noms de projectes, codis, quantitats ni llistes. Si no vénen d'una tool, no existeixen.
+
+REGLES ADDICIONALS:
+1. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
+2. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
+3. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta.
+4. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
+5. Codis reutilitzables del fil actual només si venen d'una tool. Si hi ha dubte, consulta.
+6. MAI escriguis crides a funcions com a text (<function=...>, cerca_projecte(...), etc.). Les tools s'executen internament.
+7. La "pàgina actual" és ORIENTATIVA. Respon qualsevol consulta de les seccions accessibles, independentment de la pàgina oberta. MAI redirigeixis l'usuari si pots obtenir la informació amb les tools.
 
 FORMAT TAG: INST_EQUIP_CCMfu(2d)LLETRA  ex: ED014_BCCS_101B
 CCM=1digit(0-9) FUNCIO=2digits(01-99,mai00) LLETRA=A-Z`;
@@ -1047,16 +1052,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // ── Resposta directa sense tool calls ────────────────────────────────────
-    // Defensa addicional: de vegades llama-3.3 escriu la crida a tool com a text
-    // en lloc d'usar el mecanisme tool_calls (ex: "<function=cerca_projecte(...)>").
-    // En aquest cas ho detectem, netejem el text i retornem un missatge neutral.
     const contingutFinal = missatgeAssistent.content ?? "";
+
+    // Detecció 1: sintaxi de funció inline (el model ha escrit la crida com a text)
     const teniaFuncioInline = /<function=\w+\(/.test(contingutFinal) ||
       /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(contingutFinal);
 
-    if (teniaFuncioInline) {
-      // El model ha intentat cridar una tool però no ha usat el mecanisme correcte.
-      // Retornem un missatge genèric en lloc d'exposar sintaxi interna.
+    // Detecció 2: possible al·lucinació de dades — el model dona llistes o xifres
+    // sense haver cridat cap tool. Detectem patrons típics de dades inventades:
+    // "X projectes", llistes amb guió/número, codis tipus ED001/MGR01, etc.
+    const semblaDonarDades = (
+      /\b\d+\s+(projectes?|equips?|instal·lacions?|tags?|registres?)\b/i.test(contingutFinal) ||
+      /^[\s\S]*[-•]\s+(Projecte|Equip|Instal·lació|TAG)\s+\d/im.test(contingutFinal) ||
+      /\b[A-Z]{2,4}\d{3,4}\b/.test(contingutFinal) // codis tipus ED001, MGR01, BCCS01...
+    );
+
+    if (teniaFuncioInline || semblaDonarDades) {
       res.status(200).json({ reply: "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." }); return;
     }
 
