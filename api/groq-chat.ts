@@ -743,6 +743,7 @@ REGLES (obligatories):
 5. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
 6. Codis del fil actual reutilitzables només si venen d'una tool. Si hi ha dubte, consulta.
 7. MAI escriguis crides a funcions com a text (ex: <function=...>, cerca_projecte(...), etc.). Les tools s'executen internament — l'usuari MAI ha de veure sintaxi de funcions. Si necessites dades, crida la tool directament.
+8. La "pàgina actual" és ORIENTATIVA. Pots i has de respondre qualsevol consulta de les seccions accessibles, independentment de quina pàgina estigui oberta. MAI redirigeixis l'usuari a una altra secció si pots obtenir la informació amb les tools disponibles.
 
 FORMAT TAG: INST_EQUIP_CCMfu(2d)LLETRA  ex: ED014_BCCS_101B
 CCM=1digit(0-9) FUNCIO=2digits(01-99,mai00) LLETRA=A-Z`;
@@ -896,7 +897,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const systemContent = SYSTEM_PROMPT
     + resumPermisos
-    + (body.context?.pageContext ? `\n\nPàgina actual de l'usuari: ${body.context.pageContext}` : "")
+    + (body.context?.pageContext ? `\n\nPàgina on és l'usuari ara: ${body.context.pageContext} (orientatiu — pots respondre consultes de qualsevol secció accessible)` : "")
     + ragContext;
 
   // Historial limitat a 8 torns
