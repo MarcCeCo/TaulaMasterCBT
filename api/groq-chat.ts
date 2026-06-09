@@ -127,7 +127,9 @@ async function executaTool(
   name: string,
   args: Record<string, unknown>,
   supaUrl: string,
-  supaKey: string
+  supaKey: string,
+  isAdmin: boolean,
+  userId: string | null,
 ): Promise<string> {
   try {
     switch (name) {
@@ -968,7 +970,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const rets = await Promise.all(retryMsg.tool_calls.map(async tc => {
             const a = JSON.parse(tc.function.arguments) as Record<string, unknown>;
             const resultat = teAcces(tc.function.name)
-              ? await executaTool(tc.function.name, a, supaUrl!, supaKey!)
+              ? await executaTool(tc.function.name, a, supaUrl!, supaKey!, isAdmin, userId)
               : missatgeDenegat(tc.function.name);
             return { id: tc.id, name: tc.function.name, resultat };
           }));
@@ -1013,7 +1015,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         missatgeAssistent.tool_calls.map(async tc => {
           const args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
           const resultat = teAcces(tc.function.name)
-            ? await executaTool(tc.function.name, args, supaUrl!, supaKey!)
+            ? await executaTool(tc.function.name, args, supaUrl!, supaKey!, isAdmin, userId)
             : missatgeDenegat(tc.function.name);
           return { id: tc.id, name: tc.function.name, resultat };
         })
