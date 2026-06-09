@@ -149,6 +149,18 @@ function classificaResultats<T extends ResultatPuntuat>(
   return { unic, empat, top: filtrats.slice(0, 15) };
 }
 
+// Genera el stem mínim per a cerca ilike: elimina sufixos per capturar plurals/variants
+// "bomba" → "bomb"  "centrifuga" → "centrif"  "submergible" → "submerg"
+function stemIlike(paraula: string): string {
+  const p = normalitza(paraula);
+  // Elimina sufixos progressivament fins a tenir un stem prou distintiu (mínim 4 cars)
+  const sufixos = ["ibles","ible","igues","igue","iques","ique","ives","iva","ius","ies","ions","ons","ges","gues","es","s","a","e"];
+  for (const s of sufixos) {
+    if (p.endsWith(s) && p.length - s.length >= 4) return p.slice(0, p.length - s.length);
+  }
+  return p.slice(0, Math.max(4, Math.floor(p.length * 0.75))); // mínim 75% de la paraula
+}
+
 // Manté compatibilitat amb cerques antigues que usen coincideixFlexible
 function coincideixFlexible(text: string, termes: string[], mode: "and" | "or" = "and"): boolean {
   const t = normalitza(text);
@@ -250,7 +262,7 @@ async function executaTool(
         const nomCerca = args.nom as string;
         const termes   = paraulesCerca(nomCerca);
         const candidats = await supaGet(supaUrl, supaKey,
-          `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=codi_installacio.asc&limit=200`
+          `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + stemIlike(termes[0]) + "*")}&order=codi_installacio.asc&limit=200`
         ) as InstRow[];
 
         type InstPunt = InstRow & ResultatPuntuat;
@@ -307,11 +319,14 @@ async function executaTool(
         // Usem tots els termes (no només el més llarg) per capturar plurals i variants
         const termes = paraulesCerca(cercaNomRaw);
 
+        const stems = termes.map(stemIlike);
+        console.log(`cerca_equips: query="${cercaNomRaw}" termes=${JSON.stringify(termes)} stems=${JSON.stringify(stems)}`);
+
         const resultatsPerTerme = await Promise.all(
-          termes.map(t => supaGet(supaUrl, supaKey,
-            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + t + "*")}&order=equip_name.asc&limit=200`
-          ) as Promise<EquipRow[]>)
-        );
+          stems.map((stem, i) => supaGet(supaUrl, supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + stem + "*")}&order=equip_name.asc&limit=200`
+          ).then(r => { console.log(`cerca_equips: stem="${stem}" → ${(r as unknown[]).length} resultats`); return r; }) as Promise<EquipRow[]>
+        ));
 
         // Combina sense duplicats
         const codisTots = new Map<string, EquipRow>();
@@ -372,7 +387,7 @@ async function executaTool(
 
         // Carrega candidats amplis (tots els que contenen la paraula principal)
         const candidats = await supaGet(supaUrl, supaKey,
-          `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=code.asc&limit=300`
+          `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + stemIlike(termePrincipal) + "*")}&order=code.asc&limit=300`
         ) as GubimRow[];
 
         // Si pocs resultats, expandeix amb els altres termes
@@ -381,7 +396,7 @@ async function executaTool(
           const extra = await Promise.all(
             termes.filter(t => t !== termePrincipal).map(t =>
               supaGet(supaUrl, supaKey,
-                `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + t + "*")}&order=code.asc&limit=100`
+                `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + stemIlike(t) + "*")}&order=code.asc&limit=100`
               ) as Promise<GubimRow[]>
             )
           );
@@ -450,7 +465,7 @@ async function executaTool(
         const termePrincipal = [...termes].sort((a,b) => b.length - a.length)[0];
 
         let candidats = await supaGet(supaUrl, supaKey,
-          `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=col.asc&limit=200`
+          `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + stemIlike(termePrincipal) + "*")}&order=col.asc&limit=200`
         ) as CampRow[];
 
         // Filtra per disciplina si s'ha indicat
