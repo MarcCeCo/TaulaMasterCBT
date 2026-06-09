@@ -54,16 +54,106 @@ async function supaGet(supaUrl: string, supaKey: string, path: string): Promise<
   return r.json();
 }
 
-const STOP_WORDS = new Set(["de","del","la","el","els","les","i","a","al","des","per","amb","una","uns","les","en","amb","o"]);
-
-function paraulesCerca(frase: string): string[] {
-  const ps = frase.toLowerCase().trim().split(/\s+/).filter(p => p.length > 2 && !STOP_WORDS.has(p));
-  return ps.length > 0 ? ps : [frase.toLowerCase().trim()];
+// Normalitza text: minúscules, elimina accents i caràcters especials, deixa
+// només lletres, números i espais. Permet comparar "centrífuga" amb "centrifuga".
+function normalitza(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")                        // descompon accents: á → a + ́
+    .replace(/[\u0300-\u036f]/g, "")         // elimina els diacrítics
+    .replace(/[^a-z0-9\s]/g, " ")           // elimina caràcters especials
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
+const STOP_WORDS = new Set(["de","del","la","el","els","les","i","a","al","des","per","amb","una","uns","en","o","d","l","s"]);
+
+function paraulesCerca(frase: string): string[] {
+  const ps = normalitza(frase).split(/\s+/).filter(p => p.length > 1 && !STOP_WORDS.has(p));
+  return ps.length > 0 ? ps : [normalitza(frase)];
+}
+
+// Puntuació fuzzy d'una paraula de cerca contra una paraula candidata.
+// Retorna un valor entre 0 i 1:
+//   1.0 = coincidència exacta
+//   0.8 = prefix exacte (ex: "bomba" vs "bomba" en "bombetes")
+//   0.x = lletres en ordre però no completes
+//   0.0 = menys del 50% de lletres coincidents en ordre
+function puntuacioParaula(query: string, candidata: string): number {
+  if (query === candidata) return 1.0;
+
+  // Subsequence: compta lletres de query que apareixen en ordre a candidata
+  let qi = 0;
+  for (let ci = 0; ci < candidata.length && qi < query.length; ci++) {
+    if (candidata[ci] === query[qi]) qi++;
+  }
+  const cobertura = qi / query.length;
+  if (cobertura < 0.5) return 0; // mínim 50% de lletres en ordre
+
+  const prefixBonus   = candidata.startsWith(query) ? 1.5 : 1.0;
+  const longitudPenal = query.length / candidata.length; // penalitza candidata molt més llarga
+
+  return Math.min(1.0, cobertura * prefixBonus * longitudPenal);
+}
+
+// Puntuació total d'una cerca (frase sencera) contra un text candidat.
+// Retorna { score: 0..1, empat: boolean }
+// score = mitjana de la millor puntuació de cada paraula de la query.
+function puntua(query: string, text: string): number {
+  const qNorm = normalitza(query);
+  const tNorm = normalitza(text);
+
+  // Bonus per frase exacta (màxima prioritat)
+  if (tNorm.includes(qNorm)) return 1.0;
+
+  const qParaules = paraulesCerca(query);
+  const tParaules = tNorm.split(/\s+/);
+
+  let scoreTot = 0;
+  for (const qp of qParaules) {
+    // Pren la millor puntuació entre totes les paraules del text candidat
+    const millor = tParaules.reduce((max, tp) => Math.max(max, puntuacioParaula(qp, tp)), 0);
+    scoreTot += millor;
+  }
+  return qParaules.length > 0 ? scoreTot / qParaules.length : 0;
+}
+
+// Estructura de resultat unificada per a totes les cerques
+interface ResultatPuntuat {
+  score: number;
+  jerarquia: number; // nombre de segments del codi (menys = més genèric)
+  nom: string;
+  [key: string]: unknown;
+}
+
+// Ordena i classifica resultats: per score DESC, desempat per jerarquia ASC.
+// Retorna { unic, empat, resultats } on:
+//   unic=true  → un sol resultat clarament millor (score >> segon)
+//   empat=true → els N primers comparteixen score molt similar
+function classificaResultats<T extends ResultatPuntuat>(
+  resultats: T[],
+  llindarEmpat = 0.05,   // diferència màxima de score per considerar empat
+  llindarMinim = 0.25,   // score mínim per incloure un resultat
+): { unic: boolean; empat: boolean; top: T[] } {
+  const filtrats = resultats
+    .filter(r => r.score >= llindarMinim)
+    .sort((a, b) => b.score - a.score || a.jerarquia - b.jerarquia);
+
+  if (!filtrats.length) return { unic: false, empat: false, top: [] };
+
+  const maxScore = filtrats[0].score;
+  const topGrup  = filtrats.filter(r => maxScore - r.score <= llindarEmpat);
+  const unic     = topGrup.length === 1 && maxScore >= 0.8;
+  const empat    = topGrup.length > 1;
+
+  return { unic, empat, top: filtrats.slice(0, 15) };
+}
+
+// Manté compatibilitat amb cerques antigues que usen coincideixFlexible
 function coincideixFlexible(text: string, termes: string[], mode: "and" | "or" = "and"): boolean {
-  const t = text.toLowerCase();
-  return mode === "and" ? termes.every(p => t.includes(p)) : termes.some(p => t.includes(p));
+  const t = normalitza(text);
+  const tNorm = termes.map(normalitza);
+  return mode === "and" ? tNorm.every(p => t.includes(p)) : tNorm.some(p => t.includes(p));
 }
 
 // ─── Tools disponibles per al model ──────────────────────────────────────────
@@ -137,199 +227,277 @@ async function executaTool(
       // ── cerca_installacio ──────────────────────────────────────────────────
       case "cerca_installacio": {
         type InstRow = { codi_installacio: string; nom: string; descripcio: string | null };
-        let rows: InstRow[] = [];
 
-        // Per codi exacte (prioritat màxima)
+        // Codi exacte → prioritat màxima
         if (args.codi) {
-          rows = await supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom,descripcio&codi_installacio=eq.${encodeURIComponent((args.codi as string).toUpperCase())}&limit=5`
+          const rows = await supaGet(supaUrl, supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&codi_installacio=eq.${encodeURIComponent((args.codi as string).toUpperCase())}&limit=1`
           ) as InstRow[];
-        }
-
-        // Per nom: estratègia 1 → frase completa
-        if (!rows.length && args.nom) {
-          const nomRaw = args.nom as string;
-          const termes = paraulesCerca(nomRaw);
-          rows = await supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + nomRaw + "*")}&order=codi_installacio.asc&limit=20`
-          ) as InstRow[];
-
-          // Estratègia 2 → primera paraula significant + filtre AND memòria
-          if (!rows.length) {
-            const candidats = await supaGet(supaUrl, supaKey,
-              `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=codi_installacio.asc&limit=100`
-            ) as InstRow[];
-            rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "and"));
-            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.nom, termes, "or"));
-          }
+          if (rows.length) return `Instal·lació: ${rows[0].codi_installacio}: ${rows[0].nom}${rows[0].descripcio ? ` | ${rows[0].descripcio}` : ""}`;
+          return `No s'ha trobat cap instal·lació amb el codi "${args.codi}".`;
         }
 
         // Sense filtres → llista totes
-        if (!rows.length && !args.nom && !args.codi) {
-          rows = await supaGet(supaUrl, supaKey,
+        if (!args.nom) {
+          const rows = await supaGet(supaUrl, supaKey,
             `visor3d_installacions?select=codi_installacio,nom,descripcio&order=codi_installacio.asc&limit=200`
           ) as InstRow[];
           if (!rows.length) return "No hi ha instal·lacions a la base de dades.";
           return `Totes les instal·lacions (${rows.length}):\n` + rows.map(r => `- ${r.codi_installacio}: ${r.nom}`).join("\n");
         }
 
-        if (!rows.length) return `No s'ha trobat cap instal·lació amb el nom/codi "${args.nom ?? args.codi}". Comprova l'ortografia o proporciona el codi exacte (ex: ED008).`;
-        return `Instal·lacions trobades (${rows.length}):\n` + rows.map(r => `- ${r.codi_installacio}: ${r.nom}${r.descripcio ? ` | ${r.descripcio}` : ""}`).join("\n");
+        // Cerca per nom amb puntuació fuzzy
+        const nomCerca = args.nom as string;
+        const termes   = paraulesCerca(nomCerca);
+        const candidats = await supaGet(supaUrl, supaKey,
+          `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=codi_installacio.asc&limit=200`
+        ) as InstRow[];
+
+        type InstPunt = InstRow & ResultatPuntuat;
+        const puntuats: InstPunt[] = candidats.map(r => ({
+          ...r,
+          score:     puntua(nomCerca, r.nom),
+          jerarquia: r.codi_installacio.replace(/[^.]/g,"").length,
+          nom:       r.nom,
+        }));
+
+        const { unic, empat, top } = classificaResultats(puntuats);
+
+        if (!top.length) return `No s'ha trobat cap instal·lació per "${nomCerca}". Comprova l'ortografia o usa el codi exacte (ex: ED008).`;
+        if (unic)        return `Instal·lació: ${top[0].codi_installacio}: ${top[0].nom}${top[0].descripcio ? ` | ${top[0].descripcio}` : ""}`;
+
+        // Empat o múltiples → llista i demana confirmació
+        const prefix = empat
+          ? `Hi ha ${top.length} instal·lacions que coincideixen amb "${nomCerca}". Pregunta a l'usuari quina és:`
+          : `S'han trobat ${top.length} instal·lacions per "${nomCerca}":`;
+        return prefix + "\n" + top.map(r => `- ${r.codi_installacio}: ${r.nom}${r.descripcio ? ` | ${r.descripcio}` : ""}`).join("\n");
       }
 
       // ── cerca_equips ───────────────────────────────────────────────────────
       case "cerca_equips": {
         type EquipRow = { equip_code: string; equip_name: string; gubim_code: string; revit_category: string };
         const cercaNomRaw = (args.nom ?? args.tipus ?? args.keyword ?? args.equip_name) as string | undefined;
-        let rows: EquipRow[] = [];
 
+        // Codi exacte
         if (args.equip_code) {
-          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_code=eq.${encodeURIComponent(args.equip_code as string)}`) as EquipRow[];
-        }
-        if (args.gubim_code && !rows.length) {
-          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`) as EquipRow[];
-        }
-
-        if (cercaNomRaw && !rows.length) {
-          const termes = paraulesCerca(cercaNomRaw);
-
-          // Estratègia 1: frase completa ilike
-          rows = await supaGet(supaUrl, supaKey,
-            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + cercaNomRaw.toLowerCase() + "*")}&order=equip_name.asc&limit=50`
+          const rows = await supaGet(supaUrl, supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_code=eq.${encodeURIComponent(args.equip_code as string)}`
           ) as EquipRow[];
-
-          // Estratègia 2+3: cerca per cada paraula en paral·lel + puntuació per coincidències
-          // Cada equip rep 1 punt per cada paraula que conté al seu nom (stemming inclòs)
-          // Ordena per puntuació descendent → els més rellevants primer
-          if (!rows.length && termes.length > 0) {
-            // Generar stems per cada terme (singular, sense terminació)
-            const stems = termes.map(t =>
-              t.replace(/es$/, "").replace(/s$/, "").replace(/ió$/, "").replace(/ons$/, "ó")
-            );
-
-            // Cercar per cada stem en paral·lel
-            const resultatsPerStem = await Promise.all(
-              stems.map(stem =>
-                supaGet(supaUrl, supaKey,
-                  `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + stem + "*")}&order=equip_name.asc&limit=100`
-                ) as Promise<EquipRow[]>
-              )
-            );
-
-            // Puntuar cada equip: +1 per cada stem que conté
-            const puntuacions = new Map<string, { equip: EquipRow; punts: number; coincidencies: string[] }>();
-            for (let i = 0; i < stems.length; i++) {
-              for (const equip of resultatsPerStem[i]) {
-                const existent = puntuacions.get(equip.equip_code);
-                if (existent) {
-                  existent.punts++;
-                  existent.coincidencies.push(termes[i]);
-                } else {
-                  puntuacions.set(equip.equip_code, { equip, punts: 1, coincidencies: [termes[i]] });
-                }
-              }
-            }
-
-            // Ordenar per puntuació i retornar
-            const ordenats = [...puntuacions.values()]
-              .sort((a, b) => b.punts - a.punts);
-
-            rows = ordenats.map(o => o.equip);
-
-            // Afegir info de puntuació al resultat per ajudar el model a triar
-            if (rows.length > 0) {
-              const maxPunts = ordenats[0].punts;
-              const resum = ordenats.slice(0, 15).map(o =>
-                `- ${o.equip.equip_code}: ${o.equip.equip_name} | GuBIMClass: ${o.equip.gubim_code} [${o.punts}/${stems.length} coincidències: ${o.coincidencies.join(", ")}]`
-              ).join("\n");
-              return `Resultats per "${cercaNomRaw}" (${rows.length} candidats, ordenats per rellevància):\n${resum}${rows.length > 15 ? `\n... i ${rows.length - 15} més` : ""}`;
-            }
-          }
-
-          // Estratègia 4 (últim recurs): catàleg complet
-          if (!rows.length) {
-            const tots = await supaGet(supaUrl, supaKey,
-              `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`
-            ) as EquipRow[];
-            return `No s'he trobat cap equip coincident amb "${cercaNomRaw}".\n` +
-              `Catàleg complet (${tots.length} equips):\n` +
-              tots.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
-          }
+          if (rows.length) return `Equip: ${rows[0].equip_code}: ${rows[0].equip_name} | GuBIMClass: ${rows[0].gubim_code}`;
+          return `No s'ha trobat cap equip amb codi "${args.equip_code}".`;
+        }
+        if (args.gubim_code) {
+          const rows = await supaGet(supaUrl, supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`
+          ) as EquipRow[];
+          if (rows.length) return `Equip: ${rows[0].equip_code}: ${rows[0].equip_name} | GuBIMClass: ${rows[0].gubim_code}`;
+          return `No s'ha trobat cap equip amb codi GuBIMClass "${args.gubim_code}".`;
         }
 
-        if (!cercaNomRaw && !args.equip_code && !args.gubim_code) {
-          rows = await supaGet(supaUrl, supaKey, `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200`) as EquipRow[];
+        // Sense cerca → catàleg complet
+        if (!cercaNomRaw) {
+          const rows = await supaGet(supaUrl, supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200`
+          ) as EquipRow[];
           if (!rows.length) return "El catàleg d'equips és buit.";
           return `Catàleg complet (${rows.length} equips):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
         }
 
-        if (!rows.length) return `No s'han trobat equips per "${cercaNomRaw ?? args.equip_code ?? args.gubim_code}".`;
-        return `Equips trobats (${rows.length}):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}${e.revit_category ? ` | Revit: ${e.revit_category}` : ""}`).join("\n");
+        // Cerca fuzzy per nom
+        const termes = paraulesCerca(cercaNomRaw);
+
+        // Carrega candidats buscant per la paraula més significativa (la més llarga)
+        const termePrincipal = [...termes].sort((a,b) => b.length - a.length)[0];
+        const candidats = await supaGet(supaUrl, supaKey,
+          `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=equip_name.asc&limit=300`
+        ) as EquipRow[];
+
+        // Si no hi ha prou candidats amb el terme principal, expandeix amb els altres
+        let tots = candidats;
+        if (tots.length < 5 && termes.length > 1) {
+          const extra = await Promise.all(
+            termes.filter(t => t !== termePrincipal).map(t =>
+              supaGet(supaUrl, supaKey,
+                `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + t + "*")}&order=equip_name.asc&limit=100`
+              ) as Promise<EquipRow[]>
+            )
+          );
+          const codisTots = new Set(tots.map(e => e.equip_code));
+          for (const llista of extra) for (const e of llista) if (!codisTots.has(e.equip_code)) { tots.push(e); codisTots.add(e.equip_code); }
+        }
+
+        if (!tots.length) {
+          // Últim recurs: catàleg complet
+          const tot = await supaGet(supaUrl, supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=500`
+          ) as EquipRow[];
+          return `No s'ha trobat cap equip per "${cercaNomRaw}".\nCatàleg complet (${tot.length} equips):\n` +
+            tot.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
+        }
+
+        type EquipPunt = EquipRow & ResultatPuntuat;
+        const puntuats: EquipPunt[] = tots.map(e => ({
+          ...e,
+          score:     puntua(cercaNomRaw, e.equip_name),
+          jerarquia: 0,
+          nom:       e.equip_name,
+        }));
+
+        const { unic, empat, top } = classificaResultats(puntuats);
+
+        if (!top.length) return `No s'ha trobat cap equip per "${cercaNomRaw}".`;
+        if (unic)        return `Equip: ${top[0].equip_code}: ${top[0].equip_name} | GuBIMClass: ${top[0].gubim_code}${top[0].revit_category ? ` | Revit: ${top[0].revit_category}` : ""}`;
+
+        const prefix = empat
+          ? `Hi ha ${top.length} equips que coincideixen amb "${cercaNomRaw}" (puntuació similar). Presenta'ls a l'usuari:`
+          : `S'han trobat ${top.length} equips per "${cercaNomRaw}" (ordenats per rellevància):`;
+        return prefix + "\n" + top.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
       }
+
 
       // ── cerca_gubim ────────────────────────────────────────────────────────
       case "cerca_gubim": {
         type GubimRow = { code: string; name: string };
-        let rows: GubimRow[] = [];
+
+        // Codi exacte
         if (args.codi) {
-          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&code=eq.${encodeURIComponent(args.codi as string)}`) as GubimRow[];
-        }
-        if (!rows.length && args.nom) {
-          const termes = paraulesCerca(args.nom as string);
-          rows = await supaGet(supaUrl, supaKey,
-            `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + (args.nom as string).toLowerCase() + "*")}&order=code.asc&limit=50`
+          const rows = await supaGet(supaUrl, supaKey,
+            `gubim_class?select=code,name&code=eq.${encodeURIComponent(args.codi as string)}`
           ) as GubimRow[];
-          if (!rows.length) {
-            const stem = termes[0].replace(/es$/, "").replace(/s$/, "");
-            const candidats = await supaGet(supaUrl, supaKey,
-              `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + stem + "*")}&order=code.asc&limit=100`
-            ) as GubimRow[];
-            rows = candidats.filter(r => coincideixFlexible(r.name, termes, "and"));
-            if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.name, termes, "or")).slice(0, 20);
-          }
+          if (rows.length) return `GuBIMClass: ${rows[0].code}: ${rows[0].name}`;
+          return `No s'ha trobat cap codi GuBIMClass "${args.codi}".`;
         }
-        if (!rows.length && !args.codi && !args.nom) {
-          rows = await supaGet(supaUrl, supaKey, `gubim_class?select=code,name&order=code.asc&limit=200`) as GubimRow[];
+
+        // Sense cerca → llista
+        if (!args.nom) {
+          const rows = await supaGet(supaUrl, supaKey,
+            `gubim_class?select=code,name&order=code.asc&limit=200`
+          ) as GubimRow[];
+          return `GuBIMClass (${rows.length}):\n` + rows.map(r => `- ${r.code}: ${r.name}`).join("\n");
         }
-        if (!rows.length) return `No s'ha trobat cap codi GuBIMClass per "${args.nom ?? args.codi}".`;
-        return `GuBIMClass trobats (${rows.length}):\n` + rows.map(r => `- ${r.code}: ${r.name}`).join("\n");
+
+        // Cerca fuzzy per nom
+        const nomCerca = args.nom as string;
+        const termes   = paraulesCerca(nomCerca);
+        const termePrincipal = [...termes].sort((a,b) => b.length - a.length)[0];
+
+        // Carrega candidats amplis (tots els que contenen la paraula principal)
+        const candidats = await supaGet(supaUrl, supaKey,
+          `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=code.asc&limit=300`
+        ) as GubimRow[];
+
+        // Si pocs resultats, expandeix amb els altres termes
+        let tots = [...candidats];
+        if (tots.length < 5 && termes.length > 1) {
+          const extra = await Promise.all(
+            termes.filter(t => t !== termePrincipal).map(t =>
+              supaGet(supaUrl, supaKey,
+                `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + t + "*")}&order=code.asc&limit=100`
+              ) as Promise<GubimRow[]>
+            )
+          );
+          const codisVists = new Set(tots.map(r => r.code));
+          for (const llista of extra) for (const r of llista) if (!codisVists.has(r.code)) { tots.push(r); codisVists.add(r.code); }
+        }
+
+        if (!tots.length) return `No s'ha trobat cap codi GuBIMClass per "${nomCerca}".`;
+
+        type GubimPunt = GubimRow & ResultatPuntuat;
+        const puntuats: GubimPunt[] = tots.map(r => ({
+          ...r,
+          score:     puntua(nomCerca, r.name),
+          // Jerarquia = nombre de segments del codi (90.60 = 2, 90.60.10 = 3, etc.)
+          jerarquia: r.code.split(".").length,
+          nom:       r.name,
+        }));
+
+        const { unic, empat, top } = classificaResultats(puntuats);
+
+        if (!top.length) return `No s'ha trobat cap codi GuBIMClass per "${nomCerca}".`;
+        if (unic)        return `GuBIMClass: ${top[0].code}: ${top[0].name}`;
+
+        // Empat o múltiples → sempre llista i demana confirmació
+        const prefix = empat
+          ? `Hi ha ${top.length} codis GuBIMClass amb puntuació similar per "${nomCerca}". Presenta'ls tots a l'usuari i demana que confirmi quin és:`
+          : `S'han trobat ${top.length} codis GuBIMClass per "${nomCerca}". Presenta'ls a l'usuari:`;
+        return prefix + "\n" + top.map(r => `- ${r.code}: ${r.name}`).join("\n");
       }
+
 
       // ── cerca_camps ────────────────────────────────────────────────────────
       case "cerca_camps": {
         type CampRow = { col: string; codi: string; tipus_dada: string; disciplina: string; agrupacio_revit: string };
-        let rows: CampRow[] = [];
+
+        // Codi exacte
         if (args.codi) {
-          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=eq.${encodeURIComponent(args.codi as string)}`) as CampRow[];
+          const rows = await supaGet(supaUrl, supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=eq.${encodeURIComponent(args.codi as string)}`
+          ) as CampRow[];
+          if (rows.length) return `Camp: ${rows[0].col}${rows[0].codi ? ` (${rows[0].codi})` : ""}${rows[0].tipus_dada ? ` | ${rows[0].tipus_dada}` : ""}${rows[0].disciplina ? ` | ${rows[0].disciplina}` : ""}`;
+          return `No s'ha trobat cap camp amb codi "${args.codi}".`;
         }
-        if (!rows.length && !args.nom && !args.disciplina && !args.codi) {
-          rows = await supaGet(supaUrl, supaKey, `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&order=col.asc&limit=200`) as CampRow[];
+
+        // Sense filtres → llista tots
+        if (!args.nom && !args.disciplina) {
+          const rows = await supaGet(supaUrl, supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&order=col.asc&limit=200`
+          ) as CampRow[];
           if (!rows.length) return "El diccionari de camps és buit.";
           return `Tots els camps (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
         }
-        if (!rows.length && args.nom) {
-          const termes = paraulesCerca(args.nom as string);
-          let candidats = await supaGet(supaUrl, supaKey,
-            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=100`
-          ) as CampRow[];
-          if (args.disciplina) candidats = candidats.filter(r => r.disciplina?.toLowerCase().includes((args.disciplina as string).toLowerCase()));
-          rows = candidats.filter(r => coincideixFlexible(r.col, termes, "and"));
-          if (!rows.length) rows = candidats.filter(r => coincideixFlexible(r.col, termes, "or")).slice(0, 30);
-          if (!rows.length) {
-            const perCodi = await supaGet(supaUrl, supaKey,
-              `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=ilike.${encodeURIComponent("*" + termes[0] + "*")}&order=col.asc&limit=50`
-            ) as CampRow[];
-            rows = perCodi;
-          }
-        }
-        if (!rows.length && args.disciplina && !args.nom) {
-          rows = await supaGet(supaUrl, supaKey,
+
+        // Cerca per disciplina sola
+        if (args.disciplina && !args.nom) {
+          const rows = await supaGet(supaUrl, supaKey,
             `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}&order=col.asc&limit=100`
           ) as CampRow[];
+          if (!rows.length) return `No s'han trobat camps de la disciplina "${args.disciplina}".`;
+          return `Camps de disciplina "${args.disciplina}" (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}`).join("\n");
         }
-        if (!rows.length) return `No s'han trobat camps per "${args.nom ?? args.disciplina ?? args.codi}".`;
-        return `Camps trobats (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}${r.agrupacio_revit ? ` | Revit: ${r.agrupacio_revit}` : ""}`).join("\n");
+
+        // Cerca fuzzy per nom
+        const nomCerca = args.nom as string;
+        const termes   = paraulesCerca(nomCerca);
+        const termePrincipal = [...termes].sort((a,b) => b.length - a.length)[0];
+
+        let candidats = await supaGet(supaUrl, supaKey,
+          `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=col.asc&limit=200`
+        ) as CampRow[];
+
+        // Filtra per disciplina si s'ha indicat
+        if (args.disciplina) {
+          const disc = (args.disciplina as string).toLowerCase();
+          candidats = candidats.filter(r => r.disciplina?.toLowerCase().includes(disc));
+        }
+
+        if (!candidats.length) {
+          // Fallback: cerca per codi
+          candidats = await supaGet(supaUrl, supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=col.asc&limit=50`
+          ) as CampRow[];
+        }
+
+        if (!candidats.length) return `No s'han trobat camps per "${nomCerca}".`;
+
+        type CampPunt = CampRow & ResultatPuntuat;
+        const puntuats: CampPunt[] = candidats.map(r => ({
+          ...r,
+          score:     puntua(nomCerca, r.col),
+          jerarquia: 0,
+          nom:       r.col,
+        }));
+
+        const { unic, empat, top } = classificaResultats(puntuats);
+
+        if (!top.length) return `No s'han trobat camps per "${nomCerca}".`;
+        if (unic)        return `Camp: ${top[0].col}${top[0].codi ? ` (${top[0].codi})` : ""}${top[0].tipus_dada ? ` | ${top[0].tipus_dada}` : ""}${top[0].disciplina ? ` | ${top[0].disciplina}` : ""}${top[0].agrupacio_revit ? ` | Revit: ${top[0].agrupacio_revit}` : ""}`;
+
+        const prefix = empat
+          ? `Hi ha ${top.length} camps amb puntuació similar per "${nomCerca}". Presenta'ls a l'usuari:`
+          : `S'han trobat ${top.length} camps per "${nomCerca}":`;
+        return prefix + "\n" + top.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
       }
+
 
       // ── cerca_projecte ─────────────────────────────────────────────────────
       case "cerca_projecte": {
@@ -749,6 +917,7 @@ REGLES ADDICIONALS:
 2. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
 3. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta.
 4. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
+5. cerca_gubim amb múltiples resultats → SEMPRE mostra la llista completa a l'usuari i demana que confirmi quin és el que busca. MAI tries per compte propi quan hi ha ambigüitat.
 5. Codis reutilitzables del fil actual només si venen d'una tool. Si hi ha dubte, consulta.
 6. La "pàgina actual" és ORIENTATIVA. Respon qualsevol consulta de les seccions accessibles, independentment de la pàgina oberta. MAI redirigeixis l'usuari si pots obtenir la informació amb les tools.
 
