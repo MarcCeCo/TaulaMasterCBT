@@ -1031,6 +1031,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       });
 
+      console.log(`groq-chat: iniciant 2a crida Groq amb ${toolMessages.length} tool results`);
       const groqRes2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
@@ -1047,6 +1048,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }),
       });
 
+      console.log(`groq-chat: 2a crida Groq status=${groqRes2.status}`);
       if (!groqRes2.ok) {
         const err = await groqRes2.text();
         res.status(502).json({ error: `Error Groq 2a crida: ${groqRes2.status} — ${err}` }); return;
@@ -1059,6 +1061,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const respostaFinal = data2.choices[0].message.content ?? "";
       const teFuncioInline2 = /<function=\w+\(/.test(respostaFinal) ||
         /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(respostaFinal);
+
+      console.log(`groq-chat: 2a crida resposta="${respostaFinal.slice(0,150)}" bloquejat=${teFuncioInline2}`);
 
       res.status(200).json({
         reply: teFuncioInline2
