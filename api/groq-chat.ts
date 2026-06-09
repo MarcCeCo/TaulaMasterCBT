@@ -741,8 +741,8 @@ AMBIT: Respons NOMES sobre TaulaMaster CBT (instal·lacions, equips, TAGs, proje
 REGLA FONAMENTAL — INVENTAR DADES ESTÀ TOTALMENT PROHIBIT:
 - Qualsevol pregunta sobre dades (quants, quins, llista, estat, codi...) requereix cridar la tool corresponent ABANS de respondre.
 - Si no has cridat cap tool, no pots donar cap xifra, nom, codi ni llista. Absolutament cap.
-- Si per algun motiu no pots cridar la tool, respon únicament: "Ho sento, no he pogut consultar la base de dades en aquest moment."
 - MAI escrius el nom d'una tool a la teva resposta. Les tools s'executen internament i l'usuari no les veu mai.
+- MAI uses frases com "Ho sento" o "no he pogut consultar" — si tens el resultat de la tool, usa'l per respondre.
 
 REGLES ADDICIONALS:
 1. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
@@ -1032,6 +1032,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       console.log(`groq-chat: iniciant 2a crida Groq amb ${toolMessages.length} tool results`);
+
+      // La 2a crida té un system prompt minimalista: només ha de formatar el resultat
+      // de la tool en una resposta clara en català. No ha de prendre cap decisió ni
+      // interpretar regles complexes — simplement presentar les dades rebudes.
+      const systemFormat = `Ets un assistent que presenta resultats de consultes a una base de dades en català.
+Tens el resultat d'una consulta a la base de dades. Presenta'l de forma clara i concisa.
+Si el resultat conté projectes, equips, instal·lacions o TAGs, llista'ls ordenadament.
+Si el resultat indica que no hi ha dades, informa l'usuari amablement.
+MAI inventis dades addicionals. MAI escriguis noms de funcions o codi.`;
+
       const groqRes2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
@@ -1039,9 +1049,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           model: "llama-3.3-70b-versatile",
           max_tokens: 1500,
           temperature: 0.1,
-          // Sense tools: la 2a crida nomes ha de formatar la resposta, no cridar tools
+          // Sense tools: la 2a crida nomes ha de formatar la resposta
           messages: [
-            ...historial,
+            { role: "system", content: systemFormat },
+            // Inclou nomes l'ultim missatge de l'usuari + resultat de la tool
+            missatgesUsuari[missatgesUsuari.length - 1],
             missatgeAssistent,
             ...toolMessages,
           ],
