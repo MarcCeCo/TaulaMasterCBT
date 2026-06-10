@@ -520,10 +520,10 @@ export function UserManagerPage() {
       </div>
 
       {/* ── Taula principal ───────────────────────────────────────────── */}
-      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm w-full">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm w-full overflow-auto max-h-[calc(100vh-220px)]">
 
         {/* Capçalera de la taula */}
-        <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-0 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+        <div className="sticky top-0 z-10 grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-0 border-b border-slate-200 bg-slate-50 px-4 py-2.5 shadow-sm">
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Usuari</span>
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Correu</span>
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1">
@@ -735,11 +735,7 @@ export function UserManagerPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="pt-1 max-w-2xl space-y-4">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-xs font-semibold text-slate-600">Permisos actuals:</span>
-                              <PermissionsSummaryPills profile={u} />
-                            </div>
+                          <div className="pt-1 max-w-2xl">
                             <PermissionsMatrix
                               permissions={u.section_permissions ?? { equips: "editor", gubimclass: "editor", fields: "editor", revit: "editor", projectes: "editor", rosmiman: "editor", visor3d: "editor" }}
                               isAdmin={u.role === "admin"}
