@@ -1846,6 +1846,7 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
           }
           fieldValues={detallTag?.fieldValues ?? {}}
           onSaveValues={(vals) => detallTag && saveFieldValues(detallTag.id, vals)}
+          tagComplet={detallTag?.tagComplet}
         />
 
         {/* ── DIÀLEG: EDICIÓ MÚLTIPLE DE CAMPS ────────────────────────────── */}

@@ -3,7 +3,7 @@
 //  - Sense columnes de configuració Rosmiman ni Revit
 //  - Columna "Valor" editable quan el TAG associat és validat
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,19 +28,31 @@ interface Props {
   fieldValues?: Record<string, string>;
   onSaveValues?: (values: Record<string, string>) => void;
   multiSelectCount?: number; // si > 0, estem en mode edició múltiple
+  tagComplet?: string; // TAG complet per mostrar al capçal
 }
 
 export function ProjecteEquipDetailDialog({
   open, onOpenChange, equipment, nodeMap, fields, onEdit,
   canEditEquip = false, canEditValues = false, fieldValues = {}, onSaveValues,
-  multiSelectCount,
+  multiSelectCount, tagComplet,
 }: Props) {
   const [editingValues, setEditingValues] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
 
+  // Reinicialitza editingValues cada cop que s'obre el diàleg o canvia el tag/equip.
+  // No podem confiar en handleOpenChange(true) perquè quan `open` és controlat
+  // externament pel pare, shadcn Dialog no crida onOpenChange(true) en obrir-se.
+  useEffect(() => {
+    if (open) {
+      setEditingValues({ ...fieldValues });
+      setDirty(false);
+    }
+  // fieldValues és un objecte nou a cada render; usem JSON per comparar contingut
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, equipment?.id, JSON.stringify(fieldValues)]);
+
   const handleOpenChange = (b: boolean) => {
-    if (b) { setEditingValues({ ...fieldValues }); setDirty(false); }
-    onOpenChange(b);
+    if (!b) onOpenChange(false);
   };
 
   if (!equipment) return null;
@@ -104,6 +116,13 @@ export function ProjecteEquipDetailDialog({
                 {multiSelectCount ? `Edició múltiple · ${multiSelectCount} tags seleccionats` : "Fitxa d'equip · Projecte"}
               </p>
               <DialogTitle className="text-base font-semibold">{equipment.equipName}</DialogTitle>
+              {tagComplet && !multiSelectCount && (
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="font-mono text-xs bg-slate-100 border border-slate-200 text-slate-700 px-2 py-0.5 rounded font-semibold tracking-wide">
+                    {tagComplet}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2 mr-8">
               {canEditValues && dirty && (
