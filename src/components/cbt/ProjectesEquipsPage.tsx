@@ -1092,14 +1092,14 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                         const isSelected = selectedTagIds.has(tag.id);
                         const referenceEquipId = multiEditFirstTag?.equipId ?? null;
                         const isDisabled = !isSelected && referenceEquipId !== null && tag.equipId !== referenceEquipId;
+                        if (isDisabled) return null;
                         return (
-                          <tr key={tag.id} className={cn("border-t hover:bg-muted/30", isSelected && "bg-[#0099A8]/5", isDisabled && "opacity-40")}>
+                          <tr key={tag.id} className={cn("border-t hover:bg-muted/30", isSelected && "bg-[#0099A8]/5")}>
                             <td className="p-3 w-8">
                               <input
                                 type="checkbox"
-                                className="rounded border-slate-300 accent-[#0099A8] cursor-pointer disabled:cursor-not-allowed"
+                                className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
                                 checked={isSelected}
-                                disabled={isDisabled}
                                 onChange={() => toggleSelectTag(tag.id)}
                               />
                             </td>
