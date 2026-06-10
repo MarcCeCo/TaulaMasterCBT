@@ -210,7 +210,7 @@ const TOOLS = [
       codi_installacio:{ type:"string" }, codi_equip:{ type:"string" }, tag_exacte:{ type:"string" }
     }}}},
   { type:"function", function:{ name:"primer_tag_disponible",
-    description:"Calcula primer TAG disponible (lletra A-Z lliure). codi_equip=equip_code de cerca_equips. codi_installacio de cerca_installacio.",
+    description:"Calcula primer TAG disponible (lletra A-Z lliure). OBLIGATORI: codi_installacio ha de venir del resultat de cerca_installacio (mai inventat). codi_equip ha de venir del resultat de cerca_equips (mai inventat). Si no has cridat prèviament cerca_installacio i cerca_equips, crida'ls primer.",
     parameters:{ type:"object", required:["codi_installacio","codi_equip"], properties:{
       codi_installacio:{ type:"string" }, codi_equip:{ type:"string" },
       ccm:{ type:"string" }, funcio:{ type:"string" }
@@ -595,10 +595,25 @@ async function executaTool(
         const ccm      = String(args.ccm ?? "1").trim();
         const funcioInici = String(args.funcio ?? "01").trim().padStart(2, "0");
 
-        // Validacions
+        // Validacions bàsiques
         if (!/^[A-Z0-9]{2,6}$/.test(codiInst)) return `Codi instal·lació invàlid: "${codiInst}". Ha de ser 5 car. (ex: ED014).`;
         if (!/^\d$/.test(ccm)) return `CCM invàlid: "${ccm}". Ha de ser 1 dígit 0-9.`;
         if (funcioInici === "00") return "La funció no pot ser 00.";
+
+        // Validació crítica: verifica que codi_installacio existeix realment a la BD.
+        // Evita calcular TAGs amb codis inventats pel model.
+        const instCheck = await supaGet(supaUrl, supaKey,
+          `visor3d_installacions?select=codi_installacio,nom&codi_installacio=eq.${encodeURIComponent(codiInst)}&limit=1`
+        ) as { codi_installacio: string; nom: string }[];
+        if (!instCheck.length) {
+          // El codi no existeix — busca alternatives per ajudar l'usuari
+          const alternativesRaw = await supaGet(supaUrl, supaKey,
+            `visor3d_installacions?select=codi_installacio,nom&codi_installacio=ilike.${encodeURIComponent(codiInst.slice(0,2) + "%")}&order=codi_installacio.asc&limit=10`
+          ) as { codi_installacio: string; nom: string }[];
+          const alt = alternativesRaw.map(r => `${r.codi_installacio}: ${r.nom}`).join(", ");
+          return `El codi d'instal·lació "${codiInst}" no existeix a la base de dades. Instal·lacions similars: ${alt || "cap"}. Crida cerca_installacio per obtenir el codi correcte.`;
+        }
+        console.log(`primer_tag_disponible: instal·lació verificada: ${codiInst} = ${instCheck[0].nom}`);
 
         // Carregar TOTS els TAGs d'aquesta instal·lació+equip (projectes + Rosmiman)
         const prefixGlobal = `${codiInst}_${codiEq}_${ccm}`;
@@ -889,14 +904,16 @@ REGLA FONAMENTAL — INVENTAR DADES ESTÀ TOTALMENT PROHIBIT:
 - MAI escrius el nom d'una tool a la teva resposta. Les tools s'executen internament i l'usuari no les veu mai.
 - MAI uses frases com "Ho sento" o "no he pogut consultar" — si tens el resultat de la tool, usa'l per respondre.
 
+FLUX PER CREAR UN TAG (segueix aquest ordre estrictament):
+1. Instal·lació: crida cerca_installacio. Si retorna múltiples → pregunta a l'usuari quina.
+2. Equip: crida cerca_equips. Si retorna múltiples (empat) → pregunta a l'usuari quin. MAI assumeixis l'equip si hi ha ambigüitat.
+3. Només quan tens instal·lació I equip confirmats → crida primer_tag_disponible i presenta les dues opcions (A i B).
+
 REGLES ADDICIONALS:
-1. Nom instal·lació → cerca_installacio → retorna codi (ex: ED014).
-2. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
-3. TAG → crida primer_tag_disponible i presenta SEMPRE les dues opcions (A i B) en la primera resposta.
-4. Candidat clar a cerca_equips (puntuació màxima) → usa'l directament sense demanar confirmació.
-5. cerca_gubim amb múltiples resultats → SEMPRE mostra la llista completa a l'usuari i demana que confirmi quin és el que busca. MAI tries per compte propi quan hi ha ambigüitat.
-5. Codis reutilitzables del fil actual només si venen d'una tool. Si hi ha dubte, consulta.
-6. La "pàgina actual" és ORIENTATIVA. Respon qualsevol consulta de les seccions accessibles, independentment de la pàgina oberta. MAI redirigeixis l'usuari si pots obtenir la informació amb les tools.
+1. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
+2. cerca_equips o cerca_gubim amb múltiples resultats → SEMPRE mostra la llista a l'usuari i demana confirmació. MAI tries per compte propi.
+3. Codis reutilitzables del fil actual només si venen d'una tool. Si hi ha dubte, consulta.
+4. La "pàgina actual" és ORIENTATIVA. Respon qualsevol consulta de les seccions accessibles.
 
 FORMAT TAG: INST_EQUIP_CCMfu(2d)LLETRA  ex: ED014_BCCS_101B
 CCM=1digit(0-9) FUNCIO=2digits(01-99,mai00) LLETRA=A-Z`;
