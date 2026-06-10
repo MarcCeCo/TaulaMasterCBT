@@ -523,15 +523,14 @@ export function UserManagerPage() {
       <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm w-full">
 
         {/* Capçalera de la taula */}
-        <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_2fr_auto] gap-0 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5">
+        <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-0 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Usuari</span>
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Correu</span>
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1">
             <Building2 className="h-3 w-3" /> Organització
           </span>
           <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Rol</span>
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide">Permisos</span>
-          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right">Accions</span>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide text-right pr-1">Accions</span>
         </div>
 
         {/* Grups per organització */}
@@ -576,12 +575,13 @@ export function UserManagerPage() {
 
                 return (
                   <div key={u.id} className={cn(
-                    "border-b border-slate-50 last:border-b-0 transition-colors",
+                    "border-b border-slate-100 last:border-b-0 transition-colors",
                     isMe && "bg-[#0099A8]/3",
-                    isEditing && "bg-blue-50/30"
+                    isEditing && "bg-blue-50/30",
+                    !isMe && !isEditing && "hover:bg-slate-50/70"
                   )}>
                     {/* Fila principal */}
-                    <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_2fr_auto] gap-0 items-center px-4 py-3">
+                    <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-0 items-center px-4 py-3">
 
                       {/* Columna: Nom */}
                       <div className="flex items-center gap-2.5 min-w-0 pr-3">
@@ -628,11 +628,6 @@ export function UserManagerPage() {
                         </span>
                       </div>
 
-                      {/* Columna: Permisos */}
-                      <div className="min-w-0 pr-3">
-                        <PermissionsSummaryPills profile={u} />
-                      </div>
-
                       {/* Columna: Accions */}
                       <div className="flex items-center gap-0.5 justify-end shrink-0">
                         {/* Editar: disponible per a tots els usuaris, inclòs un mateix */}
@@ -676,11 +671,12 @@ export function UserManagerPage() {
                           </AlertDialog>
                         )}
                         <button
-                          className="h-7 w-7 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+                          className="h-7 flex items-center gap-1 px-2 text-slate-400 hover:text-[#0099A8] hover:bg-[#0099A8]/8 rounded transition-colors text-[11px] font-medium"
                           onClick={() => setExpanded(isOpen && !isEditing ? null : u.id)}
-                          title={isOpen ? "Amaga permisos" : "Mostra/edita permisos"}
+                          title={isOpen ? "Amaga detalls" : "Veure permisos"}
                         >
-                          {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                          {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                          <span className="hidden sm:inline">{isOpen ? "Amaga" : "Permisos"}</span>
                         </button>
                       </div>
                     </div>
@@ -739,7 +735,11 @@ export function UserManagerPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="pt-1 max-w-2xl">
+                          <div className="pt-1 max-w-2xl space-y-4">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-semibold text-slate-600">Permisos actuals:</span>
+                              <PermissionsSummaryPills profile={u} />
+                            </div>
                             <PermissionsMatrix
                               permissions={u.section_permissions ?? { equips: "editor", gubimclass: "editor", fields: "editor", revit: "editor", projectes: "editor", rosmiman: "editor", visor3d: "editor" }}
                               isAdmin={u.role === "admin"}
