@@ -132,8 +132,8 @@ interface ResultatPuntuat {
 //   empat=true → els N primers comparteixen score molt similar
 function classificaResultats<T extends ResultatPuntuat>(
   resultats: T[],
-  llindarEmpat = 0.05,   // diferència màxima de score per considerar empat
-  llindarMinim = 0.25,   // score mínim per incloure un resultat
+  llindarEmpat = 0.08,
+  llindarMinim = 0.50,
 ): { unic: boolean; empat: boolean; top: T[] } {
   const filtrats = resultats
     .filter(r => r.score >= llindarMinim)
@@ -142,11 +142,12 @@ function classificaResultats<T extends ResultatPuntuat>(
   if (!filtrats.length) return { unic: false, empat: false, top: [] };
 
   const maxScore = filtrats[0].score;
+  // Retorna NOMÉS els resultats del grup de màxima puntuació
   const topGrup  = filtrats.filter(r => maxScore - r.score <= llindarEmpat);
-  const unic     = topGrup.length === 1 && maxScore >= 0.8;
+  const unic     = topGrup.length === 1;
   const empat    = topGrup.length > 1;
 
-  return { unic, empat, top: filtrats.slice(0, 15) };
+  return { unic, empat, top: topGrup };
 }
 
 // Genera el prefix per a cerca ilike alineat amb l'algoritme fuzzy.
