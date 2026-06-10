@@ -615,14 +615,15 @@ async function executaTool(
         }
         console.log(`primer_tag_disponible: instal·lació verificada: ${codiInst} = ${instCheck[0].nom}`);
 
-        // Carregar TOTS els TAGs d'aquesta instal·lació+equip (projectes + Rosmiman)
-        const prefixGlobal = `${codiInst}_${codiEq}_${ccm}`;
+        // Carregar TOTS els TAGs d'aquesta instal·lació+equip independentment del CCM
+        // Prefix sense CCM per veure el panorama complet
+        const prefixEquip = `${codiInst}_${codiEq}_`;
         const [rosmiman, projecteTags] = await Promise.all([
           supaGet(supaUrl, supaKey,
-            `rosmiman_equips?select=tag&tag=like.${encodeURIComponent(prefixGlobal + "%")}&limit=500`
+            `rosmiman_equips?select=tag&tag=like.${encodeURIComponent(prefixEquip + "%")}&limit=500`
           ) as Promise<{tag:string}[]>,
           supaGet(supaUrl, supaKey,
-            `projecte_tags?select=tag_complet&tag_complet=like.${encodeURIComponent(prefixGlobal + "%")}&limit=500`
+            `projecte_tags?select=tag_complet&tag_complet=like.${encodeURIComponent(prefixEquip + "%")}&limit=500`
           ) as Promise<{tag_complet:string}[]>,
         ]);
 
@@ -631,7 +632,12 @@ async function executaTool(
           ...(projecteTags as {tag_complet:string}[]).map(r => r.tag_complet),
         ]);
 
-        // Funció auxiliar: primera lletra lliure per a un prefix INST_EQUIP_CCMfuncio
+        // Filtra els TAGs del CCM demanat
+        const tagsCCM = [...totsElsTags]
+          .filter(t => t.startsWith(`${codiInst}_${codiEq}_${ccm}`))
+          .sort();
+
+        // Funció auxiliar: primera lletra lliure per a un prefix
         function primerLletraLliure(prefix: string): string | null {
           for (let i = 0; i < 26; i++) {
             const candidat = prefix + String.fromCharCode(65 + i);
@@ -640,43 +646,60 @@ async function executaTool(
           return null;
         }
 
-        // ── Opció A: mateixa funció, primera lletra lliure ─────────────────
-        const prefixFuncioActual = `${codiInst}_${codiEq}_${ccm}${funcioInici}`;
-        const lletraOpcioA = primerLletraLliure(prefixFuncioActual);
-        const tagOpcioA = lletraOpcioA ? prefixFuncioActual + lletraOpcioA : null;
+        // Agrupa els TAGs del CCM per funció
+        type GrupFuncio = { funcio: string; tags: string[] };
+        const funcioMap = new Map<string, string[]>();
+        for (const tag of tagsCCM) {
+          // Format: INST_EQUIP_CCMfuLLETRA → extreu "fu" (2 digits) i "LLETRA"
+          const match = tag.match(new RegExp(`^${codiInst}_${codiEq}_${ccm}(\\d{2})([A-Z])$`));
+          if (match) {
+            const fn = match[1];
+            if (!funcioMap.has(fn)) funcioMap.set(fn, []);
+            funcioMap.get(fn)!.push(tag);
+          }
+        }
 
-        // Tags existents per a la funció actual (per mostrar context)
-        const tagsOpcioA = [...totsElsTags]
-          .filter(t => t.startsWith(prefixFuncioActual) && t.length === prefixFuncioActual.length + 1)
-          .sort();
+        const grupsFuncio: GrupFuncio[] = [...funcioMap.entries()]
+          .sort(([a],[b]) => a.localeCompare(b))
+          .map(([funcio, tags]) => ({ funcio, tags: tags.sort() }));
 
-        // ── Opció B: primera funció completament lliure (cap TAG amb lletra A) ─
-        let tagOpcioB: string | null = null;
+        // Calcula el pròxim TAG per a cada funció existent (lletra nova)
+        // i la primera funció nova disponible
+        const suggeriments = grupsFuncio.map(g => {
+          const prefix = `${codiInst}_${codiEq}_${ccm}${g.funcio}`;
+          const lletra = primerLletraLliure(prefix);
+          return { funcio: g.funcio, tagsExistents: g.tags, propera: lletra ? prefix + lletra : null };
+        });
+
+        // Primera funció nova (sense cap TAG)
+        let primerFuncioNova: string | null = null;
         for (let fn = 1; fn <= 99; fn++) {
           const fnStr = String(fn).padStart(2, "0");
           const prefixFn = `${codiInst}_${codiEq}_${ccm}${fnStr}`;
-          // Una funció és "lliure" si no té cap TAG existent amb cap lletra
-          const teFuncioUsada = [...totsElsTags].some(t =>
-            t.startsWith(prefixFn) && t.length === prefixFn.length + 1
-          );
-          if (!teFuncioUsada) {
-            tagOpcioB = prefixFn + "A";
+          if (![...totsElsTags].some(t => t.startsWith(prefixFn))) {
+            primerFuncioNova = prefixFn + "A";
             break;
           }
         }
 
-        const lines = [
-          `Anàlisi de TAGs: instal·lació=${codiInst} | equip=${codiEq} | CCM=${ccm} | funció base=${funcioInici}`,
-          `TAGs existents per a funció ${funcioInici}: ${tagsOpcioA.length > 0 ? tagsOpcioA.join(", ") : "cap"}`,
-          ``,
-          `📌 Opció A — ${tagOpcioA ?? `❌ esgotada`}`,
-          `   Mateixa funció (${funcioInici}), lletra nova. Per a: 2a unitat idèntica del MATEIX circuit (redundància, backup, paral·lel).`,
-          `   Exemple: dues bombes iguals al mateix pou de bombament.`,
-          ``,
-          `📌 Opció B — ${tagOpcioB ?? "❌ esgotada"}`,
-          `   Funció nova (lletra A). Per a: equip d'una funció o circuit DIFERENT dins la mateixa instal·lació.`,
-          `   Exemple: bomba de recirculació vs bomba de purga (funcions diferents).`,
+        // Construeix la resposta: mostra tots els TAGs existents agrupats per funció
+        // i demana si la nova unitat fa la mateixa funció que alguna de les existents
+        const lines: string[] = [
+          `TAGs existents per ${codiInst}_${codiEq} al CCM ${ccm}:`,
         ];
+
+        if (grupsFuncio.length === 0) {
+          lines.push(`  Cap TAG existent. Primer TAG disponible: ${codiInst}_${codiEq}_${ccm}01A`);
+          lines.push(`SUGGERIMENT_UNIC:${codiInst}_${codiEq}_${ccm}01A`);
+        } else {
+          for (const g of grupsFuncio) {
+            lines.push(`  Funció ${g.funcio}: ${g.tags.join(", ")}  →  pròxim disponible: ${g.propera ?? "esgotada"}`);
+          }
+          lines.push(``);
+          lines.push(`Funció nova disponible: ${primerFuncioNova ?? "esgotada"}`);
+          lines.push(``);
+          lines.push(`PREGUNTA_OBLIGATORIA: Pregunta a l'usuari si la nova unitat fa la MATEIXA funció que alguna de les existents (${grupsFuncio.map(g => `funció ${g.funcio}`).join(", ")}) o si és una funció DIFERENT. Segons la resposta, suggereix el TAG corresponent.`);
+        }
 
         return lines.join("\n");
       }
@@ -907,7 +930,9 @@ REGLA FONAMENTAL — INVENTAR DADES ESTÀ TOTALMENT PROHIBIT:
 FLUX PER CREAR UN TAG (segueix aquest ordre estrictament):
 1. Instal·lació: crida cerca_installacio. Si retorna múltiples → pregunta a l'usuari quina.
 2. Equip: crida cerca_equips. Si retorna múltiples (empat) → pregunta a l'usuari quin. MAI assumeixis l'equip si hi ha ambigüitat.
-3. Només quan tens instal·lació I equip confirmats → crida primer_tag_disponible i presenta les dues opcions (A i B).
+3. Quan tens instal·lació I equip confirmats → crida primer_tag_disponible.
+4. primer_tag_disponible retorna la llista de TAGs existents agrupats per funció i una PREGUNTA_OBLIGATORIA. Fes SEMPRE aquesta pregunta a l'usuari abans de suggerir cap TAG.
+5. Segons la resposta de l'usuari (mateixa funció o funció nova) → suggereix el TAG corresponent indicat al resultat de la tool.
 
 REGLES ADDICIONALS:
 1. Nom equip → cerca_equips → retorna equip_code (ex: BCCS). Usa equip_code, MAI gubim_code.
