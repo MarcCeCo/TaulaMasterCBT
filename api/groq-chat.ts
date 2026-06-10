@@ -1221,15 +1221,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       console.log(`groq-chat: iniciant 2a crida Groq amb ${toolMessages.length} tool results`);
 
-      // La 2a crida té un system prompt minimalista: només ha de formatar el resultat
-      // de la tool en una resposta clara en català. No ha de prendre cap decisió ni
-      // interpretar regles complexes — simplement presentar les dades rebudes.
-      const systemFormat = `Ets un assistent que presenta resultats de consultes a una base de dades en català.
-Tens el resultat d'una consulta a la base de dades. Presenta'l de forma clara i concisa.
-Si el resultat conté projectes, equips, instal·lacions o TAGs, llista'ls ordenadament.
-Si el resultat indica que no hi ha dades, informa l'usuari amablement.
-MAI inventis dades addicionals. MAI escriguis noms de funcions o codi.`;
-
       const groqRes2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
@@ -1237,11 +1228,10 @@ MAI inventis dades addicionals. MAI escriguis noms de funcions o codi.`;
           model: "llama-3.3-70b-versatile",
           max_tokens: 1500,
           temperature: 0.1,
-          // Sense tools: la 2a crida nomes ha de formatar la resposta
+          // Sense tools a la 2a crida per evitar bucles, però amb el system prompt complet
+          // perquè el model conegui les regles (flux TAGs, PREGUNTA_OBLIGATORIA, etc.)
           messages: [
-            { role: "system", content: systemFormat },
-            // Inclou nomes l'ultim missatge de l'usuari + resultat de la tool
-            missatgesUsuari[missatgesUsuari.length - 1],
+            ...historial,
             missatgeAssistent,
             ...toolMessages,
           ],
@@ -1259,16 +1249,8 @@ MAI inventis dades addicionals. MAI escriguis noms de funcions o codi.`;
       };
 
       const respostaFinal = data2.choices[0].message.content ?? "";
-      const teFuncioInline2 = /<function=\w+\(/.test(respostaFinal) ||
-        /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(respostaFinal);
-
-      console.log(`groq-chat: 2a crida resposta="${respostaFinal.slice(0,150)}" bloquejat=${teFuncioInline2}`);
-
-      res.status(200).json({
-        reply: teFuncioInline2
-          ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta."
-          : respostaFinal,
-      }); return;
+      console.log(`groq-chat: 2a crida resposta="${respostaFinal.slice(0,150)}" bloquejat=false`);
+      res.status(200).json({ reply: respostaFinal }); return;
     }
 
     // ── Resposta directa sense tool calls ────────────────────────────────────
