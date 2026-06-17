@@ -1,11 +1,35 @@
 name: Keep Agent Alive
 
-# Fa ping al servei cada 14 minuts per evitar que Render (free tier) adormi
-# el procés. L'endpoint /health és de només lectura i no dispara cap execució.
+# Fa ping a tots dos serveis (token-service i visor3d) cada 14 minuts,
+# però només en horari laboral (dilluns-divendres, 6:00-18:00 HORA
+# ESPANYOLA) per evitar que Render (free tier) els adormi sense esgotar
+# les 750h/mes gratuïtes compartides del compte.
+#
+# El cron de GitHub Actions sempre s'interpreta en UTC i NO s'ajusta sol
+# als canvis d'horari estiu/hivern. Per garantir que la franja real sigui
+# sempre 6:00-18:00 hora espanyola (sense haver de tocar mai aquest
+# fitxer), s'usa la UNIÓ de les dues franges UTC possibles:
+#   - Estiu (CEST, UTC+2): 6:00-18:00 local = 4:00-16:00 UTC
+#   - Hivern (CET,  UTC+1): 6:00-18:00 local = 5:00-17:00 UTC
+#   → Unió: 4:00-17:00 UTC
+#
+# Conseqüència: durant ~1h al dia (a cada banda, segons l'època de l'any)
+# el job s'executarà una mica fora de l'horari estricte de 6-18 local
+# (és a dir, una hora "de marge" a l'inici o al final), però MAI deixarà
+# de cobrir el 6:00-18:00 hora espanyola real cap dia de l'any.
+#
+# Consum estimat: 13h/dia × 5 dies/setmana × 4.33 setmanes/mes ≈ 282h/mes
+# per servei → ~563h/mes en total pels dos serveis, dins del límit de
+# 750h/mes (queden ~187h/mes de marge).
+#
+# Prerequisits (GitHub Secrets):
+#   AGENT_URL         → URL del visor3d (ja existeix, usat també per sync-monthly.yml)
+#   TOKEN_SERVICE_URL → URL del token-service (NOU, cal crear-lo manualment:
+#                        https://token-service-roe2.onrender.com)
 
 on:
   schedule:
-    - cron: '*/14 * * * *'  # Cada 14 minuts (Render dorm després de 15 min d'inactivitat)
+    - cron: '*/14 4-17 * * 1-5'  # Cada 14 min, 4:00-17:00 UTC, dilluns-divendres
   workflow_dispatch:
 
 jobs:
@@ -13,19 +37,28 @@ jobs:
     name: Ping keep-alive
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      matrix:
+        service:
+          - name: token-service
+            url_secret: TOKEN_SERVICE_URL
+          - name: visor3d
+            url_secret: AGENT_URL
 
     steps:
-      - name: Ping /health
+      - name: Ping /health (${{ matrix.service.name }})
+        env:
+          SERVICE_URL: ${{ matrix.service.url_secret == 'AGENT_URL' && secrets.AGENT_URL || secrets.TOKEN_SERVICE_URL }}
         run: |
           response=$(curl -s -o /dev/null -w "%{http_code}" \
             --max-time 60 --connect-timeout 10 \
-            "${{ secrets.AGENT_URL }}/health")
+            "${SERVICE_URL}/health")
 
-          echo "Resposta HTTP: $response"
+          echo "[${{ matrix.service.name }}] Resposta HTTP: $response"
 
           if [ "$response" -ge 200 ] && [ "$response" -lt 500 ]; then
-            echo "✅ Agent actiu"
+            echo "✅ ${{ matrix.service.name }} actiu"
           else
-            echo "❌ Error: codi $response"
+            echo "❌ Error a ${{ matrix.service.name }}: codi $response"
             exit 1
           fi
