@@ -22,10 +22,29 @@ agents-independents/
 
 | Agent           | Endpoints                                          |
 |-----------------|----------------------------------------------------|
-| token-service   | GET /health, /wake, /auth/login, /auth/callback, /api/aps-token |
+| token-service   | GET /health, /health/token, /wake, /auth/login, /auth/callback, /api/aps-token (Bearer) |
 | visor3d         | GET /health, /wake · POST /sync                    |
 | bim-sync        | GET /health, /wake · POST /bim-sync                |
 | crear-masters   | GET /health, /wake · POST /crear-masters           |
+
+## Token APS: qui el renova i qui el pot demanar
+
+Els refresh tokens d'Autodesk són **d'un sol ús**: si dos serveis els renoven alhora, un invalida
+el de l'altre. Per això **només el `token-service` renova**.
+
+- **Frontend** → `GET /api/aps-token` amb `Authorization: Bearer <sessió de Supabase>`. El servei
+  valida la sessió i exigeix que l'usuari tingui fila a `user_profiles`.
+- **Visor 3D (sync)** → mateixa crida amb `Bearer <TOKEN_SERVICE_SECRET>`. Només cal definir
+  `TOKEN_SERVICE_URL` i `TOKEN_SERVICE_SECRET` (ja no calen `APS_CLIENT_ID/SECRET`).
+- Errors del servei (`{ error, code }`): `UNAUTHORIZED` 401 · `FORBIDDEN` 403 ·
+  `APS_REAUTH_REQUIRED` 503 (cal tornar a fer `/auth/login`) · `APS_UPSTREAM_ERROR` 502 · `CONFIG_ERROR` 500.
+
+### Monitorització
+
+- `GET /health` → sempre 200; inclou `token_ok` i `token.estat`
+  (`ok`, `sense_token`, `reautenticacio_necessaria`, `error_renovacio`, `caducat`…).
+- `GET /health/token` → **503 si el token no és sa**. Monitor HTTP d'UptimeRobot sobre aquesta URL:
+  t'avisa quan cal tornar a fer `/auth/login`.
 
 ## Variables d'entorn del frontend
 

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, useRef, useCallback, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { obteApsToken, oblidaApsToken, tokenServiceUrl } from "@/lib/apsToken";
 import {
   AuthContext,
   isAdminRole,
@@ -14,26 +15,17 @@ import {
 } from "@/lib/auth";
 
 // ─── prefetchApsToken ────────────────────────────────────────────────────────
-// Crida silenciosa a l'agent APS en segon pla quan un usuari inicia sessió.
-// Si el token Autodesk caduca aviat, l'agent el refresca i el guarda a Supabase
-// de forma transparent, sense bloquejar el login ni mostrar cap error a l'usuari.
-// Utilitza keepalive: true per garantir que la petició acaba tot i si el component
-// es desmunta durant la crida.
+// Crida silenciosa al token-service en segon pla quan un usuari inicia sessió:
+// desperta el servei (Render gratuït s'adorm) i deixa el token APS en memòria,
+// de manera que el visor 3D carregui més ràpid. No bloqueja el login ni mostra
+// cap error a l'usuari (si falla, el visor mostrarà el motiu quan s'obri).
 
-async function prefetchApsToken(): Promise<void> {
-  const agentUrl = (
-    (import.meta.env.VITE_TOKEN_SERVICE_URL as string | undefined) ??
-    (import.meta.env.VITE_AGENT_URL as string | undefined)
-  )?.trim();
-  if (!agentUrl) return; // agent no configurat → no fem res
+async function prefetchApsToken(sessionToken?: string): Promise<void> {
+  if (!tokenServiceUrl()) return; // servei no configurat → no fem res
   try {
-    await fetch(`${agentUrl}/api/aps-token`, {
-      method: "GET",
-      keepalive: true,
-      signal: AbortSignal.timeout(10_000), // màx 10s, no bloqueja
-    });
+    await obteApsToken({ sessionToken });
   } catch {
-    // Error silenciós — el token es refrescarà quan s'obri el visor
+    // Error silenciós — es tornarà a intentar (i es mostrarà) quan s'obri el visor
   }
 }
 
@@ -177,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             }
             needsProfileRefreshRef.current = false;
             tokenRef.current = "";
+            oblidaApsToken(); // no reutilitzar el token APS amb un altre usuari
             if (mounted) {
               setUser(null);
               setProfile(null);
@@ -196,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (mounted) setProfile(p);
               });
               // Refresca el token APS en segon pla — silenciós, no bloqueja el login
-              prefetchApsToken();
+              prefetchApsToken(session?.access_token);
             } else {
               if (mounted) setProfile(null);
             }

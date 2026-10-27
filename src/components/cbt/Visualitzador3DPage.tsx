@@ -10,6 +10,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { obteApsToken } from "@/lib/apsToken";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -338,8 +339,7 @@ function normalitzaUrn(urn: string): string {
 
 function useApsViewer(
   containerRef: React.RefObject<HTMLDivElement | null>,
-  installacio: Installacio | undefined,
-  agentUrl: string | undefined
+  installacio: Installacio | undefined
 ) {
   const [estat, setEstat]         = useState<ViewerEstat>("idle");
   const [error, setError]         = useState<string | null>(null);
@@ -429,12 +429,9 @@ function useApsViewer(
       if (!mountedRef.current) return;
 
       setEstat("carregant-token");
-      const tokenUrl = agentUrl ? `${agentUrl}/api/aps-token` : "/api/aps-token";
-      const tokenResp = await fetch(tokenUrl);
-      if (!tokenResp.ok) throw new Error(`Error obtenint token APS: ${tokenResp.status}`);
-      const { access_token, expires_in } = await tokenResp.json() as {
-        access_token: string; expires_in: number;
-      };
+      // Envia la sessió de l'usuari al token-service. Si falla, el missatge
+      // llançat és el real del servidor (p. ex. "La connexió amb Autodesk ha caducat…").
+      const { access_token, expires_in } = await obteApsToken();
       if (!mountedRef.current) return;
 
       setEstat("inicialitzant");
@@ -445,7 +442,16 @@ function useApsViewer(
           {
             env: "AutodeskProduction2",
             api: "streamingV2",
-            getAccessToken: (cb: (t: string, e: number) => void) => cb(access_token, expires_in),
+            // El Viewer torna a cridar-ho quan el token està a punt d'expirar:
+            // abans reutilitzava el mateix token caducat i el model deixava de carregar.
+            getAccessToken: (cb: (t: string, e: number) => void) => {
+              obteApsToken()
+                .then((t) => cb(t.access_token, t.expires_in))
+                .catch((e) => {
+                  console.error("[Viewer] No s'ha pogut renovar el token APS:", e);
+                  cb(access_token, 60); // el Viewer ho reintentarà d'aquí a 1 min
+                });
+            },
           },
           () => res()
         );
@@ -575,7 +581,7 @@ function useApsViewer(
       setError(msg);
       setEstat("error");
     }
-  }, [containerRef, installacio, agentUrl]);
+  }, [containerRef, installacio]);
 
   const carregaVista = useCallback(async (idx: number) => {
     const vista = vistes[idx];
@@ -763,13 +769,6 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
   installacio: Installacio; sistema: Sistema; onClose: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  // VITE_TOKEN_SERVICE_URL apunta al token-service independent.
-  // Retrocompatible: si no està definit, usa VITE_AGENT_URL (agent monolític antic).
-  const agentUrl = (
-    (import.meta.env.VITE_TOKEN_SERVICE_URL as string | undefined) ??
-    (import.meta.env.VITE_AGENT_URL as string | undefined)
-  )?.trim();
-
   const splitUrns = (val?: string) =>
     val ? val.split(",").map(u => u.trim()).filter(Boolean) : [];
 
@@ -782,7 +781,7 @@ function Visor3DDialog({ installacio, sistema, onClose }: {
   const {
     estat, error, reintentar,
     vistes, vistaActual, carregaVista, canviantVista,
-  } = useApsViewer(containerRef, installacio, agentUrl);
+  } = useApsViewer(containerRef, installacio);
   const carregant = estat !== "ok" && estat !== "error";
 
   return (

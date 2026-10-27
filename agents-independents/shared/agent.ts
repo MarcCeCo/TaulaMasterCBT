@@ -82,13 +82,32 @@ function parsejaNomCarpetaInstallacio(nomCarpeta: string): { codi: string; nom: 
 }
 
 // ─── Autenticació APS 3-legged OAuth ─────────────────────────────────────────
+//
+// IMPORTANT: els refresh tokens d'Autodesk són d'UN SOL ÚS. Cada renovació en
+// retorna un de nou i invalida l'anterior. Per això NOMÉS el token-service ha
+// de renovar el token (via obteToken3Legged). Els altres serveis (Visor 3D…)
+// han de demanar-lo al token-service amb obteTokenViaServei().
+
+/**
+ * Cal tornar a autenticar-se amb Autodesk (/auth/login del token-service):
+ * no hi ha token, no hi ha refresh token o Autodesk l'ha invalidat/caducat.
+ * Els consumidors la distingeixen dels errors transitoris (xarxa, 5xx…).
+ */
+export class ApsReauthError extends Error {
+  readonly code = "APS_REAUTH_REQUIRED";
+  constructor(message: string) {
+    super(message);
+    this.name = "ApsReauthError";
+  }
+}
 
 let renovacioEnCurs: Promise<string> | null = null;
 
 export async function obteToken3Legged(
   supabase: SupabaseClient,
   clientId: string,
-  clientSecret: string
+  clientSecret: string,
+  opts: { force?: boolean } = {}
 ): Promise<string> {
   console.log("🔑 Obtenint token APS 3-legged des de Supabase...");
 
@@ -99,21 +118,25 @@ export async function obteToken3Legged(
     .limit(1)
     .single();
 
-  if (!tokenRow) throw new Error("No hi ha token APS a Supabase. Executa /auth/login primer.");
+  if (!tokenRow) {
+    throw new ApsReauthError("No hi ha token APS a Supabase. Cal autenticar-se a /auth/login.");
+  }
 
   const row = tokenRow as TokenRow;
   const ara = Date.now();
   const margeMs = 5 * 60 * 1000; // 5 minuts de marge
 
-  if (row.access_token && row.expires_at > ara + margeMs) {
+  // Amb force=true (renovació proactiva) es renova encara que el token sigui
+  // vàlid, sense haver de manipular expires_at a la base de dades.
+  if (!opts.force && row.access_token && row.expires_at > ara + margeMs) {
     console.log(`✅ Token APS vàlid (expira en ${Math.round((row.expires_at - ara) / 60000)} min)`);
     return row.access_token;
   }
 
-  console.log("🔄 Token APS expirat, renovant amb refresh token...");
+  console.log(opts.force ? "🔄 Renovant token APS (forçat)..." : "🔄 Token APS expirat, renovant amb refresh token...");
 
   if (!row.refresh_token) {
-    throw new Error("No hi ha refresh token. Executa /auth/login per autenticar-te de nou.");
+    throw new ApsReauthError("No hi ha refresh token. Cal autenticar-se a /auth/login.");
   }
 
   if (renovacioEnCurs) {
@@ -142,10 +165,18 @@ async function _renovaToken(
       client_id: clientId,
       client_secret: clientSecret,
     }).toString(),
+    // Sense timeout, una petició penjada deixaria renovacioEnCurs pendent per sempre
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!resp.ok) {
     const text = await resp.text();
+    // invalid_grant = refresh token caducat, revocat o ja utilitzat
+    if ((resp.status === 400 || resp.status === 401) && text.includes("invalid_grant")) {
+      throw new ApsReauthError(
+        "El refresh token d'Autodesk ha caducat o ha estat invalidat. Cal autenticar-se de nou a /auth/login."
+      );
+    }
     throw new Error(`Error renovant token APS: ${resp.status} ${text}`);
   }
 
@@ -155,7 +186,7 @@ async function _renovaToken(
     expires_in: number;
   };
 
-  await supabase.from("aps_tokens").upsert({
+  await desaTokenAmbReintents(supabase, {
     id: 1,
     access_token: data.access_token,
     refresh_token: data.refresh_token,
@@ -164,6 +195,79 @@ async function _renovaToken(
 
   console.log(`✅ Token APS renovat (expira en ${Math.round(data.expires_in / 60)} min)`);
   return data.access_token;
+}
+
+// Autodesk ja ha invalidat l'anterior refresh token quan arribem aquí: si no
+// aconseguim desar el nou, el sistema queda sense sessió vàlida. Reintentem.
+async function desaTokenAmbReintents(
+  supabase: SupabaseClient,
+  fila: { id: number; access_token: string; refresh_token: string; expires_at: number }
+): Promise<void> {
+  let ultimMissatge = "";
+  for (let intent = 1; intent <= 3; intent++) {
+    const { error } = await supabase.from("aps_tokens").upsert(fila);
+    if (!error) return;
+    ultimMissatge = error.message;
+    console.error(`❌ No s'ha pogut desar el token APS (intent ${intent}/3): ${error.message}`);
+    if (intent < 3) await new Promise((r) => setTimeout(r, 500 * intent));
+  }
+  throw new ApsReauthError(
+    `Autodesk ha renovat el token però no s'ha pogut desar a Supabase (${ultimMissatge}). Cal autenticar-se de nou a /auth/login.`
+  );
+}
+
+// ─── Token 3-legged via token-service (per a serveis que NO han de renovar) ──
+//
+// Variables d'entorn:
+//   TOKEN_SERVICE_URL     URL base del token-service (p. ex. https://token-service-xxxx.onrender.com)
+//   TOKEN_SERVICE_SECRET  Secret compartit amb el token-service (Bearer)
+//
+// Render gratuït pot trobar-se adormit: fem fins a 3 intents amb timeout llarg
+// i només reintentem errors transitoris (xarxa, 5xx). Un error d'autenticació
+// o de reautenticació APS es propaga de seguida.
+
+export async function obteTokenViaServei(): Promise<string> {
+  const base   = process.env.TOKEN_SERVICE_URL?.trim().replace(/\/+$/, "");
+  const secret = process.env.TOKEN_SERVICE_SECRET?.trim();
+  if (!base)   throw new Error("Falta TOKEN_SERVICE_URL");
+  if (!secret) throw new Error("Falta TOKEN_SERVICE_SECRET");
+
+  const MAX_INTENTS = 3;
+  let ultimError: Error = new Error("Error desconegut obtenint el token via token-service");
+
+  for (let intent = 1; intent <= MAX_INTENTS; intent++) {
+    try {
+      const resp = await fetch(`${base}/api/aps-token`, {
+        headers: { Authorization: `Bearer ${secret}` },
+        signal: AbortSignal.timeout(90_000), // cobreix l'arrencada en fred de Render
+      });
+
+      if (resp.ok) {
+        const { access_token } = await resp.json() as { access_token?: string };
+        if (!access_token) throw new Error("Resposta del token-service sense access_token");
+        console.log("✅ Token APS obtingut via token-service");
+        return access_token;
+      }
+
+      const cos = await resp.json().catch(() => null) as { error?: string; code?: string } | null;
+      const detall = cos?.error ?? `HTTP ${resp.status}`;
+
+      if (cos?.code === "APS_REAUTH_REQUIRED") throw new ApsReauthError(detall);
+      if (resp.status >= 400 && resp.status < 500) {
+        // 401/403…: configuració (secret incorrecte). No té sentit reintentar.
+        throw Object.assign(new Error(`token-service ha rebutjat la petició (${resp.status}): ${detall}`), { noReintentar: true });
+      }
+      ultimError = new Error(`token-service ${resp.status}: ${detall}`);
+    } catch (err) {
+      if (err instanceof ApsReauthError || (err as any)?.noReintentar) throw err;
+      ultimError = err instanceof Error ? err : new Error(String(err));
+    }
+
+    console.warn(`⚠️  Intent ${intent}/${MAX_INTENTS} fallit obtenint token via token-service: ${ultimError.message}`);
+    if (intent < MAX_INTENTS) await new Promise((r) => setTimeout(r, 5_000 * intent));
+  }
+
+  throw ultimError;
 }
 
 // ─── Autenticació 2-legged (per al Viewer SDK) ───────────────────────────────
@@ -597,7 +701,9 @@ export async function executaAgent(): Promise<ResultatSync> {
   const apsProjectId    = process.env.APS_PROJECT_ID;
 
   if (!supabaseUrl || !supabaseKey)     throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
-  if (!apsClientId || !apsClientSecret) throw new Error("Falten APS_CLIENT_ID o APS_CLIENT_SECRET");
+  const viaServei = !!process.env.TOKEN_SERVICE_URL?.trim();
+  // Amb token-service, aquest servei ja no necessita les credencials APS.
+  if (!viaServei && (!apsClientId || !apsClientSecret)) throw new Error("Falten APS_CLIENT_ID o APS_CLIENT_SECRET");
   if (!apsHubId || !apsProjectId)       throw new Error("Falten APS_HUB_ID o APS_PROJECT_ID");
 
   console.log(`📋 Configuració:`);
@@ -610,7 +716,11 @@ export async function executaAgent(): Promise<ResultatSync> {
   });
 
   try {
-    const token = await obteToken3Legged(supabase, apsClientId, apsClientSecret);
+    // Si hi ha TOKEN_SERVICE_URL, el token el gestiona (i renova) el token-service.
+    // Sense ell (mode antic), es llegeix/renova directament a Supabase.
+    const token = viaServei
+      ? await obteTokenViaServei()
+      : await obteToken3Legged(supabase, apsClientId!, apsClientSecret!);
     const sistemesTobrats = await extrauSistemes(apsHubId, apsProjectId, token);
 
     console.log(`\n📊 Resum extracció de Forma:`);
