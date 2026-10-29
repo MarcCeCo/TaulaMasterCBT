@@ -185,6 +185,7 @@ export function TaulaMasterMain() {
     user,
     isAdmin,
     loading: authLoading,
+    getToken,
   } = useAuth();
 
   const VALID_SECTIONS = [

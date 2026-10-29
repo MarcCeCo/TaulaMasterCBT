@@ -491,7 +491,7 @@ export function ProjectesEquipsPage({
         codisInstallacio: codisNets,
         codiInstallacio: codisNets[0].codi,
         status: "actiu",
-        projectUsers: null,
+        projectUsers: null, // accés obert per defecte (igual que el valor per defecte de createProjecte)
         allowedUsers: null,
       });
       setDialogNouProjecte(false);
