@@ -31,9 +31,11 @@ export async function supaFetch(
     const existing = _inFlight.get(key);
     if (existing) return existing;
 
-    const promise = _doFetch(token, method, path, body, extraHeaders).finally(() => {
-      _inFlight.delete(key);
-    });
+    const promise = _doFetch(token, method, path, body, extraHeaders).finally(
+      () => {
+        _inFlight.delete(key);
+      },
+    );
     _inFlight.set(key, promise);
     return promise;
   }
@@ -55,10 +57,10 @@ async function _doFetch(
     method,
     signal: controller.signal,
     headers: {
-      "Authorization": `Bearer ${token}`,
-      "apikey": SUPA_KEY,
+      Authorization: `Bearer ${token}`,
+      apikey: SUPA_KEY,
       "Content-Type": "application/json",
-      "Prefer": "return=representation",
+      Prefer: "return=representation",
       // PERF: sol·licitem compressió HTTP sempre que sigui possible
       "Accept-Encoding": "gzip, deflate, br",
       ...extraHeaders,

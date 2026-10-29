@@ -12,20 +12,23 @@ export type UserPermissionLevel = "user" | "admin";
 // - editor:        pot crear tags, editar equips, omplir camps, validar tags
 // - editor_caracteristiques: només pot omplir els camps de característiques tècniques
 //                  dels tags que ja han estat validats
-export type ProjectRole = "viewer" | "editor_global" | "editor_caracteristiques";
+export type ProjectRole =
+  | "viewer"
+  | "editor_global"
+  | "editor_caracteristiques";
 
 // Rol per secció individual
 export type SectionRole = "none" | "viewer" | "editor";
 
 // Totes les seccions de l'aplicació
 export type AppView =
-  | "equips"      // Taula Master
-  | "gubimclass"  // GuBIMClass
-  | "fields"      // Diccionari de camps
-  | "revit"       // Exportació Revit
-  | "projectes"   // Llistat de projectes
-  | "rosmiman"    // Llistat d'equips Rosmiman
-  | "visor3d";    // Visualitzador 3D
+  | "equips" // Taula Master
+  | "gubimclass" // GuBIMClass
+  | "fields" // Diccionari de camps
+  | "revit" // Exportació Revit
+  | "projectes" // Llistat de projectes
+  | "rosmiman" // Llistat d'equips Rosmiman
+  | "visor3d"; // Visualitzador 3D
 
 export const ALL_VIEWS: AppView[] = [
   "equips",
@@ -38,23 +41,23 @@ export const ALL_VIEWS: AppView[] = [
 ];
 
 export const VIEW_LABELS: Record<AppView, string> = {
-  equips:     "Taula Master (+ GuBIMClass i Diccionari de camps)",
+  equips: "Taula Master (+ GuBIMClass i Diccionari de camps)",
   gubimclass: "GuBIMClass (pop-up dins Taula Master)",
-  fields:     "Diccionari de camps (pop-up dins Taula Master)",
-  revit:      "Documentació BIM",
-  projectes:  "Llistat de projectes (+ TAGs Rosmiman)",
-  rosmiman:   "TAGs Rosmiman (pop-up dins Llistat de projectes)",
-  visor3d:    "Visualitzador 3D (models BIM de les instal·lacions)",
+  fields: "Diccionari de camps (pop-up dins Taula Master)",
+  revit: "Documentació BIM",
+  projectes: "Llistat de projectes (+ TAGs Rosmiman)",
+  rosmiman: "TAGs Rosmiman (pop-up dins Llistat de projectes)",
+  visor3d: "Visualitzador 3D (models BIM de les instal·lacions)",
 };
 
 export const VIEW_ICONS: Record<AppView, string> = {
-  equips:     "📦",
+  equips: "📦",
   gubimclass: "🌿",
-  fields:     "⚙️",
-  revit:      "🏗️",
-  projectes:  "📁",
-  rosmiman:   "📋",
-  visor3d:    "🧊",
+  fields: "⚙️",
+  revit: "🏗️",
+  projectes: "📁",
+  rosmiman: "📋",
+  visor3d: "🧊",
 };
 
 export const VIEW_GROUPS: { label: string; views: AppView[] }[] = [
@@ -76,23 +79,23 @@ export const VIEW_GROUPS: { label: string; views: AppView[] }[] = [
 export type SectionPermissions = Record<AppView, SectionRole>;
 
 export const DEFAULT_SECTION_PERMISSIONS: SectionPermissions = {
-  equips:     "none",
+  equips: "none",
   gubimclass: "none",
-  fields:     "none",
-  revit:      "none",
-  projectes:  "none",
-  rosmiman:   "none",
-  visor3d:    "none",
+  fields: "none",
+  revit: "none",
+  projectes: "none",
+  rosmiman: "none",
+  visor3d: "none",
 };
 
 export const FULL_SECTION_PERMISSIONS: SectionPermissions = {
-  equips:     "editor",
+  equips: "editor",
   gubimclass: "editor",
-  fields:     "editor",
-  revit:      "editor",
-  projectes:  "editor",
-  rosmiman:   "editor",
-  visor3d:    "editor",
+  fields: "editor",
+  revit: "editor",
+  projectes: "editor",
+  rosmiman: "editor",
+  visor3d: "editor",
 };
 
 export interface UserProfile {
@@ -164,8 +167,13 @@ export function parseSectionPermissions(raw: any): SectionPermissions | null {
   // Format antic: array AppView[] → convertim a "viewer" per compatibilitat
   if (Array.isArray(raw)) {
     const perms: SectionPermissions = {
-      equips: "none", gubimclass: "none", fields: "none",
-      revit: "none", projectes: "none", rosmiman: "none", visor3d: "none",
+      equips: "none",
+      gubimclass: "none",
+      fields: "none",
+      revit: "none",
+      projectes: "none",
+      rosmiman: "none",
+      visor3d: "none",
     };
     for (const view of raw) {
       if (ALL_VIEWS.includes(view)) perms[view as AppView] = "viewer";

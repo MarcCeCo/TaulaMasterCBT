@@ -17,33 +17,44 @@ import { setCors, verificaAuth, llegeixBody } from "../../shared/helpers";
 
 (globalThis as any).WebSocket = WebSocket;
 
-const PORT         = process.env.PORT || 3004;
+const PORT = process.env.PORT || 3004;
 const AGENT_SECRET = process.env.AGENT_SECRET || "";
 
 let agentEnExecucio = false;
 
 const server = http.createServer(async (req, res) => {
   setCors(res);
-  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
   // ── Health ────────────────────────────────────────────────────────────────
   if (url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({
-      status: "ok",
-      service: "crear-masters",
-      agent: agentEnExecucio ? "running" : "idle",
-      timestamp: new Date().toISOString(),
-    }));
+    res.end(
+      JSON.stringify({
+        status: "ok",
+        service: "crear-masters",
+        agent: agentEnExecucio ? "running" : "idle",
+        timestamp: new Date().toISOString(),
+      }),
+    );
     return;
   }
 
   // ── Wake-up ───────────────────────────────────────────────────────────────
   if (url.pathname === "/wake") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "despert", timestamp: new Date().toISOString() }));
+    res.end(
+      JSON.stringify({
+        status: "despert",
+        timestamp: new Date().toISOString(),
+      }),
+    );
     return;
   }
 
@@ -56,7 +67,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (agentEnExecucio) {
       res.writeHead(409, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "L'agent Crear Masters ja s'està executant" }));
+      res.end(
+        JSON.stringify({ error: "L'agent Crear Masters ja s'està executant" }),
+      );
       return;
     }
 
@@ -70,18 +83,23 @@ const server = http.createServer(async (req, res) => {
     }
 
     res.writeHead(202, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({
-      status: "acceptat",
-      carpetaArrel,
-      carpetaSortida: carpetaSortida ?? "(mateixa carpeta 001_MODEL-BIM)",
-      missatge: "Agent Crear Masters iniciat. Comprova els logs a Supabase crear_masters_log",
-    }));
+    res.end(
+      JSON.stringify({
+        status: "acceptat",
+        carpetaArrel,
+        carpetaSortida: carpetaSortida ?? "(mateixa carpeta 001_MODEL-BIM)",
+        missatge:
+          "Agent Crear Masters iniciat. Comprova els logs a Supabase crear_masters_log",
+      }),
+    );
 
     agentEnExecucio = true;
     executaCrearMasters({ carpetaArrel, carpetaSortida })
       .then((r) => console.log("✅ Agent Crear Masters finalitzat:", r))
       .catch((e) => console.error("❌ Error Agent Crear Masters:", e))
-      .finally(() => { agentEnExecucio = false; });
+      .finally(() => {
+        agentEnExecucio = false;
+      });
     return;
   }
 
@@ -93,5 +111,7 @@ server.listen(PORT, () => {
   console.log(`\n🏗️  Agent Crear Masters arrancant al port ${PORT}`);
   console.log(`   GET  /health          → estat`);
   console.log(`   GET  /wake            → keep-alive`);
-  console.log(`   POST /crear-masters   → { "carpetaArrel": "ruta" }  [Bearer requerit]\n`);
+  console.log(
+    `   POST /crear-masters   → { "carpetaArrel": "ruta" }  [Bearer requerit]\n`,
+  );
 });

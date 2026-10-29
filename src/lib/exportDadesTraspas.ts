@@ -46,7 +46,10 @@ function buildRows(
     // Ordenem els camps per codi numèric (com fa l'Excel original)
     const fieldsOfEquip = equip.fieldCols
       .map((col) => ({ col, meta: fieldMap.get(col) ?? null }))
-      .filter(({ meta }) => meta !== null && !!meta.codi) as { col: string; meta: FieldMeta }[];
+      .filter(({ meta }) => meta !== null && !!meta.codi) as {
+      col: string;
+      meta: FieldMeta;
+    }[];
 
     const sorted = [...fieldsOfEquip].sort((a, b) => {
       const na = parseFloat(a.meta.codi!);
@@ -75,8 +78,8 @@ function buildRows(
 
 function styleHeader(XLSX: any, ws: any, numCols: number) {
   const s = {
-    font:      { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
-    fill:      { fgColor: { rgb: "375A7F" }, patternType: "solid" },
+    font: { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
+    fill: { fgColor: { rgb: "375A7F" }, patternType: "solid" },
     alignment: { horizontal: "center", vertical: "center" },
   };
   for (let c = 0; c < numCols; c++) {
@@ -94,11 +97,11 @@ export async function exportDadesTraspas(
   const rows = buildRows(projecte, equipments, fieldMap);
 
   const wsRows = rows.map((r) => ({
-    "codiTaula": r.codiTaula,
-    "codiEquip": r.codiEquip,
-    "RIDLinea":  r.RIDLinea,
-    "dadaText":  r.dadaText,
-    "dadaNum":   r.dadaNum === "" ? "" : Number(r.dadaNum) || r.dadaNum,
+    codiTaula: r.codiTaula,
+    codiEquip: r.codiEquip,
+    RIDLinea: r.RIDLinea,
+    dadaText: r.dadaText,
+    dadaNum: r.dadaNum === "" ? "" : Number(r.dadaNum) || r.dadaNum,
   }));
 
   const ws = XLSX.utils.json_to_sheet(wsRows, {
@@ -106,13 +109,22 @@ export async function exportDadesTraspas(
   });
 
   styleHeader(XLSX, ws, 5);
-  ws["!cols"] = [{ wch: 18 }, { wch: 28 }, { wch: 12 }, { wch: 30 }, { wch: 16 }];
+  ws["!cols"] = [
+    { wch: 18 },
+    { wch: 28 },
+    { wch: 12 },
+    { wch: 30 },
+    { wch: 16 },
+  ];
   ws["!freeze"] = { xSplit: 0, ySplit: 1 };
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "DADES_TAULES_TRASPAS_ROSMIMAN");
 
-  const filename = `${projecte.codiProjecte || projecte.nom}_rosmiman_dades.xlsx`
-    .replace(/[^a-zA-Z0-9_\-\.]/g, "_");
+  const filename =
+    `${projecte.codiProjecte || projecte.nom}_rosmiman_dades.xlsx`.replace(
+      /[^a-zA-Z0-9_\-\.]/g,
+      "_",
+    );
   XLSX.writeFile(wb, filename);
 }

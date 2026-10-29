@@ -18,5 +18,5 @@ createRoot(document.getElementById("root")!).render(
         </ProjectesProvider>
       </DataStoreProvider>
     </AuthProvider>
-  </StrictMode>
+  </StrictMode>,
 );

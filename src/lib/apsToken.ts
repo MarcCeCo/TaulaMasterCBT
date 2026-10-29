@@ -55,7 +55,9 @@ export function oblidaApsToken(): void {
  *   des d'un callback d'onAuthStateChange (on no convé fer getSession()); la resta
  *   de llocs el llegeixen sols.
  */
-export function obteApsToken(opts: { sessionToken?: string } = {}): Promise<ApsToken> {
+export function obteApsToken(
+  opts: { sessionToken?: string } = {},
+): Promise<ApsToken> {
   const ara = Date.now();
   if (cache && cache.expiraA - MARGE_MS > ara) {
     return Promise.resolve({
@@ -65,7 +67,9 @@ export function obteApsToken(opts: { sessionToken?: string } = {}): Promise<ApsT
   }
   // Evita peticions duplicades quan diverses parts de la UI el demanen alhora
   if (!enCurs) {
-    enCurs = demanaToken(opts.sessionToken).finally(() => { enCurs = null; });
+    enCurs = demanaToken(opts.sessionToken).finally(() => {
+      enCurs = null;
+    });
   }
   return enCurs;
 }
@@ -79,9 +83,15 @@ async function demanaToken(sessionTokenParam?: string): Promise<ApsToken> {
     );
   }
 
-  const sessioToken = sessionTokenParam ?? (await supabase.auth.getSession()).data.session?.access_token;
+  const sessioToken =
+    sessionTokenParam ??
+    (await supabase.auth.getSession()).data.session?.access_token;
   if (!sessioToken) {
-    throw new ApsTokenError("Cal iniciar sessió per veure els models 3D.", "NO_SESSION", 401);
+    throw new ApsTokenError(
+      "Cal iniciar sessió per veure els models 3D.",
+      "NO_SESSION",
+      401,
+    );
   }
 
   let resp: Response;
@@ -100,9 +110,17 @@ async function demanaToken(sessionTokenParam?: string): Promise<ApsToken> {
   if (!resp.ok) {
     // El servei retorna { error, code } en català. Si la resposta no és JSON
     // (p. ex. un "Bad Gateway" de Render), mostrem el codi HTTP.
-    const cos = (await resp.json().catch(() => null)) as { error?: string; code?: string } | null;
-    const missatge = cos?.error ?? "El servei de models 3D no respon correctament.";
-    throw new ApsTokenError(`${missatge} (${resp.status})`, cos?.code ?? "HTTP_ERROR", resp.status);
+    const cos = (await resp.json().catch(() => null)) as {
+      error?: string;
+      code?: string;
+    } | null;
+    const missatge =
+      cos?.error ?? "El servei de models 3D no respon correctament.";
+    throw new ApsTokenError(
+      `${missatge} (${resp.status})`,
+      cos?.code ?? "HTTP_ERROR",
+      resp.status,
+    );
   }
 
   const { access_token, expires_in } = (await resp.json()) as ApsToken;

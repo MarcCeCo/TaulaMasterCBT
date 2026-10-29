@@ -30,9 +30,17 @@ export default defineConfig({
           // supabase és gran i necessari però estable → cache llarg
           if (id.includes("node_modules/@supabase")) return "vendor-supabase";
           // Radix UI + lucide junts: s'usen a totes les pàgines
-          if (id.includes("node_modules/@radix-ui") || id.includes("node_modules/lucide-react")) return "vendor-ui";
+          if (
+            id.includes("node_modules/@radix-ui") ||
+            id.includes("node_modules/lucide-react")
+          )
+            return "vendor-ui";
           // React core: mai canvia entre deploys → cache màxim
-          if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/")) return "vendor-react";
+          if (
+            id.includes("node_modules/react-dom") ||
+            id.includes("node_modules/react/")
+          )
+            return "vendor-react";
           // TanStack router: canvia poc
           if (id.includes("node_modules/@tanstack")) return "vendor-tanstack";
         },

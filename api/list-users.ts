@@ -15,18 +15,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabaseAdmin = createClient(
     process.env.VITE_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
   const supabaseUser = createClient(
     process.env.VITE_SUPABASE_URL!,
     process.env.VITE_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: req.headers.authorization ?? "" } } }
+    { global: { headers: { Authorization: req.headers.authorization ?? "" } } },
   );
 
   // Verificar sessió
-  const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-  if (userError || !user) return res.status(401).json({ error: "Sessió invàlida" });
+  const {
+    data: { user },
+    error: userError,
+  } = await supabaseUser.auth.getUser();
+  if (userError || !user)
+    return res.status(401).json({ error: "Sessió invàlida" });
 
   // Verificar que és admin
   const { data: profile } = await supabaseAdmin
@@ -36,7 +40,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .single();
 
   if (profile?.role !== "admin") {
-    return res.status(403).json({ error: "Necessites permisos d'administrador" });
+    return res
+      .status(403)
+      .json({ error: "Necessites permisos d'administrador" });
   }
 
   // Obtenir tots els perfils
@@ -46,7 +52,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .order("organisation", { nullsFirst: true })
     .order("email");
 
-  if (profilesError) return res.status(500).json({ error: profilesError.message });
+  if (profilesError)
+    return res.status(500).json({ error: profilesError.message });
 
   // Si algun perfil no té email (la columna pot ser null si no hi ha trigger),
   // completem amb les dades de auth.users via l'Admin API.
@@ -73,12 +80,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const users = (profiles ?? []).map((p: any) => ({
-    id:            p.id,
-    email:         p.email || authEmailMap[p.id] || "",
-    full_name:     p.full_name ?? null,
-    role:          p.role,
+    id: p.id,
+    email: p.email || authEmailMap[p.id] || "",
+    full_name: p.full_name ?? null,
+    role: p.role,
     allowed_views: p.allowed_views ?? null,
-    organisation:  p.organisation ?? null,
+    organisation: p.organisation ?? null,
   }));
 
   return res.status(200).json({ users });

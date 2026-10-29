@@ -34,10 +34,10 @@ export default async function handler(req: Request): Promise<Response> {
 
   // Serveix des de cache si és fresc
   if (cachedText && Date.now() - cachedAt < CACHE_TTL_MS) {
-    return new Response(
-      JSON.stringify({ text: cachedText, cachedAt }),
-      { status: 200, headers }
-    );
+    return new Response(JSON.stringify({ text: cachedText, cachedAt }), {
+      status: 200,
+      headers,
+    });
   }
 
   // URL base del deployment actual (Vercel injecta VERCEL_URL)
@@ -50,8 +50,10 @@ export default async function handler(req: Request): Promise<Response> {
     const pdfRes = await fetch(`${baseUrl}/docs/CBT_MANUAL-BIM.pdf`);
     if (!pdfRes.ok) {
       return new Response(
-        JSON.stringify({ error: `No s'ha pogut llegir el PDF: ${pdfRes.status}` }),
-        { status: 502, headers }
+        JSON.stringify({
+          error: `No s'ha pogut llegir el PDF: ${pdfRes.status}`,
+        }),
+        { status: 502, headers },
       );
     }
 
@@ -63,18 +65,18 @@ export default async function handler(req: Request): Promise<Response> {
     const text = extractTextFromPdf(new Uint8Array(pdfBuffer));
 
     cachedText = text;
-    cachedAt   = Date.now();
+    cachedAt = Date.now();
 
-    return new Response(
-      JSON.stringify({ text, cachedAt }),
-      { status: 200, headers }
-    );
+    return new Response(JSON.stringify({ text, cachedAt }), {
+      status: 200,
+      headers,
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return new Response(
-      JSON.stringify({ error: msg }),
-      { status: 500, headers }
-    );
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers,
+    });
   }
 }
 
@@ -104,10 +106,7 @@ function extractTextFromPdf(bytes: Uint8Array): string {
   }
 
   // Neteja i retorna (limitat a ~80.000 cars per no inflar el context de Groq)
-  const full = lines
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const full = lines.join(" ").replace(/\s+/g, " ").trim();
 
   return full.slice(0, 80_000);
 }
@@ -142,15 +141,15 @@ function extractBlockText(block: string, out: string[]): void {
 }
 
 function decodePdfString(s: string): string {
-  return s
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\\(/g, "(")
-    .replace(/\\\)/g, ")")
-    .replace(/\\\\/g, "\\")
-    // Escapes octal \ddd
-    .replace(/\\(\d{3})/g, (_, oct) =>
-      String.fromCharCode(parseInt(oct, 8))
-    );
+  return (
+    s
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\(/g, "(")
+      .replace(/\\\)/g, ")")
+      .replace(/\\\\/g, "\\")
+      // Escapes octal \ddd
+      .replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)))
+  );
 }

@@ -1,39 +1,35 @@
 // FieldMeta — model de dades per al diccionari de camps
 // Columnes alineades amb la taula Supabase `fields`
 export type FieldMeta = {
-  col:             string;        // clau primària (Nom de l'Excel, majúscules)
-  codi:            string | null; // "Codi"
-  taula_assoc:     string | null; // "Taula associada"
-  tipus_dada:      string | null; // "Tipus dada"
-  cbt:             string | null; // "CBT"
-  format_param:    string | null; // "Format paràmetre"
+  col: string; // clau primària (Nom de l'Excel, majúscules)
+  codi: string | null; // "Codi"
+  taula_assoc: string | null; // "Taula associada"
+  tipus_dada: string | null; // "Tipus dada"
+  cbt: string | null; // "CBT"
+  format_param: string | null; // "Format paràmetre"
   agrupacio_revit: string | null; // "Agrupació Revit"
-  grup_txt:        string | null; // "Grup .txt"
+  grup_txt: string | null; // "Grup .txt"
   instancia_revit: string | null; // "Instència Revit"
-  disciplina:      string | null; // "Disciplina"
-  classificador:   string | null; // "Classificador" (override manual del classificador)
+  disciplina: string | null; // "Disciplina"
+  classificador: string | null; // "Classificador" (override manual del classificador)
 };
 
 // Un camp és "classificador" si tots els camps tècnics estan buits
 export function isClassifier(f: FieldMeta): boolean {
   return (
-    !f.cbt &&
-    !f.format_param &&
-    !f.agrupacio_revit &&
-    !f.disciplina &&
-    !f.codi
+    !f.cbt && !f.format_param && !f.agrupacio_revit && !f.disciplina && !f.codi
   );
 }
 
 // Classificadors automàtics per rang de codi numèric
 // Quan un camp NO té codi, va al grup GENERAL per defecte
 export const AUTO_CLASSIFIERS: { name: string; min: number; max: number }[] = [
-  { name: "GENERAL",                   min: 0,   max: 199 },
-  { name: "MECANIQUES",                min: 200, max: 399 },
-  { name: "GEOMETRIQUES A-F",          min: 400, max: 599 },
-  { name: "ELECTRIQUES",               min: 600, max: 699 },
+  { name: "GENERAL", min: 0, max: 199 },
+  { name: "MECANIQUES", min: 200, max: 399 },
+  { name: "GEOMETRIQUES A-F", min: 400, max: 599 },
+  { name: "ELECTRIQUES", min: 600, max: 699 },
   { name: "CARACTERISTIQUES TECNIQUES", min: 700, max: 799 },
-  { name: "MOTOR I REDUCTOR",          min: 800, max: 999 },
+  { name: "MOTOR I REDUCTOR", min: 800, max: 999 },
 ];
 
 /** Retorna el nom del classificador automàtic per a un codi numèric donat.
@@ -65,7 +61,7 @@ function sortGroupFields(groupFields: FieldMeta[]): FieldMeta[] {
       const na = parseFloat(a.codi!);
       const nb = parseFloat(b.codi!);
       if (!isNaN(na) && !isNaN(nb)) return na - nb;
-      return (a.codi!).localeCompare(b.codi!, undefined, { numeric: true });
+      return a.codi!.localeCompare(b.codi!, undefined, { numeric: true });
     });
   return [...noCodi, ...withCodi];
 }
@@ -101,9 +97,15 @@ export function sortByClassification(fields: FieldMeta[]): FieldMeta[] {
     if (members.length === 0) continue;
     const clsRow: FieldMeta = {
       col: ac.name,
-      codi: null, taula_assoc: null, tipus_dada: null,
-      cbt: null, format_param: null, agrupacio_revit: null,
-      grup_txt: null, instancia_revit: null, disciplina: null,
+      codi: null,
+      taula_assoc: null,
+      tipus_dada: null,
+      cbt: null,
+      format_param: null,
+      agrupacio_revit: null,
+      grup_txt: null,
+      instancia_revit: null,
+      disciplina: null,
       classificador: null,
     };
     result.push(clsRow);

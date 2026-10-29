@@ -5,19 +5,63 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
-  Archive, ChevronRight, FolderOpen, FolderArchive,
-  Plus, Trash2, Tags, CheckCircle2, XCircle, Pencil,
-  ArrowLeft, AlertTriangle, Info, Eye, ClipboardCheck, Search, Users, Lock, LockOpen, Download,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  Archive,
+  ChevronRight,
+  FolderOpen,
+  FolderArchive,
+  Plus,
+  Trash2,
+  Tags,
+  CheckCircle2,
+  XCircle,
+  Pencil,
+  ArrowLeft,
+  AlertTriangle,
+  Info,
+  Eye,
+  ClipboardCheck,
+  Search,
+  Users,
+  Lock,
+  LockOpen,
+  Download,
 } from "lucide-react";
 import { exportDadesTraspas } from "@/lib/exportDadesTraspas";
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/lib/dataStore";
 import { useProjectes } from "@/lib/useProjectes";
-import type { ProjectTag, Projecte, ProjectStatus, TagStatus, InstallacioItem, ProjectUserAccess } from "@/lib/useProjectes";
+import type {
+  ProjectTag,
+  Projecte,
+  ProjectStatus,
+  TagStatus,
+  InstallacioItem,
+  ProjectUserAccess,
+} from "@/lib/useProjectes";
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
@@ -28,13 +72,19 @@ import { useDebounce } from "@/hooks/useDebounce";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function buildTag(codiInstallacio: string, codiEquip: string, ccm: string, funcio: string, duplicitat: string): string {
-  return `${codiInstallacio.toUpperCase()}_${codiEquip.toUpperCase()}_${ccm}${funcio.padStart(2,"0")}${duplicitat.toUpperCase()}`;
+function buildTag(
+  codiInstallacio: string,
+  codiEquip: string,
+  ccm: string,
+  funcio: string,
+  duplicitat: string,
+): string {
+  return `${codiInstallacio.toUpperCase()}_${codiEquip.toUpperCase()}_${ccm}${funcio.padStart(2, "0")}${duplicitat.toUpperCase()}`;
 }
 
 // Retorna la propera lletra de duplicitat disponible donada una llista de lletres ja usades
 function nextDuplicitatDisponible(usades: string[]): string | null {
-  const usadesUp = usades.map(l => l.toUpperCase());
+  const usadesUp = usades.map((l) => l.toUpperCase());
   for (let i = 0; i < 26; i++) {
     const lletra = String.fromCharCode(65 + i); // A, B, C...
     if (!usadesUp.includes(lletra)) return lletra;
@@ -55,8 +105,10 @@ function primeraDuplicitatLliure(
   for (let i = 0; i < 26; i++) {
     const lletra = String.fromCharCode(65 + i);
     const candidat = buildTag(codiInstallacio, codiEquip, ccm, funcio, lletra);
-    const alProjecte = projecteTags.some(t => t.id !== excludeTagId && t.tagComplet === candidat);
-    const aRosmiman  = rosmimanEquips.some(r => r.tag === candidat);
+    const alProjecte = projecteTags.some(
+      (t) => t.id !== excludeTagId && t.tagComplet === candidat,
+    );
+    const aRosmiman = rosmimanEquips.some((r) => r.tag === candidat);
     if (!alProjecte && !aRosmiman) return lletra;
   }
   return null;
@@ -69,39 +121,80 @@ function duplicitatsUsades(
   codiEquip: string,
   ccm: string,
   funcio: string,
-  excludeTagId?: string
+  excludeTagId?: string,
 ): string[] {
-  const prefix = `${codiInstallacio.toUpperCase()}_${codiEquip.toUpperCase()}_${ccm}${funcio.padStart(2,"0")}`;
+  const prefix = `${codiInstallacio.toUpperCase()}_${codiEquip.toUpperCase()}_${ccm}${funcio.padStart(2, "0")}`;
   return tags
-    .filter(t => t.id !== excludeTagId && t.tagComplet.startsWith(prefix) && t.tagComplet.length === prefix.length + 1)
-    .map(t => t.duplicitat.toUpperCase());
+    .filter(
+      (t) =>
+        t.id !== excludeTagId &&
+        t.tagComplet.startsWith(prefix) &&
+        t.tagComplet.length === prefix.length + 1,
+    )
+    .map((t) => t.duplicitat.toUpperCase());
 }
 
 function validateCodiProjecte(codi: string): string | null {
   if (!codi.trim()) return "El codi de projecte és obligatori.";
-  if (!/^\d{4}-\d{1,4}$/.test(codi.trim())) return "El codi de projecte ha de tenir el format NNNN-N a NNNN-NNNN (ex: 2024-1 o 2024-1234).";
+  if (!/^\d{4}-\d{1,4}$/.test(codi.trim()))
+    return "El codi de projecte ha de tenir el format NNNN-N a NNNN-NNNN (ex: 2024-1 o 2024-1234).";
   return null;
 }
 
-function validateTagFields(codiInstallacio: string, ccm: string, funcio: string, duplicitat: string): string | null {
-  if (!/^[A-Z0-9]{5}$/i.test(codiInstallacio)) return "El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.";
+function validateTagFields(
+  codiInstallacio: string,
+  ccm: string,
+  funcio: string,
+  duplicitat: string,
+): string | null {
+  if (!/^[A-Z0-9]{5}$/i.test(codiInstallacio))
+    return "El codi d'instal·lació ha de tenir exactament 5 caràcters alfanumèrics.";
   if (!/^\d$/.test(ccm)) return "El CCM ha de ser 1 dígit numèric (0-9).";
-  if (!/^\d{1,2}$/.test(funcio) || parseInt(funcio) > 99) return "La funció ha de ser 1-2 dígits numèrics (00-99).";
-  if (!/^[A-Z]$/i.test(duplicitat)) return "La duplicitat ha de ser 1 lletra alfabètica.";
+  if (!/^\d{1,2}$/.test(funcio) || parseInt(funcio) > 99)
+    return "La funció ha de ser 1-2 dígits numèrics (00-99).";
+  if (!/^[A-Z]$/i.test(duplicitat))
+    return "La duplicitat ha de ser 1 lletra alfabètica.";
   return null;
 }
 
 // ─── Badge d'estat del tag ────────────────────────────────────────────────────
 function TagStatusBadge({ status }: { status: TagStatus }) {
-  if (status === "validat") return <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px]"><CheckCircle2 className="h-3 w-3 mr-1" />Validat</Badge>;
-  if (status === "rebutjat") return <Badge className="bg-red-100 text-red-700 border-0 text-[10px]"><XCircle className="h-3 w-3 mr-1" />Rebutjat</Badge>;
-  return <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">Pendent</Badge>;
+  if (status === "validat")
+    return (
+      <Badge className="bg-emerald-100 text-emerald-700 border-0 text-[10px]">
+        <CheckCircle2 className="h-3 w-3 mr-1" />
+        Validat
+      </Badge>
+    );
+  if (status === "rebutjat")
+    return (
+      <Badge className="bg-red-100 text-red-700 border-0 text-[10px]">
+        <XCircle className="h-3 w-3 mr-1" />
+        Rebutjat
+      </Badge>
+    );
+  return (
+    <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px]">
+      Pendent
+    </Badge>
+  );
 }
 
 // ─── Badge d'estat del projecte ───────────────────────────────────────────────
 function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
-  if (status === "arxivat") return <Badge className="bg-slate-100 text-slate-500 border-0 text-[10px]"><FolderArchive className="h-3 w-3 mr-1" />Arxivat</Badge>;
-  return <Badge className="bg-[#0099A8]/15 text-[#006E7A] border-0 text-[10px]"><FolderOpen className="h-3 w-3 mr-1" />Actiu</Badge>;
+  if (status === "arxivat")
+    return (
+      <Badge className="bg-slate-100 text-slate-500 border-0 text-[10px]">
+        <FolderArchive className="h-3 w-3 mr-1" />
+        Arxivat
+      </Badge>
+    );
+  return (
+    <Badge className="bg-[#0099A8]/15 text-[#006E7A] border-0 text-[10px]">
+      <FolderOpen className="h-3 w-3 mr-1" />
+      Actiu
+    </Badge>
+  );
 }
 
 // ─── component principal ──────────────────────────────────────────────────────
@@ -111,8 +204,17 @@ interface ProjectesEquipsPageProps {
   onTabChange?: (tab: "projectes" | "rosmiman") => void;
 }
 
-export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: ProjectesEquipsPageProps) {
-  const { canEditView, canSeeView, isAdmin, profile: myProfile, getToken } = useAuth();
+export function ProjectesEquipsPage({
+  initialTab = "projectes",
+  onTabChange,
+}: ProjectesEquipsPageProps) {
+  const {
+    canEditView,
+    canSeeView,
+    isAdmin,
+    profile: myProfile,
+    getToken,
+  } = useAuth();
   const canEdit = canEditView("projectes");
   const canSeeRosmiman = canSeeView("rosmiman");
 
@@ -125,23 +227,44 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     if (isAdmin) return "editor_global";
     if (!myProfile) return "viewer";
     if (!projecte.projectUsers) return canEdit ? "editor_global" : "viewer";
-    const entry = projecte.projectUsers.find(u => u.userId === myProfile.id);
+    const entry = projecte.projectUsers.find((u) => u.userId === myProfile.id);
     if (!entry) return "viewer";
     return entry.role;
   };
-  const [tabActiva, setTabActivaInternal] = useState<"projectes" | "rosmiman">(initialTab);
+  const [tabActiva, setTabActivaInternal] = useState<"projectes" | "rosmiman">(
+    initialTab,
+  );
   const [rosmimanOpen, setRosmimanOpen] = useState(initialTab === "rosmiman");
 
   const setTabActiva = (tab: "projectes" | "rosmiman") => {
     setTabActivaInternal(tab);
     onTabChange?.(tab);
   };
-  const { equipments, gubimNodes, gubimNodeMap, fieldMap, fields, upsertEquip, isEquipCodeTaken } = useDataStore();
+  const {
+    equipments,
+    gubimNodes,
+    gubimNodeMap,
+    fieldMap,
+    fields,
+    upsertEquip,
+    isEquipCodeTaken,
+  } = useDataStore();
 
-  const { projectes, loading: projectesLoading, error: projectesError, retry: projectesRetry,
-    createProjecte, updateProjecte, updateProjecteUsers, deleteProjecte, toggleArxivar,
-    addTag, updateTag, deleteTag,
-    rosmimanEquips, importRosmimanEquips,
+  const {
+    projectes,
+    loading: projectesLoading,
+    error: projectesError,
+    retry: projectesRetry,
+    createProjecte,
+    updateProjecte,
+    updateProjecteUsers,
+    deleteProjecte,
+    toggleArxivar,
+    addTag,
+    updateTag,
+    deleteTag,
+    rosmimanEquips,
+    importRosmimanEquips,
   } = useProjectes();
 
   // Navegació
@@ -153,9 +276,13 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [dialogNouTag, setDialogNouTag] = useState(false);
   const [dialogEditTag, setDialogEditTag] = useState<ProjectTag | null>(null);
   const [dialogValidar, setDialogValidar] = useState<ProjectTag | null>(null);
-  const [dialogEliminarProjecte, setDialogEliminarProjecte] = useState<string | null>(null);
+  const [dialogEliminarProjecte, setDialogEliminarProjecte] = useState<
+    string | null
+  >(null);
   const [dialogArxivar, setDialogArxivar] = useState<string | null>(null);
-  const [dialogEliminarTagValidat, setDialogEliminarTagValidat] = useState<string | null>(null); // tagId
+  const [dialogEliminarTagValidat, setDialogEliminarTagValidat] = useState<
+    string | null
+  >(null); // tagId
   const [detallEquip, setDetallEquip] = useState<string | null>(null); // tagId
   const [editEquip, setEditEquip] = useState<string | null>(null);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set()); // selecció múltiple
@@ -163,14 +290,19 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   // Diàleg assignació usuaris (només admins)
   const [dialogUsuaris, setDialogUsuaris] = useState<string | null>(null); // id projecte
-  const [dialogUsuarisIsOpen, setDialogUsuarisIsOpen] = useState<boolean>(false); // true = accés obert (null a BD)
-  const [allUsers, setAllUsers]           = useState<UserProfile[]>([]);
-  const [loadingUsers, setLoadingUsers]   = useState(false);
-  const [selectedProjectUsers, setSelectedProjectUsers] = useState<ProjectUserAccess[]>([]);
+  const [dialogUsuarisIsOpen, setDialogUsuarisIsOpen] =
+    useState<boolean>(false); // true = accés obert (null a BD)
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [selectedProjectUsers, setSelectedProjectUsers] = useState<
+    ProjectUserAccess[]
+  >([]);
   const [userSearch, setUserSearch] = useState("");
 
   // Filtre
-  const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>("actiu");
+  const [filtreStatus, setFiltreStatus] = useState<"tots" | ProjectStatus>(
+    "actiu",
+  );
 
   // Formularis
   const [nouNom, setNouNom] = useState("");
@@ -178,22 +310,36 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const [nouCodiProjecte, setNouCodiProjecte] = useState("");
   const [nouCodiPart1, setNouCodiPart1] = useState("");
   const [nouCodiPart2, setNouCodiPart2] = useState("");
-  const [nouCodisInstallacio, setNouCodisInstallacio] = useState<InstallacioItem[]>([{ codi: "", nom: "" }]);
+  const [nouCodisInstallacio, setNouCodisInstallacio] = useState<
+    InstallacioItem[]
+  >([{ codi: "", nom: "" }]);
   const [nouProjecteError, setNouProjecteError] = useState<string | null>(null);
 
   // Edició projecte existent
-  const [dialogEditProjecte, setDialogEditProjecte] = useState<string | null>(null); // id del projecte
+  const [dialogEditProjecte, setDialogEditProjecte] = useState<string | null>(
+    null,
+  ); // id del projecte
   const [editNom, setEditNom] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editCodiProjecte, setEditCodiProjecte] = useState("");
   const [editCodiPart1, setEditCodiPart1] = useState("");
   const [editCodiPart2, setEditCodiPart2] = useState("");
-  const [editCodisInstallacio, setEditCodisInstallacio] = useState<InstallacioItem[]>([{ codi: "", nom: "" }]);
-  const [editProjecteError, setEditProjecteError] = useState<string | null>(null);
+  const [editCodisInstallacio, setEditCodisInstallacio] = useState<
+    InstallacioItem[]
+  >([{ codi: "", nom: "" }]);
+  const [editProjecteError, setEditProjecteError] = useState<string | null>(
+    null,
+  );
   // Advertència canvi codi instal·lació quan el projecte té tags
   const [dialogCanviInstallacio, setDialogCanviInstallacio] = useState<{
-    nouCodi: string; codiAntic: string;
-    pendingData: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: InstallacioItem[] };
+    nouCodi: string;
+    codiAntic: string;
+    pendingData: {
+      nom: string;
+      descripcio: string;
+      codiProjecte: string;
+      codisInstallacio: InstallacioItem[];
+    };
   } | null>(null);
   const [tagCodiInstallacio, setTagCodiInstallacio] = useState("");
   const [tagEquipId, setTagEquipId] = useState("");
@@ -218,41 +364,45 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   // ESC esborra el filtre de cerca d'equips (consistent amb EquipmentsTable)
   useEffect(() => {
     const handleKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape" && equipSearch) { setEquipSearch(""); ev.preventDefault(); }
+      if (ev.key === "Escape" && equipSearch) {
+        setEquipSearch("");
+        ev.preventDefault();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [equipSearch]);
 
   // Derived
-  const projecteFiltrats = useMemo(() =>
-    projectes
-      .filter(p => filtreStatus === "tots" || p.status === filtreStatus)
-      .filter(p => {
-        // Admins veuen tots els projectes
-        if (isAdmin) return true;
-        // Usuaris amb rol viewer/editor: només veuen els projectes on estan assignats.
-        // Si projectUsers és null (accés obert) tothom el veu.
-        // Si hi ha assignacions, cal estar-hi amb qualsevol rol.
-        if (!myProfile) return false;
-        if (p.projectUsers === null) return true;   // accés obert (null explícit)
-        if (p.projectUsers.length === 0) return false; // accés tancat (només admins)
-        return p.projectUsers.some(u => u.userId === myProfile.id);
-      })
-      .sort((a, b) => {
-        // Ordenació per codiProjecte numèrica: NNNN-N → compara part1 i part2
-        const [a1 = "0", a2 = "0"] = (a.codiProjecte || "").split("-");
-        const [b1 = "0", b2 = "0"] = (b.codiProjecte || "").split("-");
-        const diff1 = parseInt(a1, 10) - parseInt(b1, 10);
-        if (diff1 !== 0) return diff1;
-        return parseInt(a2, 10) - parseInt(b2, 10);
-      }),
-    [projectes, filtreStatus, isAdmin, myProfile]
+  const projecteFiltrats = useMemo(
+    () =>
+      projectes
+        .filter((p) => filtreStatus === "tots" || p.status === filtreStatus)
+        .filter((p) => {
+          // Admins veuen tots els projectes
+          if (isAdmin) return true;
+          // Usuaris amb rol viewer/editor: només veuen els projectes on estan assignats.
+          // Si projectUsers és null (accés obert) tothom el veu.
+          // Si hi ha assignacions, cal estar-hi amb qualsevol rol.
+          if (!myProfile) return false;
+          if (p.projectUsers === null) return true; // accés obert (null explícit)
+          if (p.projectUsers.length === 0) return false; // accés tancat (només admins)
+          return p.projectUsers.some((u) => u.userId === myProfile.id);
+        })
+        .sort((a, b) => {
+          // Ordenació per codiProjecte numèrica: NNNN-N → compara part1 i part2
+          const [a1 = "0", a2 = "0"] = (a.codiProjecte || "").split("-");
+          const [b1 = "0", b2 = "0"] = (b.codiProjecte || "").split("-");
+          const diff1 = parseInt(a1, 10) - parseInt(b1, 10);
+          if (diff1 !== 0) return diff1;
+          return parseInt(a2, 10) - parseInt(b2, 10);
+        }),
+    [projectes, filtreStatus, isAdmin, myProfile],
   );
 
-  const projecteSeleccionat = useMemo(() =>
-    projectes.find(p => p.id === projecteActiu) ?? null,
-    [projectes, projecteActiu]
+  const projecteSeleccionat = useMemo(
+    () => projectes.find((p) => p.id === projecteActiu) ?? null,
+    [projectes, projecteActiu],
   );
 
   /**
@@ -261,52 +411,75 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
    * "editor_caracteristiques"→ pot omplir els camps de característiques tècniques dels tags ja validats
    * "viewer"                 → només visualització, sense cap acció d'edició
    */
-  const projecteRol: ProjectRole = useMemo(() =>
-    projecteSeleccionat ? getProjectRole(projecteSeleccionat) : "viewer",
+  const projecteRol: ProjectRole = useMemo(
+    () =>
+      projecteSeleccionat ? getProjectRole(projecteSeleccionat) : "viewer",
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projecteSeleccionat, isAdmin, myProfile, canEdit]
+    [projecteSeleccionat, isAdmin, myProfile, canEdit],
   );
 
   /** Pot fer totes les operacions d'edició al projecte (crear tags, editar, validar) */
   const canEditProjecte = projecteRol === "editor_global";
   /** Pot omplir camps tècnics dels tags validats (però no crear ni validar) */
-  const canEditValidats = projecteRol === "editor_global" || projecteRol === "editor_caracteristiques";
+  const canEditValidats =
+    projecteRol === "editor_global" ||
+    projecteRol === "editor_caracteristiques";
 
-  const equipMap = useMemo(() => new Map(equipments.map(e => [e.id, e])), [equipments]);
-
-  // Equips disponibles per selector: només els que tenen codi, ordenats
-  const equipmentsAmbCodi = useMemo(() =>
-    equipments
-      .filter(e => e.equipCode && e.equipCode.trim() !== "")
-      .sort((a, b) => a.equipCode.localeCompare(b.equipCode)),
-    [equipments]
+  const equipMap = useMemo(
+    () => new Map(equipments.map((e) => [e.id, e])),
+    [equipments],
   );
 
-  const detallTag = detallEquip ? projecteSeleccionat?.tags.find(t => t.id === detallEquip) ?? null : null;
-  const detallEquipObj = detallTag ? equipMap.get(detallTag.equipId) ?? null : null;
-  const editEquipObj = editEquip ? equipMap.get(editEquip) ?? null : null; // usat només des de la taula master
+  // Equips disponibles per selector: només els que tenen codi, ordenats
+  const equipmentsAmbCodi = useMemo(
+    () =>
+      equipments
+        .filter((e) => e.equipCode && e.equipCode.trim() !== "")
+        .sort((a, b) => a.equipCode.localeCompare(b.equipCode)),
+    [equipments],
+  );
+
+  const detallTag = detallEquip
+    ? (projecteSeleccionat?.tags.find((t) => t.id === detallEquip) ?? null)
+    : null;
+  const detallEquipObj = detallTag
+    ? (equipMap.get(detallTag.equipId) ?? null)
+    : null;
+  const editEquipObj = editEquip ? (equipMap.get(editEquip) ?? null) : null; // usat només des de la taula master
 
   // Per edició múltiple: equip de referència (el primer seleccionat; tots han de tenir el mateix equipId)
-  const multiEditFirstTag = selectedTagIds.size > 0
-    ? projecteSeleccionat?.tags.find(t => selectedTagIds.has(t.id)) ?? null
+  const multiEditFirstTag =
+    selectedTagIds.size > 0
+      ? (projecteSeleccionat?.tags.find((t) => selectedTagIds.has(t.id)) ??
+        null)
+      : null;
+  const multiEditEquip = multiEditFirstTag
+    ? (equipMap.get(multiEditFirstTag.equipId) ?? null)
     : null;
-  const multiEditEquip = multiEditFirstTag ? equipMap.get(multiEditFirstTag.equipId) ?? null : null;
 
   // ─── accions projectes ──────────────────────────────────────────────────────
   async function crearProjecte() {
     if (!nouNom.trim()) return;
     const errCodi = validateCodiProjecte(nouCodiProjecte);
-    if (errCodi) { setNouProjecteError(errCodi); return; }
+    if (errCodi) {
+      setNouProjecteError(errCodi);
+      return;
+    }
     const codisNets: InstallacioItem[] = nouCodisInstallacio
-      .map(i => ({ codi: i.codi.toUpperCase().trim(), nom: i.nom?.trim() ?? "" }))
-      .filter(i => i.codi);
+      .map((i) => ({
+        codi: i.codi.toUpperCase().trim(),
+        nom: i.nom?.trim() ?? "",
+      }))
+      .filter((i) => i.codi);
     if (codisNets.length === 0) {
       setNouProjecteError("Cal almenys un codi d'instal·lació.");
       return;
     }
     for (const i of codisNets) {
       if (!/^[A-Z0-9]{5}$/i.test(i.codi)) {
-        setNouProjecteError(`El codi "${i.codi}" ha de tenir exactament 5 caràcters alfanumèrics.`);
+        setNouProjecteError(
+          `El codi "${i.codi}" ha de tenir exactament 5 caràcters alfanumèrics.`,
+        );
         return;
       }
     }
@@ -318,9 +491,17 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         codisInstallacio: codisNets,
         codiInstallacio: codisNets[0].codi,
         status: "actiu",
+        projectUsers: null,
+        allowedUsers: null,
       });
       setDialogNouProjecte(false);
-      setNouNom(""); setNouDesc(""); setNouCodiProjecte(""); setNouCodiPart1(""); setNouCodiPart2(""); setNouCodisInstallacio([{ codi: "", nom: "" }]); setNouProjecteError(null);
+      setNouNom("");
+      setNouDesc("");
+      setNouCodiProjecte("");
+      setNouCodiPart1("");
+      setNouCodiPart2("");
+      setNouCodisInstallacio([{ codi: "", nom: "" }]);
+      setNouProjecteError(null);
       toast.success("Projecte creat");
     } catch (e: any) {
       setNouProjecteError(e?.message ?? "Error en crear el projecte.");
@@ -329,13 +510,15 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   // ─── assignació usuaris (només admins) ─────────────────────────────────────
   const obrirDialogUsuaris = async (id: string) => {
-    const p = projectes.find(px => px.id === id);
+    const p = projectes.find((px) => px.id === id);
     if (!p) return;
     const isOpen = p.projectUsers === null;
     setDialogUsuarisIsOpen(isOpen);
     // Filtrem entrades sense rol vàlid (protecció format antic o dades corruptes)
     const validRoles = ["viewer", "editor_global", "editor_caracteristiques"];
-    const cleanUsers = (p.projectUsers ?? []).filter(u => validRoles.includes(u.role));
+    const cleanUsers = (p.projectUsers ?? []).filter((u) =>
+      validRoles.includes(u.role),
+    );
     setSelectedProjectUsers(cleanUsers);
     setUserSearch("");
     setDialogUsuaris(id);
@@ -374,7 +557,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
       }
       const value = [...seen.values()];
       await updateProjecteUsers(dialogUsuaris, value);
-      toast.success(`Permisos desats (${value.length} usuari${value.length !== 1 ? "s" : ""})`);
+      toast.success(
+        `Permisos desats (${value.length} usuari${value.length !== 1 ? "s" : ""})`,
+      );
       setDialogUsuaris(null);
     } finally {
       setSavingUsers(false);
@@ -383,16 +568,17 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   /** Helper per canviar el rol d'un usuari a la selecció del diàleg */
   const setUserProjectRole = (userId: string, role: ProjectRole | null) => {
-    setSelectedProjectUsers(prev => {
-      if (role === null) return prev.filter(u => u.userId !== userId);
-      const existing = prev.find(u => u.userId === userId);
-      if (existing) return prev.map(u => u.userId === userId ? { ...u, role } : u);
+    setSelectedProjectUsers((prev) => {
+      if (role === null) return prev.filter((u) => u.userId !== userId);
+      const existing = prev.find((u) => u.userId === userId);
+      if (existing)
+        return prev.map((u) => (u.userId === userId ? { ...u, role } : u));
       return [...prev, { userId, role }];
     });
   };
 
   function obrirEditProjecte(id: string) {
-    const p = projectes.find(pr => pr.id === id);
+    const p = projectes.find((pr) => pr.id === id);
     if (!p) return;
     setEditNom(p.nom);
     setEditDesc(p.descripcio);
@@ -400,22 +586,39 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     const [ep1 = "", ep2 = ""] = (p.codiProjecte || "").split("-");
     setEditCodiPart1(ep1);
     setEditCodiPart2(ep2);
-    setEditCodisInstallacio(p.codisInstallacio.length > 0 ? p.codisInstallacio.map(i => ({ ...i })) : [{ codi: "", nom: "" }]);
+    setEditCodisInstallacio(
+      p.codisInstallacio.length > 0
+        ? p.codisInstallacio.map((i) => ({ ...i }))
+        : [{ codi: "", nom: "" }],
+    );
     setEditProjecteError(null);
     setDialogEditProjecte(id);
   }
 
   async function guardarEditProjecteReal(
-    data: { nom: string; descripcio: string; codiProjecte: string; codisInstallacio: InstallacioItem[] },
-    actualitzarTags: boolean
+    data: {
+      nom: string;
+      descripcio: string;
+      codiProjecte: string;
+      codisInstallacio: InstallacioItem[];
+    },
+    actualitzarTags: boolean,
   ) {
     try {
       await updateProjecte(dialogEditProjecte!, data);
       if (actualitzarTags) {
-        const projecteActual = projectes.find(p => p.id === dialogEditProjecte);
+        const projecteActual = projectes.find(
+          (p) => p.id === dialogEditProjecte,
+        );
         if (projecteActual) {
           for (const tag of projecteActual.tags) {
-            const nouTagComplet = buildTag(data.codisInstallacio[0]?.codi ?? "", tag.tagComplet.split("_")[1] ?? "", tag.ccm, tag.funcio, tag.duplicitat);
+            const nouTagComplet = buildTag(
+              data.codisInstallacio[0]?.codi ?? "",
+              tag.tagComplet.split("_")[1] ?? "",
+              tag.ccm,
+              tag.funcio,
+              tag.duplicitat,
+            );
             await updateTag(dialogEditProjecte!, tag.id, {
               codiInstallacio: data.codisInstallacio[0]?.codi ?? "",
               tagComplet: nouTagComplet,
@@ -426,25 +629,46 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
       }
       setDialogEditProjecte(null);
       setDialogCanviInstallacio(null);
-      toast.success(actualitzarTags ? "Projecte i tags actualitzats — els tags han tornat a estat pendent" : "Projecte actualitzat");
+      toast.success(
+        actualitzarTags
+          ? "Projecte i tags actualitzats — els tags han tornat a estat pendent"
+          : "Projecte actualitzat",
+      );
     } catch (e: any) {
       setEditProjecteError(e?.message ?? "Error en actualitzar el projecte.");
     }
   }
 
   async function guardarEditProjecte() {
-    if (!editNom.trim()) { setEditProjecteError("El nom és obligatori."); return; }
+    if (!editNom.trim()) {
+      setEditProjecteError("El nom és obligatori.");
+      return;
+    }
     const errCodi = validateCodiProjecte(editCodiProjecte);
-    if (errCodi) { setEditProjecteError(errCodi); return; }
+    if (errCodi) {
+      setEditProjecteError(errCodi);
+      return;
+    }
     const codisNets: InstallacioItem[] = editCodisInstallacio
-      .map(i => ({ codi: i.codi.toUpperCase().trim(), nom: i.nom?.trim() ?? "" }))
-      .filter(i => i.codi);
-    if (codisNets.length === 0) { setEditProjecteError("Cal almenys un codi d'instal·lació."); return; }
+      .map((i) => ({
+        codi: i.codi.toUpperCase().trim(),
+        nom: i.nom?.trim() ?? "",
+      }))
+      .filter((i) => i.codi);
+    if (codisNets.length === 0) {
+      setEditProjecteError("Cal almenys un codi d'instal·lació.");
+      return;
+    }
     for (const i of codisNets) {
-      if (!/^[A-Z0-9]{5}$/i.test(i.codi)) { setEditProjecteError(`El codi "${i.codi}" ha de tenir exactament 5 caràcters alfanumèrics.`); return; }
+      if (!/^[A-Z0-9]{5}$/i.test(i.codi)) {
+        setEditProjecteError(
+          `El codi "${i.codi}" ha de tenir exactament 5 caràcters alfanumèrics.`,
+        );
+        return;
+      }
     }
 
-    const projecteActual = projectes.find(pr => pr.id === dialogEditProjecte);
+    const projecteActual = projectes.find((pr) => pr.id === dialogEditProjecte);
     const codiAntic = projecteActual?.codisInstallacio[0]?.codi ?? "";
     const nouCodi = codisNets[0].codi;
     const data = {
@@ -475,7 +699,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   async function eliminarProjecte(id: string) {
     try {
       await deleteProjecte(id);
-      if (projecteActiu === id) { setProjecteActiu(null); setVista("llistat"); }
+      if (projecteActiu === id) {
+        setProjecteActiu(null);
+        setVista("llistat");
+      }
       toast.success("Projecte eliminat");
     } catch (e: any) {
       toast.error(e?.message ?? "Error en eliminar el projecte.");
@@ -484,35 +711,70 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   // ─── accions tags ───────────────────────────────────────────────────────────
   function obrirNouTag() {
-    const projecteActual = projectes.find(p => p.id === projecteActiu);
-    setTagCodiInstallacio(projecteActual?.codisInstallacio?.[0]?.codi ?? projecteActual?.codiInstallacio ?? "");
-    setTagEquipId(""); setTagCcm("");
-    setTagFuncio(""); setTagDuplicitat("A"); setTagComentari(""); setTagDescripcio(""); setTagError(null);
+    const projecteActual = projectes.find((p) => p.id === projecteActiu);
+    setTagCodiInstallacio(
+      projecteActual?.codisInstallacio?.[0]?.codi ??
+        projecteActual?.codiInstallacio ??
+        "",
+    );
+    setTagEquipId("");
+    setTagCcm("");
+    setTagFuncio("");
+    setTagDuplicitat("A");
+    setTagComentari("");
+    setTagDescripcio("");
+    setTagError(null);
     setDialogNouTag(true);
   }
 
   async function guardarNouTag() {
     const equip = equipMap.get(tagEquipId);
-    if (!equip) { setTagError("Selecciona un equip de la Taula Master."); return; }
-    const err = validateTagFields(tagCodiInstallacio, tagCcm, tagFuncio, tagDuplicitat);
-    if (err) { setTagError(err); return; }
+    if (!equip) {
+      setTagError("Selecciona un equip de la Taula Master.");
+      return;
+    }
+    const err = validateTagFields(
+      tagCodiInstallacio,
+      tagCcm,
+      tagFuncio,
+      tagDuplicitat,
+    );
+    if (err) {
+      setTagError(err);
+      return;
+    }
     // Comprova duplicitat de TAG complet
-    const projecteActual = projectes.find(p => p.id === projecteActiu);
-    const tagCandidat = buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, tagDuplicitat);
-    if (projecteActual?.tags.some(t => t.tagComplet === tagCandidat)) {
+    const projecteActual = projectes.find((p) => p.id === projecteActiu);
+    const tagCandidat = buildTag(
+      tagCodiInstallacio,
+      equip.equipCode,
+      tagCcm,
+      tagFuncio,
+      tagDuplicitat,
+    );
+    if (projecteActual?.tags.some((t) => t.tagComplet === tagCandidat)) {
       setTagError(`El TAG "${tagCandidat}" ja existeix en aquest projecte.`);
       return;
     }
 
     // Comprova si el TAG ja existeix al llistat Rosmiman
-    const existeixARosmiman = rosmimanEquips.some(r => r.tag === tagCandidat);
+    const existeixARosmiman = rosmimanEquips.some((r) => r.tag === tagCandidat);
     if (existeixARosmiman) {
       const projecteActualTags = projecteActual?.tags ?? [];
-      const lliure = primeraDuplicitatLliure(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, projecteActualTags, rosmimanEquips);
+      const lliure = primeraDuplicitatLliure(
+        tagCodiInstallacio,
+        equip.equipCode,
+        tagCcm,
+        tagFuncio,
+        projecteActualTags,
+        rosmimanEquips,
+      );
       const suggeriment = lliure
         ? ` Primera duplicitat disponible: ${buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, lliure)} (lletra ${lliure}).`
         : " No hi ha duplicitats disponibles.";
-      setTagError(`El TAG "${tagCandidat}" ja existeix al llistat Rosmiman.${suggeriment}`);
+      setTagError(
+        `El TAG "${tagCandidat}" ja existeix al llistat Rosmiman.${suggeriment}`,
+      );
       return;
     }
 
@@ -539,26 +801,64 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   async function guardarEditTag() {
     if (!dialogEditTag) return;
-    if (!tagEquipId) { setTagError("Selecciona un equip."); return; }
+    if (!tagEquipId) {
+      setTagError("Selecciona un equip.");
+      return;
+    }
     const equip = equipMap.get(tagEquipId);
-    if (!equip) { setTagError("Equip no trobat."); return; }
-    const err = validateTagFields(tagCodiInstallacio, tagCcm, tagFuncio, tagDuplicitat);
-    if (err) { setTagError(err); return; }
-    const tagCandidatEdit = buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, tagDuplicitat);
-    const projecteActual2 = projectes.find(p => p.id === projecteActiu);
-    if (projecteActual2?.tags.some(t => t.id !== dialogEditTag.id && t.tagComplet === tagCandidatEdit)) {
-      setTagError(`El TAG "${tagCandidatEdit}" ja existeix en aquest projecte.`);
+    if (!equip) {
+      setTagError("Equip no trobat.");
+      return;
+    }
+    const err = validateTagFields(
+      tagCodiInstallacio,
+      tagCcm,
+      tagFuncio,
+      tagDuplicitat,
+    );
+    if (err) {
+      setTagError(err);
+      return;
+    }
+    const tagCandidatEdit = buildTag(
+      tagCodiInstallacio,
+      equip.equipCode,
+      tagCcm,
+      tagFuncio,
+      tagDuplicitat,
+    );
+    const projecteActual2 = projectes.find((p) => p.id === projecteActiu);
+    if (
+      projecteActual2?.tags.some(
+        (t) => t.id !== dialogEditTag.id && t.tagComplet === tagCandidatEdit,
+      )
+    ) {
+      setTagError(
+        `El TAG "${tagCandidatEdit}" ja existeix en aquest projecte.`,
+      );
       return;
     }
     // Comprova si el TAG modificat ja existeix al llistat Rosmiman
-    const existeixARosmimanEdit = rosmimanEquips.some(r => r.tag === tagCandidatEdit);
+    const existeixARosmimanEdit = rosmimanEquips.some(
+      (r) => r.tag === tagCandidatEdit,
+    );
     if (existeixARosmimanEdit) {
       const projecteActual2Tags = projecteActual2?.tags ?? [];
-      const lliureEdit = primeraDuplicitatLliure(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, projecteActual2Tags, rosmimanEquips, dialogEditTag.id);
+      const lliureEdit = primeraDuplicitatLliure(
+        tagCodiInstallacio,
+        equip.equipCode,
+        tagCcm,
+        tagFuncio,
+        projecteActual2Tags,
+        rosmimanEquips,
+        dialogEditTag.id,
+      );
       const suggerimentEdit = lliureEdit
         ? ` Primera duplicitat disponible: ${buildTag(tagCodiInstallacio, equip.equipCode, tagCcm, tagFuncio, lliureEdit)} (lletra ${lliureEdit}).`
         : " No hi ha duplicitats disponibles.";
-      setTagError(`El TAG "${tagCandidatEdit}" ja existeix al llistat Rosmiman.${suggerimentEdit}`);
+      setTagError(
+        `El TAG "${tagCandidatEdit}" ja existeix al llistat Rosmiman.${suggerimentEdit}`,
+      );
       return;
     }
 
@@ -589,13 +889,21 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     }
   }
 
-  async function validarTag(tag: ProjectTag, nouStatus: TagStatus, comentari: string) {
+  async function validarTag(
+    tag: ProjectTag,
+    nouStatus: TagStatus,
+    comentari: string,
+  ) {
     try {
       // Abans de validar, comprova que el TAG no existeixi ja a Rosmiman
       if (nouStatus === "validat") {
-        const duplicatRosmiman = rosmimanEquips.some(r => r.tag === tag.tagComplet);
+        const duplicatRosmiman = rosmimanEquips.some(
+          (r) => r.tag === tag.tagComplet,
+        );
         if (duplicatRosmiman) {
-          toast.error(`No es pot validar: el TAG "${tag.tagComplet}" ja existeix al llistat Rosmiman.`);
+          toast.error(
+            `No es pot validar: el TAG "${tag.tagComplet}" ja existeix al llistat Rosmiman.`,
+          );
           setDialogValidar(null);
           return;
         }
@@ -607,23 +915,28 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
       // Comprova si tots els tags del projecte han quedat validats
       // (inclou el tag actual que acabem de validar)
       if (nouStatus === "validat") {
-        const projecteActual = projectes.find(p => p.id === projecteActiu);
+        const projecteActual = projectes.find((p) => p.id === projecteActiu);
         if (projecteActual) {
-          const totsValidats = projecteActual.tags.every(t =>
-            t.id === tag.id ? true : t.status === "validat"
+          const totsValidats = projecteActual.tags.every((t) =>
+            t.id === tag.id ? true : t.status === "validat",
           );
           if (totsValidats && projecteActual.tags.length > 0) {
             // Afegim tots els tags validats al llistat Rosmiman
-            const equipsAImportar = projecteActual.tags.map(t => ({
-              tag:             t.id === tag.id ? tag.tagComplet : t.tagComplet,
-              descripcio:      equipMap.get(t.equipId)?.equipName ?? "",
+            const equipsAImportar = projecteActual.tags.map((t) => ({
+              tag: t.id === tag.id ? tag.tagComplet : t.tagComplet,
+              descripcio: equipMap.get(t.equipId)?.equipName ?? "",
               codiInstallacio: t.codiInstallacio,
             }));
-            const { inserted, skipped } = await importRosmimanEquips(equipsAImportar);
+            const { inserted, skipped } =
+              await importRosmimanEquips(equipsAImportar);
             if (inserted > 0) {
-              toast.success(`Tots els tags validats ✓ — ${inserted} tag${inserted !== 1 ? "s" : ""} afegit${inserted !== 1 ? "s" : ""} al llistat Rosmiman.`);
+              toast.success(
+                `Tots els tags validats ✓ — ${inserted} tag${inserted !== 1 ? "s" : ""} afegit${inserted !== 1 ? "s" : ""} al llistat Rosmiman.`,
+              );
             } else {
-              toast.success("Tots els tags validats ✓ (ja existien al llistat Rosmiman).");
+              toast.success(
+                "Tots els tags validats ✓ (ja existien al llistat Rosmiman).",
+              );
             }
             return;
           }
@@ -636,7 +949,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
     }
   }
 
-  async function saveFieldValues(tagId: string, values: Record<string, string>) {
+  async function saveFieldValues(
+    tagId: string,
+    values: Record<string, string>,
+  ) {
     try {
       await updateTag(projecteActiu!, tagId, { fieldValues: values });
     } catch (e: any) {
@@ -647,16 +963,21 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   async function saveMultiFieldValues(values: Record<string, string>) {
     try {
       await Promise.all(
-        [...selectedTagIds].map(tagId => {
-          const existing = projectes.find(p => p.id === projecteActiu)?.tags.find(t => t.id === tagId)?.fieldValues ?? {};
+        [...selectedTagIds].map((tagId) => {
+          const existing =
+            projectes
+              .find((p) => p.id === projecteActiu)
+              ?.tags.find((t) => t.id === tagId)?.fieldValues ?? {};
           const merged = { ...existing };
           for (const [col, val] of Object.entries(values)) {
             if (val !== "") merged[col] = val;
           }
           return updateTag(projecteActiu!, tagId, { fieldValues: merged });
-        })
+        }),
       );
-      toast.success(`Valors aplicats a ${selectedTagIds.size} tag${selectedTagIds.size !== 1 ? "s" : ""} ✓`);
+      toast.success(
+        `Valors aplicats a ${selectedTagIds.size} tag${selectedTagIds.size !== 1 ? "s" : ""} ✓`,
+      );
       setSelectedTagIds(new Set());
       setDialogMultiEdit(false);
     } catch (e: any) {
@@ -665,9 +986,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   }
 
   function toggleSelectTag(tagId: string) {
-    setSelectedTagIds(prev => {
+    setSelectedTagIds((prev) => {
       const next = new Set(prev);
-      if (next.has(tagId)) next.delete(tagId); else next.add(tagId);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
       return next;
     });
   }
@@ -687,22 +1009,52 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
   // ─── preview tag en temps real + suggeriment duplicitat ──────────────────
   const previewEquip = tagEquipId ? equipMap.get(tagEquipId) : null;
-  const previewTag = previewEquip && tagCodiInstallacio.length === 5 && tagCcm && tagFuncio && tagDuplicitat
-    ? buildTag(tagCodiInstallacio, previewEquip.equipCode, tagCcm, tagFuncio, tagDuplicitat)
-    : null;
+  const previewTag =
+    previewEquip &&
+    tagCodiInstallacio.length === 5 &&
+    tagCcm &&
+    tagFuncio &&
+    tagDuplicitat
+      ? buildTag(
+          tagCodiInstallacio,
+          previewEquip.equipCode,
+          tagCcm,
+          tagFuncio,
+          tagDuplicitat,
+        )
+      : null;
 
   // Si el TAG fins a funció coincideix amb un existent, calcula la propera duplicitat disponible
   const suggerimentDuplicitatInfo = useMemo(() => {
-    const projecteActual = projectes.find(p => p.id === projecteActiu);
-    if (!projecteActual || !previewEquip || tagCodiInstallacio.length !== 5 || !tagCcm || !tagFuncio) return null;
+    const projecteActual = projectes.find((p) => p.id === projecteActiu);
+    if (
+      !projecteActual ||
+      !previewEquip ||
+      tagCodiInstallacio.length !== 5 ||
+      !tagCcm ||
+      !tagFuncio
+    )
+      return null;
     const usades = duplicitatsUsades(
-      projecteActual.tags, tagCodiInstallacio, previewEquip.equipCode, tagCcm, tagFuncio,
-      dialogEditTag?.id
+      projecteActual.tags,
+      tagCodiInstallacio,
+      previewEquip.equipCode,
+      tagCcm,
+      tagFuncio,
+      dialogEditTag?.id,
     );
     if (usades.length === 0) return null;
     const propera = nextDuplicitatDisponible(usades);
     return { usades, propera };
-  }, [projectes, projecteActiu, previewEquip, tagCodiInstallacio, tagCcm, tagFuncio, dialogEditTag]);
+  }, [
+    projectes,
+    projecteActiu,
+    previewEquip,
+    tagCodiInstallacio,
+    tagCcm,
+    tagFuncio,
+    dialogEditTag,
+  ]);
 
   // PERF: debounce de la cerca d'equips — evita recalcular el filtre a cada tecla
   const debouncedEquipSearch = useDebounce(equipSearch, 180);
@@ -711,8 +1063,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   const equipsFiltrats = useMemo(() => {
     const q = debouncedEquipSearch.toLowerCase().trim();
     if (!q) return equipmentsAmbCodi;
-    const filtrats = equipmentsAmbCodi.filter(e =>
-      e.equipCode.toLowerCase().includes(q) || e.equipName.toLowerCase().includes(q) || (e.tableName && e.tableName.toLowerCase().includes(q))
+    const filtrats = equipmentsAmbCodi.filter(
+      (e) =>
+        e.equipCode.toLowerCase().includes(q) ||
+        e.equipName.toLowerCase().includes(q) ||
+        (e.tableName && e.tableName.toLowerCase().includes(q)),
     );
     // Prioritzem coincidències per nom/descripció per sobre del codi
     filtrats.sort((a, b) => {
@@ -733,18 +1088,27 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
   return (
     <TooltipProvider>
       <div className="space-y-6">
-
         {/* Capçalera */}
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             {vista === "detail" && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500" onClick={() => { setVista("llistat"); setProjecteActiu(null); }}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-slate-500"
+                onClick={() => {
+                  setVista("llistat");
+                  setProjecteActiu(null);
+                }}
+              >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             )}
             <div>
               <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-                {vista === "llistat" ? "Llistat de projectes" : projecteSeleccionat?.nom ?? "Projecte"}
+                {vista === "llistat"
+                  ? "Llistat de projectes"
+                  : (projecteSeleccionat?.nom ?? "Projecte")}
               </h1>
               <p className="text-sm text-slate-500 mt-0.5">
                 {vista === "llistat"
@@ -761,27 +1125,55 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
                 onClick={() => setRosmimanOpen(true)}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1" ry="1"/></svg>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                  <rect x="9" y="3" width="6" height="4" rx="1" ry="1" />
+                </svg>
                 TAGs Rosmiman
               </Button>
             )}
             {vista === "llistat" && canEdit && (
-              <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={() => { setNouNom(""); setNouDesc(""); setDialogNouProjecte(true); }}>
+              <Button
+                size="sm"
+                className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white"
+                onClick={() => {
+                  setNouNom("");
+                  setNouDesc("");
+                  setDialogNouProjecte(true);
+                }}
+              >
                 <Plus className="h-3.5 w-3.5" /> Nou projecte
               </Button>
             )}
             {vista === "detail" && canEditProjecte && (
               <>
-                <Button size="sm" variant="outline" className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40" onClick={() => obrirEditProjecte(projecteActiu!)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
+                  onClick={() => obrirEditProjecte(projecteActiu!)}
+                >
                   <Pencil className="h-3.5 w-3.5" /> Edita projecte
                 </Button>
                 {projecteSeleccionat && (
                   <Button
-                    size="sm" variant="outline"
+                    size="sm"
+                    variant="outline"
                     className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
                     onClick={async () => {
                       try {
-                        await exportDadesTraspas(projecteSeleccionat, equipments, fieldMap);
+                        await exportDadesTraspas(
+                          projecteSeleccionat,
+                          equipments,
+                          fieldMap,
+                        );
                       } catch {
                         toast.error("Error exportant dades Rosmiman");
                       }
@@ -791,7 +1183,11 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                   </Button>
                 )}
                 {projecteSeleccionat?.status === "actiu" && (
-                  <Button size="sm" className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={obrirNouTag}>
+                  <Button
+                    size="sm"
+                    className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white"
+                    onClick={obrirNouTag}
+                  >
                     <Tags className="h-3.5 w-3.5" /> Nou TAG
                   </Button>
                 )}
@@ -817,143 +1213,246 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
           <>
             {/* Filtre */}
             <div className="flex gap-2 flex-wrap">
-              {(["actiu", "arxivat"] as const).map(f => (
-                <button key={f} onClick={() => setFiltreStatus(f)}
-                  className={cn("text-xs px-3 py-1.5 rounded-full border transition-all",
+              {(["actiu", "arxivat"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setFiltreStatus(f)}
+                  className={cn(
+                    "text-xs px-3 py-1.5 rounded-full border transition-all",
                     filtreStatus === f
                       ? "bg-[#0099A8] text-white border-[#0099A8]"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-[#0099A8]/40"
-                  )}>
+                      : "bg-white text-slate-600 border-slate-200 hover:border-[#0099A8]/40",
+                  )}
+                >
                   {f === "actiu" ? "Actius" : "Arxivats"}
                 </button>
               ))}
-              <span className="text-xs text-slate-400 self-center ml-2">{projecteFiltrats.length} projecte{projecteFiltrats.length !== 1 ? "s" : ""}</span>
+              <span className="text-xs text-slate-400 self-center ml-2">
+                {projecteFiltrats.length} projecte
+                {projecteFiltrats.length !== 1 ? "s" : ""}
+              </span>
             </div>
 
             <div className="border border-slate-200 rounded-lg overflow-auto bg-white">
               <table className="w-full text-sm" style={{ minWidth: 700 }}>
                 <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                   <tr className="text-left">
-                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Codi</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nom del projecte</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Instal·lació</th>
-                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Tags</th>
-                    {canEdit && <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Accions</th>}
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Codi
+                    </th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Nom del projecte
+                    </th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Instal·lació
+                    </th>
+                    <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">
+                      Tags
+                    </th>
+                    {canEdit && (
+                      <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                        Accions
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {projecteFiltrats.length === 0 ? (
                     <tr>
-                      <td colSpan={canEdit ? 5 : 4} className="px-3 py-12 text-center">
+                      <td
+                        colSpan={canEdit ? 5 : 4}
+                        className="px-3 py-12 text-center"
+                      >
                         <div className="flex flex-col items-center gap-2 text-slate-400">
                           <FolderOpen className="h-8 w-8 text-slate-300" />
                           <p className="text-[13px]">Cap projecte trobat</p>
-                          <p className="text-xs text-slate-400">Crea un nou projecte per començar a gestionar tags d'equips.</p>
+                          <p className="text-xs text-slate-400">
+                            Crea un nou projecte per començar a gestionar tags
+                            d'equips.
+                          </p>
                         </div>
                       </td>
                     </tr>
-                  ) : projecteFiltrats.map(p => {
-                    const total = p.tags.length;
-                    const validats = p.tags.filter(t => t.status === "validat").length;
-                    const pendents = p.tags.filter(t => t.status === "pendent").length;
-                    const rebutjats = p.tags.filter(t => t.status === "rebutjat").length;
-                    const pct = total > 0 ? Math.round((validats / total) * 100) : 0;
-                    const installacioText = p.codisInstallacio?.length > 0
-                      ? p.codisInstallacio.map(i => i.nom ? `${i.codi} — ${i.nom}` : i.codi).join(", ")
-                      : (p.codiInstallacio ?? "—");
+                  ) : (
+                    projecteFiltrats.map((p) => {
+                      const total = p.tags.length;
+                      const validats = p.tags.filter(
+                        (t) => t.status === "validat",
+                      ).length;
+                      const pendents = p.tags.filter(
+                        (t) => t.status === "pendent",
+                      ).length;
+                      const rebutjats = p.tags.filter(
+                        (t) => t.status === "rebutjat",
+                      ).length;
+                      const pct =
+                        total > 0 ? Math.round((validats / total) * 100) : 0;
+                      const installacioText =
+                        p.codisInstallacio?.length > 0
+                          ? p.codisInstallacio
+                              .map((i) =>
+                                i.nom ? `${i.codi} — ${i.nom}` : i.codi,
+                              )
+                              .join(", ")
+                          : (p.codiInstallacio ?? "—");
 
-                    return (
-                      <tr
-                        key={p.id}
-                        className={cn(
-                          "border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors group"
-                        )}
-                        onClick={() => { setProjecteActiu(p.id); setVista("detail"); }}
-                      >
-                        {/* Codi */}
-                        <td className="px-3 py-2.5 whitespace-nowrap">
-                          {p.codiProjecte
-                            ? <span className="font-mono text-xs text-[#006E7A] font-semibold">#{p.codiProjecte}</span>
-                            : <span className="text-slate-300 text-xs">—</span>}
-                        </td>
-
-                        {/* Nom + descripció */}
-                        <td className="px-3 py-2.5">
-                          <p className="font-semibold text-slate-700 text-sm leading-tight">{p.nom}</p>
-                          {p.descripcio && (
-                            <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs truncate">{p.descripcio}</p>
+                      return (
+                        <tr
+                          key={p.id}
+                          className={cn(
+                            "border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors group",
                           )}
-                        </td>
+                          onClick={() => {
+                            setProjecteActiu(p.id);
+                            setVista("detail");
+                          }}
+                        >
+                          {/* Codi */}
+                          <td className="px-3 py-2.5 whitespace-nowrap">
+                            {p.codiProjecte ? (
+                              <span className="font-mono text-xs text-[#006E7A] font-semibold">
+                                #{p.codiProjecte}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
+                          </td>
 
-                        {/* Instal·lació */}
-                        <td className="px-3 py-2.5">
-                          <span className="font-mono text-[11px] text-slate-500">{installacioText}</span>
-                        </td>
+                          {/* Nom + descripció */}
+                          <td className="px-3 py-2.5">
+                            <p className="font-semibold text-slate-700 text-sm leading-tight">
+                              {p.nom}
+                            </p>
+                            {p.descripcio && (
+                              <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs truncate">
+                                {p.descripcio}
+                              </p>
+                            )}
+                          </td>
 
-                        {/* Tags (total) */}
-                        <td className="px-3 py-2.5 text-center">
-                          {total > 0 ? (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="text-sm font-semibold text-slate-700">{total}</span>
-                              <div className="flex gap-1.5 text-[10px]">
-                                {validats > 0 && <span className="text-emerald-600">✓{validats}</span>}
-                                {pendents > 0 && <span className="text-amber-600">◐{pendents}</span>}
-                                {rebutjats > 0 && <span className="text-red-500">✗{rebutjats}</span>}
+                          {/* Instal·lació */}
+                          <td className="px-3 py-2.5">
+                            <span className="font-mono text-[11px] text-slate-500">
+                              {installacioText}
+                            </span>
+                          </td>
+
+                          {/* Tags (total) */}
+                          <td className="px-3 py-2.5 text-center">
+                            {total > 0 ? (
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="text-sm font-semibold text-slate-700">
+                                  {total}
+                                </span>
+                                <div className="flex gap-1.5 text-[10px]">
+                                  {validats > 0 && (
+                                    <span className="text-emerald-600">
+                                      ✓{validats}
+                                    </span>
+                                  )}
+                                  {pendents > 0 && (
+                                    <span className="text-amber-600">
+                                      ◐{pendents}
+                                    </span>
+                                  )}
+                                  {rebutjats > 0 && (
+                                    <span className="text-red-500">
+                                      ✗{rebutjats}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <span className="text-slate-300 text-xs">—</span>
-                          )}
-                        </td>
+                            ) : (
+                              <span className="text-slate-300 text-xs">—</span>
+                            )}
+                          </td>
 
-                        {/* Accions */}
-                        {canEdit && (
-                          <td className="px-3 py-2.5" onClick={e => e.stopPropagation()}>
-                            <div className="flex gap-1 items-center">
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                                    onClick={() => obrirEditProjecte(p.id)}>
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Editar projecte</TooltipContent>
-                              </Tooltip>
-                              {isAdmin && (
+                          {/* Accions */}
+                          {canEdit && (
+                            <td
+                              className="px-3 py-2.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex gap-1 items-center">
                                 <Tooltip>
                                   <TooltipTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                                      onClick={() => obrirDialogUsuaris(p.id)}>
-                                      {p.projectUsers ? <Lock className="h-3.5 w-3.5 text-amber-500" /> : <LockOpen className="h-3.5 w-3.5" />}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                      onClick={() => obrirEditProjecte(p.id)}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
                                     </Button>
                                   </TooltipTrigger>
-                                  <TooltipContent>{p.projectUsers ? "Accés restringit · Gestionar usuaris" : "Accés obert · Gestionar usuaris"}</TooltipContent>
+                                  <TooltipContent>
+                                    Editar projecte
+                                  </TooltipContent>
                                 </Tooltip>
-                              )}
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                                    onClick={() => setDialogArxivar(p.id)}>
-                                    <Archive className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>{p.status === "arxivat" ? "Desarxivar" : "Arxivar"}</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500"
-                                    onClick={() => setDialogEliminarProjecte(p.id)}>
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Eliminar projecte</TooltipContent>
-                              </Tooltip>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })}
+                                {isAdmin && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                        onClick={() => obrirDialogUsuaris(p.id)}
+                                      >
+                                        {p.projectUsers ? (
+                                          <Lock className="h-3.5 w-3.5 text-amber-500" />
+                                        ) : (
+                                          <LockOpen className="h-3.5 w-3.5" />
+                                        )}
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      {p.projectUsers
+                                        ? "Accés restringit · Gestionar usuaris"
+                                        : "Accés obert · Gestionar usuaris"}
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                      onClick={() => setDialogArxivar(p.id)}
+                                    >
+                                      <Archive className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    {p.status === "arxivat"
+                                      ? "Desarxivar"
+                                      : "Arxivar"}
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-slate-400 hover:text-red-500"
+                                      onClick={() =>
+                                        setDialogEliminarProjecte(p.id)
+                                      }
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Eliminar projecte
+                                  </TooltipContent>
+                                </Tooltip>
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
@@ -968,17 +1467,22 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               <div className="flex items-center gap-2">
                 {projecteRol === "editor_global" && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-blue-50 border border-blue-200 text-blue-700">
-                    <Pencil className="h-2.5 w-2.5" /> Editor global — pots crear tags nous, editar equips, omplir camps tècnics i validar tags
+                    <Pencil className="h-2.5 w-2.5" /> Editor global — pots
+                    crear tags nous, editar equips, omplir camps tècnics i
+                    validar tags
                   </span>
                 )}
                 {projecteRol === "editor_caracteristiques" && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-amber-50 border border-amber-200 text-amber-700">
-                    <ClipboardCheck className="h-2.5 w-2.5" /> Editor de característiques — pots omplir els camps tècnics dels tags ja validats
+                    <ClipboardCheck className="h-2.5 w-2.5" /> Editor de
+                    característiques — pots omplir els camps tècnics dels tags
+                    ja validats
                   </span>
                 )}
                 {projecteRol === "viewer" && (
                   <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium bg-slate-50 border border-slate-200 text-slate-500">
-                    <Eye className="h-2.5 w-2.5" /> Visualitzador — accés de només lectura, sense cap edició
+                    <Eye className="h-2.5 w-2.5" /> Visualitzador — accés de
+                    només lectura, sense cap edició
                   </span>
                 )}
               </div>
@@ -986,11 +1490,28 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             {/* Resum ràpid */}
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: "Total tags", value: projecteSeleccionat.tags.length, color: "text-slate-700" },
-                { label: "Validats", value: projecteSeleccionat.tags.filter(t=>t.status==="validat").length, color: "text-emerald-600" },
-                { label: "Pendents / Rebutjats", value: `${projecteSeleccionat.tags.filter(t=>t.status==="pendent").length} / ${projecteSeleccionat.tags.filter(t=>t.status==="rebutjat").length}`, color: "text-amber-600" },
-              ].map(s => (
-                <Card key={s.label} className="p-3 border-0 shadow-sm bg-white text-center">
+                {
+                  label: "Total tags",
+                  value: projecteSeleccionat.tags.length,
+                  color: "text-slate-700",
+                },
+                {
+                  label: "Validats",
+                  value: projecteSeleccionat.tags.filter(
+                    (t) => t.status === "validat",
+                  ).length,
+                  color: "text-emerald-600",
+                },
+                {
+                  label: "Pendents / Rebutjats",
+                  value: `${projecteSeleccionat.tags.filter((t) => t.status === "pendent").length} / ${projecteSeleccionat.tags.filter((t) => t.status === "rebutjat").length}`,
+                  color: "text-amber-600",
+                },
+              ].map((s) => (
+                <Card
+                  key={s.label}
+                  className="p-3 border-0 shadow-sm bg-white text-center"
+                >
                   <p className={cn("text-xl font-bold", s.color)}>{s.value}</p>
                   <p className="text-[11px] text-slate-400 mt-0.5">{s.label}</p>
                 </Card>
@@ -1002,7 +1523,9 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               <Card className="p-10 border-0 shadow-sm bg-white flex flex-col items-center gap-2 text-center">
                 <Tags className="h-8 w-8 text-slate-300" />
                 <p className="text-sm font-medium text-slate-500">Sense tags</p>
-                <p className="text-xs text-slate-400">Afegeix el primer tag d'equip a aquest projecte.</p>
+                <p className="text-xs text-slate-400">
+                  Afegeix el primer tag d'equip a aquest projecte.
+                </p>
               </Card>
             ) : (
               <Card className="border-0 shadow-sm bg-white overflow-hidden">
@@ -1010,16 +1533,19 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 {selectedTagIds.size > 0 && (
                   <div className="flex items-center gap-3 px-4 py-2.5 bg-[#0099A8]/10 border-b border-[#0099A8]/20">
                     <span className="text-xs font-semibold text-[#006E7A]">
-                      {selectedTagIds.size} tag{selectedTagIds.size !== 1 ? "s" : ""} seleccionat{selectedTagIds.size !== 1 ? "s" : ""}
+                      {selectedTagIds.size} tag
+                      {selectedTagIds.size !== 1 ? "s" : ""} seleccionat
+                      {selectedTagIds.size !== 1 ? "s" : ""}
                     </span>
                     {canEditValidats && (
-                    <Button
-                      size="sm"
-                      className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] text-white gap-1.5"
-                      onClick={() => setDialogMultiEdit(true)}
-                    >
-                      <Pencil className="h-3 w-3" /> Editar camps dels seleccionats
-                    </Button>
+                      <Button
+                        size="sm"
+                        className="h-7 text-xs bg-[#0099A8] hover:bg-[#006E7A] text-white gap-1.5"
+                        onClick={() => setDialogMultiEdit(true)}
+                      >
+                        <Pencil className="h-3 w-3" /> Editar camps dels
+                        seleccionats
+                      </Button>
                     )}
                     <Button
                       size="sm"
@@ -1031,169 +1557,307 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                     </Button>
                   </div>
                 )}
-                <div ref={tagTableRef} className="overflow-auto" style={{ maxHeight: `calc(100vh - ${selectedTagIds.size > 0 ? "360px" : "320px"})` }}>
+                <div
+                  ref={tagTableRef}
+                  className="overflow-auto"
+                  style={{
+                    maxHeight: `calc(100vh - ${selectedTagIds.size > 0 ? "360px" : "320px"})`,
+                  }}
+                >
                   <table className="w-full text-sm">
                     <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
                       <tr>
                         <th className="p-3 w-8">
                           {(() => {
-                            const refEquipId = multiEditFirstTag?.equipId ?? null;
+                            const refEquipId =
+                              multiEditFirstTag?.equipId ?? null;
                             const selectableTags = refEquipId
-                              ? projecteSeleccionat.tags.filter(t => t.equipId === refEquipId)
+                              ? projecteSeleccionat.tags.filter(
+                                  (t) => t.equipId === refEquipId,
+                                )
                               : projecteSeleccionat.tags;
-                            const allSelected = selectableTags.length > 0 && selectableTags.every(t => selectedTagIds.has(t.id));
+                            const allSelected =
+                              selectableTags.length > 0 &&
+                              selectableTags.every((t) =>
+                                selectedTagIds.has(t.id),
+                              );
                             return (
                               <input
                                 type="checkbox"
                                 className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
                                 checked={allSelected}
-                                onChange={e => setSelectedTagIds(e.target.checked ? new Set(selectableTags.map(t => t.id)) : new Set())}
-                                title={refEquipId ? "Seleccionar tots els equips iguals" : "Seleccionar tots"}
+                                onChange={(e) =>
+                                  setSelectedTagIds(
+                                    e.target.checked
+                                      ? new Set(selectableTags.map((t) => t.id))
+                                      : new Set(),
+                                  )
+                                }
+                                title={
+                                  refEquipId
+                                    ? "Seleccionar tots els equips iguals"
+                                    : "Seleccionar tots"
+                                }
                               />
                             );
                           })()}
                         </th>
-                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">TAG complet</th>
-                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Equip</th>
-                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Estat</th>
-                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Comentari</th>
+                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          TAG complet
+                        </th>
+                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Equip
+                        </th>
+                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Estat
+                        </th>
+                        <th className="text-left p-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Comentari
+                        </th>
                         <th className="p-3" />
                       </tr>
                     </thead>
                     <tbody>
                       {(() => {
                         // Agrupa els tags per codi d'instal·lació i ordena alfabèticament
-                        const grups: { codi: string; nom?: string; tags: typeof projecteSeleccionat.tags }[] = [];
+                        const grups: {
+                          codi: string;
+                          nom?: string;
+                          tags: typeof projecteSeleccionat.tags;
+                        }[] = [];
                         const codisVistos: string[] = [];
-                        for (const tag of [...projecteSeleccionat.tags].sort((a, b) => a.codiInstallacio.localeCompare(b.codiInstallacio) || a.tagComplet.localeCompare(b.tagComplet))) {
+                        for (const tag of [...projecteSeleccionat.tags].sort(
+                          (a, b) =>
+                            a.codiInstallacio.localeCompare(
+                              b.codiInstallacio,
+                            ) || a.tagComplet.localeCompare(b.tagComplet),
+                        )) {
                           if (!codisVistos.includes(tag.codiInstallacio)) {
                             codisVistos.push(tag.codiInstallacio);
-                            const installacioInfo = projecteSeleccionat.codisInstallacio?.find(i => i.codi === tag.codiInstallacio);
-                            grups.push({ codi: tag.codiInstallacio, nom: installacioInfo?.nom, tags: [] });
+                            const installacioInfo =
+                              projecteSeleccionat.codisInstallacio?.find(
+                                (i) => i.codi === tag.codiInstallacio,
+                              );
+                            grups.push({
+                              codi: tag.codiInstallacio,
+                              nom: installacioInfo?.nom,
+                              tags: [],
+                            });
                           }
-                          grups[codisVistos.indexOf(tag.codiInstallacio)].tags.push(tag);
+                          grups[
+                            codisVistos.indexOf(tag.codiInstallacio)
+                          ].tags.push(tag);
                         }
                         const mostrarGrups = grups.length > 1;
-                        return grups.map(grup => (
+                        return grups.map((grup) => (
                           <>
                             {mostrarGrups && (
-                              <tr key={`grup-${grup.codi}`} className="bg-slate-50/80 border-t border-slate-200">
+                              <tr
+                                key={`grup-${grup.codi}`}
+                                className="bg-slate-50/80 border-t border-slate-200"
+                              >
                                 <td colSpan={6} className="px-3 py-2">
                                   <div className="flex items-center gap-2">
-                                    <span className="font-mono text-xs font-bold text-[#006E7A] bg-[#0099A8]/10 px-2 py-0.5 rounded">{grup.codi}</span>
-                                    {grup.nom && <span className="text-xs text-slate-500">{grup.nom}</span>}
-                                    <span className="text-[10px] text-slate-400 ml-1">{grup.tags.length} tag{grup.tags.length !== 1 ? "s" : ""}</span>
+                                    <span className="font-mono text-xs font-bold text-[#006E7A] bg-[#0099A8]/10 px-2 py-0.5 rounded">
+                                      {grup.codi}
+                                    </span>
+                                    {grup.nom && (
+                                      <span className="text-xs text-slate-500">
+                                        {grup.nom}
+                                      </span>
+                                    )}
+                                    <span className="text-[10px] text-slate-400 ml-1">
+                                      {grup.tags.length} tag
+                                      {grup.tags.length !== 1 ? "s" : ""}
+                                    </span>
                                   </div>
                                 </td>
                               </tr>
                             )}
-                            {grup.tags.map(tag => {
-                        const equip = equipMap.get(tag.equipId);
-                        const isSelected = selectedTagIds.has(tag.id);
-                        const referenceEquipId = multiEditFirstTag?.equipId ?? null;
-                        const isDisabled = !isSelected && referenceEquipId !== null && tag.equipId !== referenceEquipId;
-                        if (isDisabled) return null;
-                        return (
-                          <tr key={tag.id} className={cn("border-t hover:bg-muted/30", isSelected && "bg-[#0099A8]/5")}>
-                            <td className="p-3 w-8">
-                              <input
-                                type="checkbox"
-                                className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
-                                checked={isSelected}
-                                onChange={() => toggleSelectTag(tag.id)}
-                              />
-                            </td>
-                            <td className="p-3">
-                              <div className="font-mono text-xs bg-slate-100 px-2 py-1 rounded inline-block text-slate-700">
-                                {tag.tagComplet}
-                              </div>
-                              <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="cursor-help flex items-center gap-1"><Info className="h-3 w-3" />Estructura</span>
-                                  </TooltipTrigger>
-                                  <TooltipContent className="text-xs space-y-0.5 max-w-xs">
-                                    <p><b>Codi instal·lació:</b> {tag.codiInstallacio}</p>
-                                    <p><b>Codi equip:</b> {equip?.equipCode ?? "—"}</p>
-                                    <p><b>CCM:</b> {tag.ccm}</p>
-                                    <p><b>Funció:</b> {tag.funcio}</p>
-                                    <p><b>Duplicitat:</b> {tag.duplicitat}</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
-                            </td>
-                            <td className="p-3">
-                              {equip ? (
-                                <button
-                                  className="text-left group/eq hover:underline underline-offset-2"
-                                  onClick={() => setDetallEquip(tag.id)}
+                            {grup.tags.map((tag) => {
+                              const equip = equipMap.get(tag.equipId);
+                              const isSelected = selectedTagIds.has(tag.id);
+                              const referenceEquipId =
+                                multiEditFirstTag?.equipId ?? null;
+                              const isDisabled =
+                                !isSelected &&
+                                referenceEquipId !== null &&
+                                tag.equipId !== referenceEquipId;
+                              if (isDisabled) return null;
+                              return (
+                                <tr
+                                  key={tag.id}
+                                  className={cn(
+                                    "border-t hover:bg-muted/30",
+                                    isSelected && "bg-[#0099A8]/5",
+                                  )}
                                 >
-                                  <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">
-                                    {tag.descripcioEquip || equip.equipName}
-                                  </p>
-                                  <p className="text-[10px] text-slate-400 font-mono">{equip.equipCode}</p>
-                                </button>
-                              ) : (
-                                <span className="flex items-center gap-1 text-amber-600 text-xs"><AlertTriangle className="h-3.5 w-3.5" />Equip no trobat</span>
-                              )}
-                            </td>
-                            <td className="p-3"><TagStatusBadge status={tag.status} /></td>
-                            <td className="p-3 text-xs text-slate-500 max-w-[180px] truncate">{tag.comentari || "—"}</td>
-                            <td className="p-3">
-                              <div className="flex gap-1 justify-end">
-                                {/* Veure detall equip */}
-                                {equip && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-[#0099A8]"
-                                        onClick={() => setDetallEquip(tag.id)}>
-                                        <Eye className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Veure / omplir camps de l'equip</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {/* Validar */}
-                                {canEditProjecte && tag.status !== "validat" && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-emerald-600"
-                                        onClick={() => { setTagComentari(tag.comentari); setDialogValidar(tag); }}>
-                                        <ClipboardCheck className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Validar / Rebutjar tag</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {/* Editar */}
-                                {canEditProjecte && projecteSeleccionat.status === "actiu" && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                                        onClick={() => obrirEditTag(tag)}>
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Editar tag</TooltipContent>
-                                  </Tooltip>
-                                )}
-                                {/* Eliminar */}
-                                {canEditProjecte && projecteSeleccionat.status === "actiu" && (
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-red-500"
-                                        onClick={() => setDialogEliminarTagValidat(tag.id)}>
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Eliminar tag</TooltipContent>
-                                  </Tooltip>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                  <td className="p-3 w-8">
+                                    <input
+                                      type="checkbox"
+                                      className="rounded border-slate-300 accent-[#0099A8] cursor-pointer"
+                                      checked={isSelected}
+                                      onChange={() => toggleSelectTag(tag.id)}
+                                    />
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-mono text-xs bg-slate-100 px-2 py-1 rounded inline-block text-slate-700">
+                                      {tag.tagComplet}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-1 font-mono">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="cursor-help flex items-center gap-1">
+                                            <Info className="h-3 w-3" />
+                                            Estructura
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="text-xs space-y-0.5 max-w-xs">
+                                          <p>
+                                            <b>Codi instal·lació:</b>{" "}
+                                            {tag.codiInstallacio}
+                                          </p>
+                                          <p>
+                                            <b>Codi equip:</b>{" "}
+                                            {equip?.equipCode ?? "—"}
+                                          </p>
+                                          <p>
+                                            <b>CCM:</b> {tag.ccm}
+                                          </p>
+                                          <p>
+                                            <b>Funció:</b> {tag.funcio}
+                                          </p>
+                                          <p>
+                                            <b>Duplicitat:</b> {tag.duplicitat}
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    {equip ? (
+                                      <button
+                                        className="text-left group/eq hover:underline underline-offset-2"
+                                        onClick={() => setDetallEquip(tag.id)}
+                                      >
+                                        <p className="font-medium text-[#006E7A] group-hover/eq:text-[#0099A8] text-xs transition-colors">
+                                          {tag.descripcioEquip ||
+                                            equip.equipName}
+                                        </p>
+                                        <p className="text-[10px] text-slate-400 font-mono">
+                                          {equip.equipCode}
+                                        </p>
+                                      </button>
+                                    ) : (
+                                      <span className="flex items-center gap-1 text-amber-600 text-xs">
+                                        <AlertTriangle className="h-3.5 w-3.5" />
+                                        Equip no trobat
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3">
+                                    <TagStatusBadge status={tag.status} />
+                                  </td>
+                                  <td className="p-3 text-xs text-slate-500 max-w-[180px] truncate">
+                                    {tag.comentari || "—"}
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="flex gap-1 justify-end">
+                                      {/* Veure detall equip */}
+                                      {equip && (
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-7 w-7 text-slate-400 hover:text-[#0099A8]"
+                                              onClick={() =>
+                                                setDetallEquip(tag.id)
+                                              }
+                                            >
+                                              <Eye className="h-3.5 w-3.5" />
+                                            </Button>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            Veure / omplir camps de l'equip
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      )}
+                                      {/* Validar */}
+                                      {canEditProjecte &&
+                                        tag.status !== "validat" && (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-slate-400 hover:text-emerald-600"
+                                                onClick={() => {
+                                                  setTagComentari(
+                                                    tag.comentari,
+                                                  );
+                                                  setDialogValidar(tag);
+                                                }}
+                                              >
+                                                <ClipboardCheck className="h-3.5 w-3.5" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              Validar / Rebutjar tag
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        )}
+                                      {/* Editar */}
+                                      {canEditProjecte &&
+                                        projecteSeleccionat.status ===
+                                          "actiu" && (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-slate-400 hover:text-slate-700"
+                                                onClick={() =>
+                                                  obrirEditTag(tag)
+                                                }
+                                              >
+                                                <Pencil className="h-3.5 w-3.5" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              Editar tag
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        )}
+                                      {/* Eliminar */}
+                                      {canEditProjecte &&
+                                        projecteSeleccionat.status ===
+                                          "actiu" && (
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 text-slate-400 hover:text-red-500"
+                                                onClick={() =>
+                                                  setDialogEliminarTagValidat(
+                                                    tag.id,
+                                                  )
+                                                }
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              Eliminar tag
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                           </>
                         ));
                       })()}
@@ -1206,51 +1870,93 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         )}
 
         {/* ── DIÀLEG: NOU PROJECTE ────────────────────────────────────────── */}
-        <Dialog open={dialogNouProjecte} onOpenChange={(b) => { setDialogNouProjecte(b); if (!b) setNouProjecteError(null); }}>
+        <Dialog
+          open={dialogNouProjecte}
+          onOpenChange={(b) => {
+            setDialogNouProjecte(b);
+            if (!b) setNouProjecteError(null);
+          }}
+        >
           <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>Nou projecte</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Nou projecte</DialogTitle>
+            </DialogHeader>
             <div className="space-y-3 py-2">
               <div>
-                <Label className="text-xs font-medium">Nom del projecte *</Label>
-                <Input className="mt-1" placeholder="Nom del projecte" value={nouNom} onChange={e => setNouNom(e.target.value)} />
+                <Label className="text-xs font-medium">
+                  Nom del projecte *
+                </Label>
+                <Input
+                  className="mt-1"
+                  placeholder="Nom del projecte"
+                  value={nouNom}
+                  onChange={(e) => setNouNom(e.target.value)}
+                />
               </div>
               <div>
                 <Label className="text-xs font-medium">Descripció</Label>
-                <Input className="mt-1" placeholder="Descripció opcional" value={nouDesc} onChange={e => setNouDesc(e.target.value)} />
+                <Input
+                  className="mt-1"
+                  placeholder="Descripció opcional"
+                  value={nouDesc}
+                  onChange={(e) => setNouDesc(e.target.value)}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-medium">Codi de projecte * <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
+                  <Label className="text-xs font-medium">
+                    Codi de projecte *{" "}
+                    <span className="text-slate-400 font-normal">(NNNN-N)</span>
+                  </Label>
                   <div className="flex items-center gap-1.5 mt-1">
                     <Input
                       className="font-mono w-24 text-center"
                       placeholder="2024"
                       maxLength={6}
                       value={nouCodiPart1}
-                      onChange={e => {
+                      onChange={(e) => {
                         const v = e.target.value.replace(/[^0-9]/g, "");
                         setNouCodiPart1(v);
-                        setNouCodiProjecte(v && nouCodiPart2 ? `${v}-${nouCodiPart2}` : v ? v : "");
+                        setNouCodiProjecte(
+                          v && nouCodiPart2
+                            ? `${v}-${nouCodiPart2}`
+                            : v
+                              ? v
+                              : "",
+                        );
                         setNouProjecteError(null);
                       }}
                     />
-                    <span className="text-slate-400 font-mono font-bold select-none">-</span>
+                    <span className="text-slate-400 font-mono font-bold select-none">
+                      -
+                    </span>
                     <Input
                       className="font-mono w-20 text-center"
                       placeholder="N"
                       maxLength={4}
                       value={nouCodiPart2}
-                      onChange={e => {
+                      onChange={(e) => {
                         const v = e.target.value.replace(/[^0-9]/g, "");
                         setNouCodiPart2(v);
-                        setNouCodiProjecte(nouCodiPart1 && v ? `${nouCodiPart1}-${v}` : nouCodiPart1 ? nouCodiPart1 : "");
+                        setNouCodiProjecte(
+                          nouCodiPart1 && v
+                            ? `${nouCodiPart1}-${v}`
+                            : nouCodiPart1
+                              ? nouCodiPart1
+                              : "",
+                        );
                         setNouProjecteError(null);
                       }}
                     />
                   </div>
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
+                  <Label className="text-xs font-medium">
+                    Codis d'instal·lació *{" "}
+                    <span className="text-slate-400 font-normal">
+                      (5 car. cada un)
+                    </span>
+                  </Label>
                   <div className="mt-1 space-y-1.5">
                     {nouCodisInstallacio.map((item, idx) => (
                       <div key={idx} className="flex gap-1.5 items-center">
@@ -1259,8 +1965,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           placeholder="XXXXX"
                           maxLength={5}
                           value={item.codi}
-                          onChange={e => {
-                            const next = nouCodisInstallacio.map((x, i) => i === idx ? { ...x, codi: e.target.value.toUpperCase() } : x);
+                          onChange={(e) => {
+                            const next = nouCodisInstallacio.map((x, i) =>
+                              i === idx
+                                ? { ...x, codi: e.target.value.toUpperCase() }
+                                : x,
+                            );
                             setNouCodisInstallacio(next);
                             setNouProjecteError(null);
                           }}
@@ -1269,16 +1979,26 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           className="flex-1 text-xs uppercase placeholder:normal-case"
                           placeholder="Nom de la instal·lació (opcional)"
                           value={item.nom ?? ""}
-                          onChange={e => {
-                            const next = nouCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value.toUpperCase() } : x);
+                          onChange={(e) => {
+                            const next = nouCodisInstallacio.map((x, i) =>
+                              i === idx
+                                ? { ...x, nom: e.target.value.toUpperCase() }
+                                : x,
+                            );
                             setNouCodisInstallacio(next);
                           }}
                         />
                         {nouCodisInstallacio.length > 1 && (
                           <Button
-                            type="button" variant="ghost" size="icon"
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             className="h-8 w-8 text-slate-400 hover:text-red-500 shrink-0"
-                            onClick={() => setNouCodisInstallacio(nouCodisInstallacio.filter((_, i) => i !== idx))}
+                            onClick={() =>
+                              setNouCodisInstallacio(
+                                nouCodisInstallacio.filter((_, i) => i !== idx),
+                              )
+                            }
                           >
                             <span className="text-base leading-none">×</span>
                           </Button>
@@ -1286,9 +2006,16 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       </div>
                     ))}
                     <Button
-                      type="button" variant="outline" size="sm"
+                      type="button"
+                      variant="outline"
+                      size="sm"
                       className="gap-1 text-xs h-7 text-[#0099A8] border-[#0099A8]/30 hover:bg-[#0099A8]/5"
-                      onClick={() => setNouCodisInstallacio([...nouCodisInstallacio, { codi: "", nom: "" }])}
+                      onClick={() =>
+                        setNouCodisInstallacio([
+                          ...nouCodisInstallacio,
+                          { codi: "", nom: "" },
+                        ])
+                      }
                     >
                       <Plus className="h-3 w-3" /> Afegir instal·lació
                     </Button>
@@ -1297,63 +2024,126 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </div>
               {nouProjecteError && (
                 <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{nouProjecteError}
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {nouProjecteError}
                 </div>
               )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogNouProjecte(false)}>Cancel·la</Button>
-              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={crearProjecte} disabled={!nouNom.trim() || !nouCodiProjecte.trim() || nouCodisInstallacio.every(c => !c.codi.trim())}>Crear projecte</Button>
+              <Button
+                variant="outline"
+                onClick={() => setDialogNouProjecte(false)}
+              >
+                Cancel·la
+              </Button>
+              <Button
+                className="bg-[#0099A8] hover:bg-[#006E7A] text-white"
+                onClick={crearProjecte}
+                disabled={
+                  !nouNom.trim() ||
+                  !nouCodiProjecte.trim() ||
+                  nouCodisInstallacio.every((c) => !c.codi.trim())
+                }
+              >
+                Crear projecte
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
         {/* ── DIÀLEG: EDITAR PROJECTE ────────────────────────────────────── */}
-        <Dialog open={!!dialogEditProjecte} onOpenChange={(b) => { if (!b) { setDialogEditProjecte(null); setEditProjecteError(null); } }}>
+        <Dialog
+          open={!!dialogEditProjecte}
+          onOpenChange={(b) => {
+            if (!b) {
+              setDialogEditProjecte(null);
+              setEditProjecteError(null);
+            }
+          }}
+        >
           <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
-            <DialogHeader><DialogTitle>Editar projecte</DialogTitle></DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Editar projecte</DialogTitle>
+            </DialogHeader>
             <div className="space-y-3 py-2">
               <div>
-                <Label className="text-xs font-medium">Nom del projecte *</Label>
-                <Input className="mt-1" placeholder="Nom del projecte" value={editNom} onChange={e => { setEditNom(e.target.value); setEditProjecteError(null); }} />
+                <Label className="text-xs font-medium">
+                  Nom del projecte *
+                </Label>
+                <Input
+                  className="mt-1"
+                  placeholder="Nom del projecte"
+                  value={editNom}
+                  onChange={(e) => {
+                    setEditNom(e.target.value);
+                    setEditProjecteError(null);
+                  }}
+                />
               </div>
               <div>
                 <Label className="text-xs font-medium">Descripció</Label>
-                <Input className="mt-1" placeholder="Descripció opcional" value={editDesc} onChange={e => setEditDesc(e.target.value)} />
+                <Input
+                  className="mt-1"
+                  placeholder="Descripció opcional"
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label className="text-xs font-medium">Codi de projecte * <span className="text-slate-400 font-normal">(NNNN-N)</span></Label>
+                  <Label className="text-xs font-medium">
+                    Codi de projecte *{" "}
+                    <span className="text-slate-400 font-normal">(NNNN-N)</span>
+                  </Label>
                   <div className="flex items-center gap-1.5 mt-1">
                     <Input
                       className="font-mono w-24 text-center"
                       placeholder="2024"
                       maxLength={6}
                       value={editCodiPart1}
-                      onChange={e => {
+                      onChange={(e) => {
                         const v = e.target.value.replace(/[^0-9]/g, "");
                         setEditCodiPart1(v);
-                        setEditCodiProjecte(v && editCodiPart2 ? `${v}-${editCodiPart2}` : v ? v : "");
+                        setEditCodiProjecte(
+                          v && editCodiPart2
+                            ? `${v}-${editCodiPart2}`
+                            : v
+                              ? v
+                              : "",
+                        );
                         setEditProjecteError(null);
                       }}
                     />
-                    <span className="text-slate-400 font-mono font-bold select-none">-</span>
+                    <span className="text-slate-400 font-mono font-bold select-none">
+                      -
+                    </span>
                     <Input
                       className="font-mono w-20 text-center"
                       placeholder="N"
                       maxLength={4}
                       value={editCodiPart2}
-                      onChange={e => {
+                      onChange={(e) => {
                         const v = e.target.value.replace(/[^0-9]/g, "");
                         setEditCodiPart2(v);
-                        setEditCodiProjecte(editCodiPart1 && v ? `${editCodiPart1}-${v}` : editCodiPart1 ? editCodiPart1 : "");
+                        setEditCodiProjecte(
+                          editCodiPart1 && v
+                            ? `${editCodiPart1}-${v}`
+                            : editCodiPart1
+                              ? editCodiPart1
+                              : "",
+                        );
                         setEditProjecteError(null);
                       }}
                     />
                   </div>
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs font-medium">Codis d'instal·lació * <span className="text-slate-400 font-normal">(5 car. cada un)</span></Label>
+                  <Label className="text-xs font-medium">
+                    Codis d'instal·lació *{" "}
+                    <span className="text-slate-400 font-normal">
+                      (5 car. cada un)
+                    </span>
+                  </Label>
                   <div className="mt-1 space-y-1.5">
                     {editCodisInstallacio.map((item, idx) => (
                       <div key={idx} className="flex gap-1.5 items-center">
@@ -1362,8 +2152,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           placeholder="XXXXX"
                           maxLength={5}
                           value={item.codi}
-                          onChange={e => {
-                            const next = editCodisInstallacio.map((x, i) => i === idx ? { ...x, codi: e.target.value.toUpperCase() } : x);
+                          onChange={(e) => {
+                            const next = editCodisInstallacio.map((x, i) =>
+                              i === idx
+                                ? { ...x, codi: e.target.value.toUpperCase() }
+                                : x,
+                            );
                             setEditCodisInstallacio(next);
                             setEditProjecteError(null);
                           }}
@@ -1372,16 +2166,28 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                           className="flex-1 text-xs uppercase placeholder:normal-case"
                           placeholder="Nom de la instal·lació (opcional)"
                           value={item.nom ?? ""}
-                          onChange={e => {
-                            const next = editCodisInstallacio.map((x, i) => i === idx ? { ...x, nom: e.target.value.toUpperCase() } : x);
+                          onChange={(e) => {
+                            const next = editCodisInstallacio.map((x, i) =>
+                              i === idx
+                                ? { ...x, nom: e.target.value.toUpperCase() }
+                                : x,
+                            );
                             setEditCodisInstallacio(next);
                           }}
                         />
                         {editCodisInstallacio.length > 1 && (
                           <Button
-                            type="button" variant="ghost" size="icon"
+                            type="button"
+                            variant="ghost"
+                            size="icon"
                             className="h-8 w-8 text-slate-400 hover:text-red-500 shrink-0"
-                            onClick={() => setEditCodisInstallacio(editCodisInstallacio.filter((_, i) => i !== idx))}
+                            onClick={() =>
+                              setEditCodisInstallacio(
+                                editCodisInstallacio.filter(
+                                  (_, i) => i !== idx,
+                                ),
+                              )
+                            }
                           >
                             <span className="text-base leading-none">×</span>
                           </Button>
@@ -1389,9 +2195,16 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       </div>
                     ))}
                     <Button
-                      type="button" variant="outline" size="sm"
+                      type="button"
+                      variant="outline"
+                      size="sm"
                       className="gap-1 text-xs h-7 text-[#0099A8] border-[#0099A8]/30 hover:bg-[#0099A8]/5"
-                      onClick={() => setEditCodisInstallacio([...editCodisInstallacio, { codi: "", nom: "" }])}
+                      onClick={() =>
+                        setEditCodisInstallacio([
+                          ...editCodisInstallacio,
+                          { codi: "", nom: "" },
+                        ])
+                      }
                     >
                       <Plus className="h-3 w-3" /> Afegir instal·lació
                     </Button>
@@ -1400,14 +2213,27 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
               </div>
               {editProjecteError && (
                 <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{editProjecteError}
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {editProjecteError}
                 </div>
               )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogEditProjecte(null)}>Cancel·la</Button>
-              <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={guardarEditProjecte}
-                disabled={!editNom.trim() || !editCodiProjecte.trim() || editCodisInstallacio.every(c => !c.codi.trim())}>
+              <Button
+                variant="outline"
+                onClick={() => setDialogEditProjecte(null)}
+              >
+                Cancel·la
+              </Button>
+              <Button
+                className="bg-[#0099A8] hover:bg-[#006E7A] text-white"
+                onClick={guardarEditProjecte}
+                disabled={
+                  !editNom.trim() ||
+                  !editCodiProjecte.trim() ||
+                  editCodisInstallacio.every((c) => !c.codi.trim())
+                }
+              >
                 Guardar canvis
               </Button>
             </DialogFooter>
@@ -1416,29 +2242,52 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
         {/* ── DIÀLEG: NOU / EDITAR TAG ────────────────────────────────────── */}
         {(dialogNouTag || dialogEditTag) && (
-          <Dialog open onOpenChange={() => { setDialogNouTag(false); setDialogEditTag(null); }}>
+          <Dialog
+            open
+            onOpenChange={() => {
+              setDialogNouTag(false);
+              setDialogEditTag(null);
+            }}
+          >
             <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
-                <DialogTitle>{dialogEditTag ? "Editar TAG" : "Nou TAG d'equip"}</DialogTitle>
+                <DialogTitle>
+                  {dialogEditTag ? "Editar TAG" : "Nou TAG d'equip"}
+                </DialogTitle>
                 <p className="text-xs text-slate-500 mt-1">
-                  Estructura: <span className="font-mono bg-slate-100 px-1 rounded">CODIINSTALLACIO_CODIEQUIP_CCMFUNCIODUPLICITATAT</span>
+                  Estructura:{" "}
+                  <span className="font-mono bg-slate-100 px-1 rounded">
+                    CODIINSTALLACIO_CODIEQUIP_CCMFUNCIODUPLICITATAT
+                  </span>
                 </p>
               </DialogHeader>
               <div className="space-y-4 py-2">
                 {/* Equip */}
                 {!dialogEditTag && (
                   <div>
-                    <Label className="text-xs font-medium">Equip de la Taula Master *</Label>
+                    <Label className="text-xs font-medium">
+                      Equip de la Taula Master *
+                    </Label>
                     {/* Si ja hi ha un equip seleccionat, mostrem-lo com a pastilla amb opció de canvi */}
                     {tagEquipId && equipMap.get(tagEquipId) ? (
                       <div className="mt-1 flex items-center gap-2 p-2 bg-[#0099A8]/8 border border-[#0099A8]/30 rounded-md">
                         <CheckCircle2 className="h-4 w-4 text-[#0099A8] shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <span className="text-xs font-medium text-[#006E7A] truncate block">{equipMap.get(tagEquipId)!.tableName || equipMap.get(tagEquipId)!.equipName}</span>
-                          <span className="text-xs font-mono text-slate-500">{equipMap.get(tagEquipId)!.equipCode}</span>
+                          <span className="text-xs font-medium text-[#006E7A] truncate block">
+                            {equipMap.get(tagEquipId)!.tableName ||
+                              equipMap.get(tagEquipId)!.equipName}
+                          </span>
+                          <span className="text-xs font-mono text-slate-500">
+                            {equipMap.get(tagEquipId)!.equipCode}
+                          </span>
                         </div>
-                        <button onClick={() => { setTagEquipId(""); setEquipSearch(""); }}
-                          className="text-xs text-[#0099A8] hover:text-[#006E7A] shrink-0 underline">
+                        <button
+                          onClick={() => {
+                            setTagEquipId("");
+                            setEquipSearch("");
+                          }}
+                          className="text-xs text-[#0099A8] hover:text-[#006E7A] shrink-0 underline"
+                        >
                           Canviar
                         </button>
                       </div>
@@ -1450,32 +2299,54 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                             className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
                             placeholder="Escriu la descripció de l'equip..."
                             value={equipSearch}
-                            onChange={e => setEquipSearch(e.target.value)}
+                            onChange={(e) => setEquipSearch(e.target.value)}
                             autoFocus
                           />
                           {equipSearch && (
-                            <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
+                            <button
+                              onClick={() => setEquipSearch("")}
+                              className="text-slate-400 hover:text-slate-600"
+                            >
                               <XCircle className="h-3.5 w-3.5" />
                             </button>
                           )}
                         </div>
                         <div className="max-h-44 overflow-y-auto">
                           {!equipSearch.trim() ? (
-                            <p className="text-xs text-slate-400 px-3 py-2 italic">Comença a escriure per buscar equips per descripció o codi…</p>
+                            <p className="text-xs text-slate-400 px-3 py-2 italic">
+                              Comença a escriure per buscar equips per
+                              descripció o codi…
+                            </p>
                           ) : equipsFiltrats.length === 0 ? (
-                            <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
+                            <p className="text-xs text-slate-400 px-3 py-2">
+                              Cap equip trobat
+                            </p>
                           ) : (
-                            equipsFiltrats.map(e => (
-                              <button key={e.id} onClick={() => { setTagEquipId(e.id); setEquipSearch(""); }}
+                            equipsFiltrats.map((e) => (
+                              <button
+                                key={e.id}
+                                onClick={() => {
+                                  setTagEquipId(e.id);
+                                  setEquipSearch("");
+                                }}
                                 className={cn(
                                   "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
-                                  tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
-                                )}>
+                                  tagEquipId === e.id
+                                    ? "bg-[#0099A8]/10 text-[#006E7A] font-medium"
+                                    : "text-slate-700",
+                                )}
+                              >
                                 <div className="flex-1 min-w-0">
-                                  <span className="block truncate font-medium">{e.tableName || e.equipName}</span>
-                                  <span className="font-mono text-slate-400">{e.equipCode}</span>
+                                  <span className="block truncate font-medium">
+                                    {e.tableName || e.equipName}
+                                  </span>
+                                  <span className="font-mono text-slate-400">
+                                    {e.equipCode}
+                                  </span>
                                 </div>
-                                {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                                {tagEquipId === e.id && (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />
+                                )}
                               </button>
                             ))
                           )}
@@ -1486,16 +2357,28 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 )}
                 {dialogEditTag && (
                   <div>
-                    <Label className="text-xs font-medium">Equip de la Taula Master *</Label>
+                    <Label className="text-xs font-medium">
+                      Equip de la Taula Master *
+                    </Label>
                     {tagEquipId && equipMap.get(tagEquipId) ? (
                       <div className="mt-1 flex items-center gap-2 p-2 bg-[#0099A8]/8 border border-[#0099A8]/30 rounded-md">
                         <CheckCircle2 className="h-4 w-4 text-[#0099A8] shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <span className="text-xs font-medium text-[#006E7A] truncate block">{equipMap.get(tagEquipId)!.tableName || equipMap.get(tagEquipId)!.equipName}</span>
-                          <span className="text-xs font-mono text-slate-500">{equipMap.get(tagEquipId)!.equipCode}</span>
+                          <span className="text-xs font-medium text-[#006E7A] truncate block">
+                            {equipMap.get(tagEquipId)!.tableName ||
+                              equipMap.get(tagEquipId)!.equipName}
+                          </span>
+                          <span className="text-xs font-mono text-slate-500">
+                            {equipMap.get(tagEquipId)!.equipCode}
+                          </span>
                         </div>
-                        <button onClick={() => { setTagEquipId(""); setEquipSearch(""); }}
-                          className="text-xs text-[#0099A8] hover:text-[#006E7A] shrink-0 underline">
+                        <button
+                          onClick={() => {
+                            setTagEquipId("");
+                            setEquipSearch("");
+                          }}
+                          className="text-xs text-[#0099A8] hover:text-[#006E7A] shrink-0 underline"
+                        >
                           Canviar
                         </button>
                       </div>
@@ -1507,32 +2390,54 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                             className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
                             placeholder="Escriu la descripció de l'equip..."
                             value={equipSearch}
-                            onChange={e => setEquipSearch(e.target.value)}
+                            onChange={(e) => setEquipSearch(e.target.value)}
                             autoFocus
                           />
                           {equipSearch && (
-                            <button onClick={() => setEquipSearch("")} className="text-slate-400 hover:text-slate-600">
+                            <button
+                              onClick={() => setEquipSearch("")}
+                              className="text-slate-400 hover:text-slate-600"
+                            >
                               <XCircle className="h-3.5 w-3.5" />
                             </button>
                           )}
                         </div>
                         <div className="max-h-44 overflow-y-auto">
                           {!equipSearch.trim() ? (
-                            <p className="text-xs text-slate-400 px-3 py-2 italic">Comença a escriure per buscar equips per descripció o codi…</p>
+                            <p className="text-xs text-slate-400 px-3 py-2 italic">
+                              Comença a escriure per buscar equips per
+                              descripció o codi…
+                            </p>
                           ) : equipsFiltrats.length === 0 ? (
-                            <p className="text-xs text-slate-400 px-3 py-2">Cap equip trobat</p>
+                            <p className="text-xs text-slate-400 px-3 py-2">
+                              Cap equip trobat
+                            </p>
                           ) : (
-                            equipsFiltrats.map(e => (
-                              <button key={e.id} onClick={() => { setTagEquipId(e.id); setEquipSearch(""); }}
+                            equipsFiltrats.map((e) => (
+                              <button
+                                key={e.id}
+                                onClick={() => {
+                                  setTagEquipId(e.id);
+                                  setEquipSearch("");
+                                }}
                                 className={cn(
                                   "w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors",
-                                  tagEquipId === e.id ? "bg-[#0099A8]/10 text-[#006E7A] font-medium" : "text-slate-700"
-                                )}>
+                                  tagEquipId === e.id
+                                    ? "bg-[#0099A8]/10 text-[#006E7A] font-medium"
+                                    : "text-slate-700",
+                                )}
+                              >
                                 <div className="flex-1 min-w-0">
-                                  <span className="block truncate font-medium">{e.tableName || e.equipName}</span>
-                                  <span className="font-mono text-slate-400">{e.equipCode}</span>
+                                  <span className="block truncate font-medium">
+                                    {e.tableName || e.equipName}
+                                  </span>
+                                  <span className="font-mono text-slate-400">
+                                    {e.equipCode}
+                                  </span>
                                 </div>
-                                {tagEquipId === e.id && <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />}
+                                {tagEquipId === e.id && (
+                                  <CheckCircle2 className="h-3.5 w-3.5 text-[#0099A8] ml-auto shrink-0" />
+                                )}
                               </button>
                             ))
                           )}
@@ -1544,70 +2449,156 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
                 {/* Camps del TAG */}
                 {/* Codi instal·lació del projecte (informatiu si ja està fixat) */}
-                {projecteSeleccionat && (projecteSeleccionat.codisInstallacio?.length > 1) ? (
+                {projecteSeleccionat &&
+                projecteSeleccionat.codisInstallacio?.length > 1 ? (
                   <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Instal·lació *</Label>
+                    <Label className="text-xs font-medium">
+                      Instal·lació *
+                    </Label>
                     <div className="flex flex-wrap gap-1.5">
                       {projecteSeleccionat.codisInstallacio.map((item) => (
                         <button
-                          key={item.codi} type="button"
+                          key={item.codi}
+                          type="button"
                           className={cn(
                             "px-3 py-1 rounded-full text-xs font-medium border transition-all",
                             tagCodiInstallacio === item.codi
                               ? "bg-[#0099A8] text-white border-[#0099A8]"
-                              : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#0099A8]/50"
+                              : "bg-slate-50 text-slate-600 border-slate-200 hover:border-[#0099A8]/50",
                           )}
                           onClick={() => setTagCodiInstallacio(item.codi)}
                         >
                           <span className="font-mono">{item.codi}</span>
-                          {item.nom && <span className="ml-1 font-normal opacity-80">— {item.nom}</span>}
+                          {item.nom && (
+                            <span className="ml-1 font-normal opacity-80">
+                              — {item.nom}
+                            </span>
+                          )}
                         </button>
                       ))}
                     </div>
                   </div>
-                ) : (projecteSeleccionat?.codisInstallacio?.[0]?.codi ?? projecteSeleccionat?.codiInstallacio) ? (
+                ) : (projecteSeleccionat?.codisInstallacio?.[0]?.codi ??
+                  projecteSeleccionat?.codiInstallacio) ? (
                   <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-md text-xs flex items-center gap-2">
-                    <span className="text-slate-500">Instal·lació del projecte:</span>
-                    <span className="font-mono font-semibold text-slate-700">{projecteSeleccionat.codisInstallacio?.[0]?.codi ?? projecteSeleccionat.codiInstallacio}</span>
+                    <span className="text-slate-500">
+                      Instal·lació del projecte:
+                    </span>
+                    <span className="font-mono font-semibold text-slate-700">
+                      {projecteSeleccionat.codisInstallacio?.[0]?.codi ??
+                        projecteSeleccionat.codiInstallacio}
+                    </span>
                     {projecteSeleccionat.codisInstallacio?.[0]?.nom && (
-                      <span className="text-slate-500">— {projecteSeleccionat.codisInstallacio[0].nom}</span>
+                      <span className="text-slate-500">
+                        — {projecteSeleccionat.codisInstallacio[0].nom}
+                      </span>
                     )}
                   </div>
                 ) : null}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs font-medium">
-                      Codi instal·lació * <span className="text-slate-400 font-normal">(5 car. alfanum.)</span>
+                      Codi instal·lació *{" "}
+                      <span className="text-slate-400 font-normal">
+                        (5 car. alfanum.)
+                      </span>
                     </Label>
                     <Input
                       className="mt-1 font-mono uppercase"
                       maxLength={5}
                       placeholder="XXXXX"
                       value={tagCodiInstallacio}
-                      readOnly={!!(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio)}
-                      onChange={e => { if (!(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio)) setTagCodiInstallacio(e.target.value.toUpperCase()); }}
-                      title={(projecteSeleccionat?.codisInstallacio?.[0] ?? projecteSeleccionat?.codiInstallacio) ? (projecteSeleccionat?.codisInstallacio?.length > 1 ? "Selecciona a dalt" : "Fixat a la configuració del projecte") : undefined}
+                      readOnly={
+                        !!(
+                          projecteSeleccionat?.codisInstallacio?.[0] ??
+                          projecteSeleccionat?.codiInstallacio
+                        )
+                      }
+                      onChange={(e) => {
+                        if (
+                          !(
+                            projecteSeleccionat?.codisInstallacio?.[0] ??
+                            projecteSeleccionat?.codiInstallacio
+                          )
+                        )
+                          setTagCodiInstallacio(e.target.value.toUpperCase());
+                      }}
+                      title={
+                        (projecteSeleccionat?.codisInstallacio?.[0] ??
+                        projecteSeleccionat?.codiInstallacio)
+                          ? projecteSeleccionat?.codisInstallacio?.length > 1
+                            ? "Selecciona a dalt"
+                            : "Fixat a la configuració del projecte"
+                          : undefined
+                      }
                     />
                   </div>
                   <div>
-                    <Label className="text-xs font-medium">CCM * <span className="text-slate-400 font-normal">(1 dígit)</span></Label>
-                    <Input className="mt-1 font-mono" maxLength={1} placeholder="0" value={tagCcm} onChange={e => setTagCcm(e.target.value.replace(/\D/g, ""))} />
+                    <Label className="text-xs font-medium">
+                      CCM *{" "}
+                      <span className="text-slate-400 font-normal">
+                        (1 dígit)
+                      </span>
+                    </Label>
+                    <Input
+                      className="mt-1 font-mono"
+                      maxLength={1}
+                      placeholder="0"
+                      value={tagCcm}
+                      onChange={(e) =>
+                        setTagCcm(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
                   </div>
                   <div>
-                    <Label className="text-xs font-medium">Funció * <span className="text-slate-400 font-normal">(2 dígits)</span></Label>
-                    <Input className="mt-1 font-mono" maxLength={2} placeholder="01" value={tagFuncio} onChange={e => setTagFuncio(e.target.value.replace(/\D/g, ""))} />
+                    <Label className="text-xs font-medium">
+                      Funció *{" "}
+                      <span className="text-slate-400 font-normal">
+                        (2 dígits)
+                      </span>
+                    </Label>
+                    <Input
+                      className="mt-1 font-mono"
+                      maxLength={2}
+                      placeholder="01"
+                      value={tagFuncio}
+                      onChange={(e) =>
+                        setTagFuncio(e.target.value.replace(/\D/g, ""))
+                      }
+                    />
                   </div>
                   <div>
-                    <Label className="text-xs font-medium">Duplicitat * <span className="text-slate-400 font-normal">(1 lletra)</span></Label>
-                    <Input className="mt-1 font-mono uppercase" maxLength={1} placeholder="A" value={tagDuplicitat} onChange={e => setTagDuplicitat(e.target.value.replace(/[^a-zA-Z]/g, "").toUpperCase())} />
+                    <Label className="text-xs font-medium">
+                      Duplicitat *{" "}
+                      <span className="text-slate-400 font-normal">
+                        (1 lletra)
+                      </span>
+                    </Label>
+                    <Input
+                      className="mt-1 font-mono uppercase"
+                      maxLength={1}
+                      placeholder="A"
+                      value={tagDuplicitat}
+                      onChange={(e) =>
+                        setTagDuplicitat(
+                          e.target.value
+                            .replace(/[^a-zA-Z]/g, "")
+                            .toUpperCase(),
+                        )
+                      }
+                    />
                   </div>
                 </div>
 
                 {/* Preview tag */}
                 {previewTag && (
                   <div className="p-2.5 bg-[#0099A8]/8 border border-[#0099A8]/20 rounded-lg">
-                    <p className="text-[10px] text-[#006E7A] font-medium uppercase tracking-wider mb-1">Preview TAG</p>
-                    <p className="font-mono text-sm font-bold text-slate-700">{previewTag}</p>
+                    <p className="text-[10px] text-[#006E7A] font-medium uppercase tracking-wider mb-1">
+                      Preview TAG
+                    </p>
+                    <p className="font-mono text-sm font-bold text-slate-700">
+                      {previewTag}
+                    </p>
                   </div>
                 )}
                 {suggerimentDuplicitatInfo && (
@@ -1616,16 +2607,24 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       <AlertTriangle className="h-3 w-3" /> Duplicitat detectada
                     </p>
                     <p className="text-xs text-amber-700">
-                      Ja existeix un TAG amb el mateix codi fins a funció. Lletres usades:{" "}
-                      <span className="font-mono font-bold">{suggerimentDuplicitatInfo.usades.join(", ")}</span>
+                      Ja existeix un TAG amb el mateix codi fins a funció.
+                      Lletres usades:{" "}
+                      <span className="font-mono font-bold">
+                        {suggerimentDuplicitatInfo.usades.join(", ")}
+                      </span>
                     </p>
                     {suggerimentDuplicitatInfo.propera && (
                       <button
                         type="button"
-                        onClick={() => setTagDuplicitat(suggerimentDuplicitatInfo.propera!)}
+                        onClick={() =>
+                          setTagDuplicitat(suggerimentDuplicitatInfo.propera!)
+                        }
                         className="text-xs font-semibold text-[#006E7A] underline underline-offset-2 hover:text-[#0099A8]"
                       >
-                        Usar propera disponible: <span className="font-mono">{suggerimentDuplicitatInfo.propera}</span>
+                        Usar propera disponible:{" "}
+                        <span className="font-mono">
+                          {suggerimentDuplicitatInfo.propera}
+                        </span>
                       </button>
                     )}
                   </div>
@@ -1633,30 +2632,51 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
                 {/* Descripció de l'equip */}
                 <div>
-                  <Label className="text-xs font-medium">Descripció de l'equip</Label>
+                  <Label className="text-xs font-medium">
+                    Descripció de l'equip
+                  </Label>
                   <Input
                     className="mt-1 uppercase placeholder:normal-case"
                     placeholder="Descripció personalitzada de l'equip (opcional)"
                     value={tagDescripcio}
-                    onChange={e => setTagDescripcio(e.target.value.toUpperCase())}
+                    onChange={(e) =>
+                      setTagDescripcio(e.target.value.toUpperCase())
+                    }
                   />
                 </div>
 
                 {/* Comentari */}
                 <div>
                   <Label className="text-xs font-medium">Comentari</Label>
-                  <Input className="mt-1" placeholder="Comentari opcional" value={tagComentari} onChange={e => setTagComentari(e.target.value)} />
+                  <Input
+                    className="mt-1"
+                    placeholder="Comentari opcional"
+                    value={tagComentari}
+                    onChange={(e) => setTagComentari(e.target.value)}
+                  />
                 </div>
 
                 {tagError && (
                   <div className="flex items-center gap-2 p-2.5 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{tagError}
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    {tagError}
                   </div>
                 )}
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => { setDialogNouTag(false); setDialogEditTag(null); }}>Cancel·la</Button>
-                <Button className="bg-[#0099A8] hover:bg-[#006E7A] text-white" onClick={dialogEditTag ? guardarEditTag : guardarNouTag}>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDialogNouTag(false);
+                    setDialogEditTag(null);
+                  }}
+                >
+                  Cancel·la
+                </Button>
+                <Button
+                  className="bg-[#0099A8] hover:bg-[#006E7A] text-white"
+                  onClick={dialogEditTag ? guardarEditTag : guardarNouTag}
+                >
                   {dialogEditTag ? "Guardar canvis" : "Crear TAG"}
                 </Button>
               </DialogFooter>
@@ -1670,21 +2690,47 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
             <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Validar TAG</DialogTitle>
-                <p className="font-mono text-sm bg-slate-100 px-2 py-1.5 rounded mt-2">{dialogValidar.tagComplet}</p>
+                <p className="font-mono text-sm bg-slate-100 px-2 py-1.5 rounded mt-2">
+                  {dialogValidar.tagComplet}
+                </p>
               </DialogHeader>
               <div className="py-2 space-y-3">
                 <div>
-                  <Label className="text-xs font-medium">Comentari de revisió</Label>
-                  <Input className="mt-1" placeholder="Comentari..." value={tagComentari} onChange={e => setTagComentari(e.target.value)} />
+                  <Label className="text-xs font-medium">
+                    Comentari de revisió
+                  </Label>
+                  <Input
+                    className="mt-1"
+                    placeholder="Comentari..."
+                    value={tagComentari}
+                    onChange={(e) => setTagComentari(e.target.value)}
+                  />
                 </div>
               </div>
               <DialogFooter className="gap-2">
-                <Button variant="outline" onClick={() => setDialogValidar(null)}>Cancel·la</Button>
-                <Button className="bg-red-500 hover:bg-red-600 text-white" onClick={() => validarTag(dialogValidar, "rebutjat", tagComentari)}>
-                  <XCircle className="h-3.5 w-3.5 mr-1.5" />Rebutjar
+                <Button
+                  variant="outline"
+                  onClick={() => setDialogValidar(null)}
+                >
+                  Cancel·la
                 </Button>
-                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={() => validarTag(dialogValidar, "validat", tagComentari)}>
-                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />Validar
+                <Button
+                  className="bg-red-500 hover:bg-red-600 text-white"
+                  onClick={() =>
+                    validarTag(dialogValidar, "rebutjat", tagComentari)
+                  }
+                >
+                  <XCircle className="h-3.5 w-3.5 mr-1.5" />
+                  Rebutjar
+                </Button>
+                <Button
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() =>
+                    validarTag(dialogValidar, "validat", tagComentari)
+                  }
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
+                  Validar
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -1692,7 +2738,12 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         )}
 
         {/* ── DIÀLEG: ADVERTÈNCIA CANVI CODI INSTAL·LACIÓ ──────────────── */}
-        <AlertDialog open={!!dialogCanviInstallacio} onOpenChange={(o) => { if (!o) setDialogCanviInstallacio(null); }}>
+        <AlertDialog
+          open={!!dialogCanviInstallacio}
+          onOpenChange={(o) => {
+            if (!o) setDialogCanviInstallacio(null);
+          }}
+        >
           <AlertDialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
@@ -1703,37 +2754,63 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                 <div className="space-y-3 text-sm text-slate-600">
                   <p>
                     Estàs canviant el codi d'instal·lació de{" "}
-                    <span className="font-mono font-semibold text-slate-800">{dialogCanviInstallacio?.codiAntic}</span>{" "}
+                    <span className="font-mono font-semibold text-slate-800">
+                      {dialogCanviInstallacio?.codiAntic}
+                    </span>{" "}
                     a{" "}
-                    <span className="font-mono font-semibold text-slate-800">{dialogCanviInstallacio?.nouCodi}</span>.
+                    <span className="font-mono font-semibold text-slate-800">
+                      {dialogCanviInstallacio?.nouCodi}
+                    </span>
+                    .
                   </p>
                   <p>
                     Aquest projecte té{" "}
                     <span className="font-semibold text-slate-800">
-                      {projectes.find(p => p.id === dialogEditProjecte)?.tags.length ?? 0} tags
+                      {projectes.find((p) => p.id === dialogEditProjecte)?.tags
+                        .length ?? 0}{" "}
+                      tags
                     </span>{" "}
-                    creats. Vols actualitzar també el codi d'instal·lació dels tags existents?
+                    creats. Vols actualitzar també el codi d'instal·lació dels
+                    tags existents?
                   </p>
                   <div className="rounded-md border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-800">
-                    Si <strong>no</strong> actualitzes els tags, continuaran amb el codi antic{" "}
-                    <span className="font-mono">{dialogCanviInstallacio?.codiAntic}</span> al seu TAG.
+                    Si <strong>no</strong> actualitzes els tags, continuaran amb
+                    el codi antic{" "}
+                    <span className="font-mono">
+                      {dialogCanviInstallacio?.codiAntic}
+                    </span>{" "}
+                    al seu TAG.
                   </div>
                 </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-              <AlertDialogCancel onClick={() => setDialogCanviInstallacio(null)}>
+              <AlertDialogCancel
+                onClick={() => setDialogCanviInstallacio(null)}
+              >
                 Cancel·la
               </AlertDialogCancel>
               <AlertDialogAction
                 className="bg-slate-600 hover:bg-slate-700 text-white"
-                onClick={() => dialogCanviInstallacio && guardarEditProjecteReal(dialogCanviInstallacio.pendingData, false)}
+                onClick={() =>
+                  dialogCanviInstallacio &&
+                  guardarEditProjecteReal(
+                    dialogCanviInstallacio.pendingData,
+                    false,
+                  )
+                }
               >
                 Canviar només el projecte
               </AlertDialogAction>
               <AlertDialogAction
                 className="bg-[#0099A8] hover:bg-[#006E7A] text-white"
-                onClick={() => dialogCanviInstallacio && guardarEditProjecteReal(dialogCanviInstallacio.pendingData, true)}
+                onClick={() =>
+                  dialogCanviInstallacio &&
+                  guardarEditProjecteReal(
+                    dialogCanviInstallacio.pendingData,
+                    true,
+                  )
+                }
               >
                 Canviar projecte i tags
               </AlertDialogAction>
@@ -1742,21 +2819,36 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         </AlertDialog>
 
         {/* ── DIÀLEG: ARXIVAR ─────────────────────────────────────────────── */}
-        <AlertDialog open={!!dialogArxivar} onOpenChange={() => setDialogArxivar(null)}>
+        <AlertDialog
+          open={!!dialogArxivar}
+          onOpenChange={() => setDialogArxivar(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>
-                {projectes.find(p=>p.id===dialogArxivar)?.status === "arxivat" ? "Desarxivar projecte?" : "Arxivar projecte?"}
+                {projectes.find((p) => p.id === dialogArxivar)?.status ===
+                "arxivat"
+                  ? "Desarxivar projecte?"
+                  : "Arxivar projecte?"}
               </AlertDialogTitle>
               <AlertDialogDescription>
-                {projectes.find(p=>p.id===dialogArxivar)?.status === "arxivat"
+                {projectes.find((p) => p.id === dialogArxivar)?.status ===
+                "arxivat"
                   ? "El projecte tornarà a estar actiu i es podran afegir nous tags."
                   : "El projecte es marcarà com a arxivat. No es podran afegir nous tags fins que es desarxivi."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-              <AlertDialogAction className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={() => { arxivarProjecte(dialogArxivar!); setDialogArxivar(null); }}>Confirmar</AlertDialogAction>
+              <AlertDialogAction
+                className="bg-[#0099A8] hover:bg-[#006E7A]"
+                onClick={() => {
+                  arxivarProjecte(dialogArxivar!);
+                  setDialogArxivar(null);
+                }}
+              >
+                Confirmar
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -1764,15 +2856,22 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         {/* ── DIÀLEG: ELIMINAR TAG ─────────────────────────────────────── */}
         {(() => {
           const tagAEliminar = dialogEliminarTagValidat
-            ? projecteSeleccionat?.tags.find(t => t.id === dialogEliminarTagValidat) ?? null
+            ? (projecteSeleccionat?.tags.find(
+                (t) => t.id === dialogEliminarTagValidat,
+              ) ?? null)
             : null;
           const esValidat = tagAEliminar?.status === "validat";
           return (
-            <AlertDialog open={!!dialogEliminarTagValidat} onOpenChange={() => setDialogEliminarTagValidat(null)}>
+            <AlertDialog
+              open={!!dialogEliminarTagValidat}
+              onOpenChange={() => setDialogEliminarTagValidat(null)}
+            >
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle className="flex items-center gap-2">
-                    <AlertTriangle className={`h-5 w-5 ${esValidat ? "text-amber-500" : "text-red-500"}`} />
+                    <AlertTriangle
+                      className={`h-5 w-5 ${esValidat ? "text-amber-500" : "text-red-500"}`}
+                    />
                     Eliminar tag?
                   </AlertDialogTitle>
                   <AlertDialogDescription asChild>
@@ -1784,8 +2883,20 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                       )}
                       {esValidat ? (
                         <>
-                          <p>Aquest tag ja ha estat <span className="font-semibold text-emerald-700">validat</span> i pot estar al llistat Rosmiman.</p>
-                          <p>Eliminar-lo del projecte <span className="font-semibold">no</span> l'eliminarà automàticament del llistat Rosmiman. Si cal, elimina'l manualment des de la pàgina de Rosmiman.</p>
+                          <p>
+                            Aquest tag ja ha estat{" "}
+                            <span className="font-semibold text-emerald-700">
+                              validat
+                            </span>{" "}
+                            i pot estar al llistat Rosmiman.
+                          </p>
+                          <p>
+                            Eliminar-lo del projecte{" "}
+                            <span className="font-semibold">no</span>{" "}
+                            l'eliminarà automàticament del llistat Rosmiman. Si
+                            cal, elimina'l manualment des de la pàgina de
+                            Rosmiman.
+                          </p>
                         </>
                       ) : (
                         <p>Aquesta acció no es pot desfer.</p>
@@ -1797,7 +2908,10 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                   <AlertDialogCancel>Cancel·la</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-red-600 hover:bg-red-700"
-                    onClick={() => { eliminarTag(dialogEliminarTagValidat!); setDialogEliminarTagValidat(null); }}
+                    onClick={() => {
+                      eliminarTag(dialogEliminarTagValidat!);
+                      setDialogEliminarTagValidat(null);
+                    }}
                   >
                     Eliminar
                   </AlertDialogAction>
@@ -1808,17 +2922,29 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         })()}
 
         {/* ── DIÀLEG: ELIMINAR PROJECTE ────────────────────────────────────── */}
-        <AlertDialog open={!!dialogEliminarProjecte} onOpenChange={() => setDialogEliminarProjecte(null)}>
+        <AlertDialog
+          open={!!dialogEliminarProjecte}
+          onOpenChange={() => setDialogEliminarProjecte(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Eliminar projecte?</AlertDialogTitle>
               <AlertDialogDescription>
-                S'eliminaran el projecte i tots els seus tags. Aquesta acció no es pot desfer.
+                S'eliminaran el projecte i tots els seus tags. Aquesta acció no
+                es pot desfer.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-              <AlertDialogAction className="bg-red-600 hover:bg-red-700" onClick={() => { eliminarProjecte(dialogEliminarProjecte!); setDialogEliminarProjecte(null); }}>Eliminar</AlertDialogAction>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => {
+                  eliminarProjecte(dialogEliminarProjecte!);
+                  setDialogEliminarProjecte(null);
+                }}
+              >
+                Eliminar
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -1826,91 +2952,139 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
         {/* ── DIÀLEG: DETALL EQUIP ────────────────────────────────────────── */}
         <ProjecteEquipDetailDialog
           open={!!detallEquip}
-          onOpenChange={(b) => { if (!b) setDetallEquip(null); }}
+          onOpenChange={(b) => {
+            if (!b) setDetallEquip(null);
+          }}
           equipment={detallEquipObj}
           nodeMap={gubimNodeMap}
           fieldMap={fieldMap}
           fields={fields}
           onEdit={() => {
-            if (detallTag) { obrirEditTag(detallTag); }
+            if (detallTag) {
+              obrirEditTag(detallTag);
+            }
             setDetallEquip(null);
           }}
-          canEditEquip={canEditProjecte && projecteSeleccionat?.status === "actiu"}
+          canEditEquip={
+            canEditProjecte && projecteSeleccionat?.status === "actiu"
+          }
           canEditValues={
             // editor_global: pot omplir camps de tags en qualsevol estat
             // editor_caracteristiques: només pot omplir camps de tags ja validats
             // viewer: no pot omplir res
             canEditProjecte
               ? true
-              : (canEditValidats && detallTag?.status === "validat")
+              : canEditValidats && detallTag?.status === "validat"
           }
           fieldValues={detallTag?.fieldValues ?? {}}
-          onSaveValues={(vals) => detallTag && saveFieldValues(detallTag.id, vals)}
+          onSaveValues={(vals) =>
+            detallTag && saveFieldValues(detallTag.id, vals)
+          }
           tagComplet={detallTag?.tagComplet}
         />
 
         {/* ── DIÀLEG: EDICIÓ MÚLTIPLE DE CAMPS ────────────────────────────── */}
-        {dialogMultiEdit && multiEditEquip && (() => {
-          // Valors inicials: buits (l'usuari omple el que vol aplicar)
-          return (
-            <ProjecteEquipDetailDialog
-              open={dialogMultiEdit}
-              onOpenChange={(b) => { if (!b) setDialogMultiEdit(false); }}
-              equipment={multiEditEquip}
-              nodeMap={gubimNodeMap}
-              fieldMap={fieldMap}
-              fields={fields}
-              onEdit={() => {}}
-              canEditEquip={false}
-              canEditValues={canEditValidats}
-              fieldValues={{}}
-              onSaveValues={saveMultiFieldValues}
-              multiSelectCount={selectedTagIds.size}
-            />
-          );
-        })()}
+        {dialogMultiEdit &&
+          multiEditEquip &&
+          (() => {
+            // Valors inicials: buits (l'usuari omple el que vol aplicar)
+            return (
+              <ProjecteEquipDetailDialog
+                open={dialogMultiEdit}
+                onOpenChange={(b) => {
+                  if (!b) setDialogMultiEdit(false);
+                }}
+                equipment={multiEditEquip}
+                nodeMap={gubimNodeMap}
+                fieldMap={fieldMap}
+                fields={fields}
+                onEdit={() => {}}
+                canEditEquip={false}
+                canEditValues={canEditValidats}
+                fieldValues={{}}
+                onSaveValues={saveMultiFieldValues}
+                multiSelectCount={selectedTagIds.size}
+              />
+            );
+          })()}
 
         {/* ── DIÀLEG: EDITAR EQUIP (camps específics) ─────────────────────── */}
         <EquipmentFormDialog
           open={!!editEquip}
-          onOpenChange={(b) => { if (!b) setEditEquip(null); }}
+          onOpenChange={(b) => {
+            if (!b) setEditEquip(null);
+          }}
           editing={editEquipObj}
           nodes={gubimNodes}
           nodeMap={gubimNodeMap}
           fields={fields}
           fieldMap={fieldMap}
-          onSubmit={async (data) => { await upsertEquip(data); setEditEquip(null); toast.success("Camps de l'equip guardats"); }}
+          onSubmit={async (data) => {
+            await upsertEquip(data);
+            setEditEquip(null);
+            toast.success("Camps de l'equip guardats");
+          }}
           isCodeTaken={isEquipCodeTaken}
           allEquipments={equipments}
         />
         {/* ── DIÀLEG: GESTIÓ D'ACCÉS PER USUARI (només admins) ──────────── */}
-        <Dialog open={!!dialogUsuaris} onOpenChange={(b) => { if (!b) { setDialogUsuaris(null); setUserSearch(""); } }}>
+        <Dialog
+          open={!!dialogUsuaris}
+          onOpenChange={(b) => {
+            if (!b) {
+              setDialogUsuaris(null);
+              setUserSearch("");
+            }
+          }}
+        >
           <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-[#0099A8]" />
                 Accés al projecte
                 {(() => {
-                  const nom = projectes.find(p => p.id === dialogUsuaris)?.nom;
-                  return nom ? <span className="font-normal text-slate-400">— {nom}</span> : null;
+                  const nom = projectes.find(
+                    (p) => p.id === dialogUsuaris,
+                  )?.nom;
+                  return nom ? (
+                    <span className="font-normal text-slate-400">— {nom}</span>
+                  ) : null;
                 })()}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-1">
-
               {/* Llegenda compacta de rols */}
               <div className="grid grid-cols-3 gap-2 text-[10px]">
                 <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-slate-50 border border-slate-200">
                   <Eye className="h-3 w-3 text-slate-400 shrink-0" />
-                  <div><p className="font-semibold text-slate-600">Visualitzador</p><p className="text-slate-400 leading-tight">Veu projecte i tags. Sense edició.</p></div>
+                  <div>
+                    <p className="font-semibold text-slate-600">
+                      Visualitzador
+                    </p>
+                    <p className="text-slate-400 leading-tight">
+                      Veu projecte i tags. Sense edició.
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-blue-50 border border-blue-200">
                   <Pencil className="h-3 w-3 text-blue-500 shrink-0" />
-                  <div><p className="font-semibold text-blue-700">Editor global</p><p className="text-blue-400 leading-tight">Crea tags, edita, omple camps i valida.</p></div>
+                  <div>
+                    <p className="font-semibold text-blue-700">Editor global</p>
+                    <p className="text-blue-400 leading-tight">
+                      Crea tags, edita, omple camps i valida.
+                    </p>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 border border-amber-200">
                   <ClipboardCheck className="h-3 w-3 text-amber-500 shrink-0" />
-                  <div><p className="font-semibold text-amber-700">Ed. Característiques</p><p className="text-amber-400 leading-tight">Omple camps dels tags validats.</p></div>
+                  <div>
+                    <p className="font-semibold text-amber-700">
+                      Ed. Característiques
+                    </p>
+                    <p className="text-amber-400 leading-tight">
+                      Omple camps dels tags validats.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -1921,11 +3095,14 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
                   className="flex-1 text-xs bg-transparent outline-none placeholder:text-slate-400"
                   placeholder="Cerca per nom, correu electrònic…"
                   value={userSearch}
-                  onChange={e => setUserSearch(e.target.value)}
+                  onChange={(e) => setUserSearch(e.target.value)}
                   autoFocus
                 />
                 {userSearch && (
-                  <button onClick={() => setUserSearch("")} className="text-slate-400 hover:text-slate-600">
+                  <button
+                    onClick={() => setUserSearch("")}
+                    className="text-slate-400 hover:text-slate-600"
+                  >
                     <XCircle className="h-3.5 w-3.5" />
                   </button>
                 )}
@@ -1933,154 +3110,252 @@ export function ProjectesEquipsPage({ initialTab = "projectes", onTabChange }: P
 
               {/* Taula d'usuaris */}
               {loadingUsers ? (
-                <p className="text-sm text-slate-400 text-center py-6">Carregant usuaris…</p>
-              ) : (() => {
-                const q = userSearch.toLowerCase().trim();
-                const usuarisBase = allUsers.filter(u => u.role !== "admin");
-                const usuarisFiltrats = q
-                  ? usuarisBase.filter(u =>
-                      (u.full_name ?? "").toLowerCase().includes(q) ||
-                      (u.email ?? "").toLowerCase().includes(q) ||
-                      (u.organisation ?? "").toLowerCase().includes(q)
-                    )
-                  : usuarisBase;
-
-                if (usuarisFiltrats.length === 0) {
-                  return (
-                    <p className="text-sm text-slate-400 text-center py-6">
-                      {q ? "Cap usuari coincideix amb la cerca" : "Cap usuari no-admin trobat"}
-                    </p>
+                <p className="text-sm text-slate-400 text-center py-6">
+                  Carregant usuaris…
+                </p>
+              ) : (
+                (() => {
+                  const q = userSearch.toLowerCase().trim();
+                  const usuarisBase = allUsers.filter(
+                    (u) => u.role !== "admin",
                   );
-                }
+                  const usuarisFiltrats = q
+                    ? usuarisBase.filter(
+                        (u) =>
+                          (u.full_name ?? "").toLowerCase().includes(q) ||
+                          (u.email ?? "").toLowerCase().includes(q) ||
+                          (u.organisation ?? "").toLowerCase().includes(q),
+                      )
+                    : usuarisBase;
 
-                return (
-                  <div className="border border-slate-200 rounded-lg overflow-auto" style={{ maxHeight: 320 }}>
-                    <table className="w-full text-sm">
-                      <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
-                        <tr className="text-left">
-                          <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Usuari</th>
-                          <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Correu</th>
-                          <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Rol al projecte</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {usuarisFiltrats.map(u => {
-                          const entry = selectedProjectUsers.find(x => x.userId === u.id);
-                          const currentRole: ProjectRole | null = entry?.role ?? null;
-                          return (
-                            <tr key={u.id} className={cn(
-                              "border-t border-slate-100 transition-colors",
-                              currentRole ? "bg-[#0099A8]/5 hover:bg-[#0099A8]/10" : "hover:bg-slate-50/70"
-                            )}>
-                              {/* Usuari */}
-                              <td className="px-3 py-2.5">
-                                <div className="flex items-center gap-2">
-                                  <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-500">
-                                    {((u.full_name || u.email || "?")[0]).toUpperCase()}
+                  if (usuarisFiltrats.length === 0) {
+                    return (
+                      <p className="text-sm text-slate-400 text-center py-6">
+                        {q
+                          ? "Cap usuari coincideix amb la cerca"
+                          : "Cap usuari no-admin trobat"}
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div
+                      className="border border-slate-200 rounded-lg overflow-auto"
+                      style={{ maxHeight: 320 }}
+                    >
+                      <table className="w-full text-sm">
+                        <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                          <tr className="text-left">
+                            <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              Usuari
+                            </th>
+                            <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                              Correu
+                            </th>
+                            <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">
+                              Rol al projecte
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {usuarisFiltrats.map((u) => {
+                            const entry = selectedProjectUsers.find(
+                              (x) => x.userId === u.id,
+                            );
+                            const currentRole: ProjectRole | null =
+                              entry?.role ?? null;
+                            return (
+                              <tr
+                                key={u.id}
+                                className={cn(
+                                  "border-t border-slate-100 transition-colors",
+                                  currentRole
+                                    ? "bg-[#0099A8]/5 hover:bg-[#0099A8]/10"
+                                    : "hover:bg-slate-50/70",
+                                )}
+                              >
+                                {/* Usuari */}
+                                <td className="px-3 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-[10px] font-bold text-slate-500">
+                                      {(u.full_name ||
+                                        u.email ||
+                                        "?")[0].toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium text-slate-700 truncate">
+                                        {u.full_name || "—"}
+                                      </p>
+                                      {u.organisation && (
+                                        <p className="text-[10px] text-slate-400 truncate">
+                                          {u.organisation}
+                                        </p>
+                                      )}
+                                    </div>
                                   </div>
-                                  <div className="min-w-0">
-                                    <p className="text-xs font-medium text-slate-700 truncate">{u.full_name || "—"}</p>
-                                    {u.organisation && <p className="text-[10px] text-slate-400 truncate">{u.organisation}</p>}
+                                </td>
+                                {/* Correu */}
+                                <td className="px-3 py-2.5">
+                                  <span className="text-[11px] font-mono text-slate-500">
+                                    {u.email}
+                                  </span>
+                                </td>
+                                {/* Selector de rol */}
+                                <td className="px-3 py-2.5">
+                                  <div className="flex items-center justify-center gap-1">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setUserProjectRole(u.id, null)
+                                          }
+                                          className={cn(
+                                            "h-6 w-6 rounded border transition-colors flex items-center justify-center text-[11px] font-bold",
+                                            currentRole === null
+                                              ? "bg-slate-200 border-slate-400 text-slate-700"
+                                              : "bg-white border-slate-200 text-slate-300 hover:bg-slate-50 hover:text-slate-500",
+                                          )}
+                                        >
+                                          —
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Sense accés
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setUserProjectRole(u.id, "viewer")
+                                          }
+                                          className={cn(
+                                            "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
+                                            currentRole === "viewer"
+                                              ? "bg-slate-600 border-slate-700 text-white"
+                                              : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50",
+                                          )}
+                                        >
+                                          <Eye className="h-2.5 w-2.5" /> Vis.
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Visualitzador — veu projecte i tags,
+                                        sense edició
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setUserProjectRole(
+                                              u.id,
+                                              "editor_global",
+                                            )
+                                          }
+                                          className={cn(
+                                            "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
+                                            currentRole === "editor_global"
+                                              ? "bg-blue-600 border-blue-700 text-white"
+                                              : "bg-white border-slate-200 text-slate-400 hover:bg-blue-50",
+                                          )}
+                                        >
+                                          <Pencil className="h-2.5 w-2.5" />{" "}
+                                          Editor
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Editor global — crea tags, edita equips,
+                                        omple camps i valida
+                                      </TooltipContent>
+                                    </Tooltip>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            setUserProjectRole(
+                                              u.id,
+                                              "editor_caracteristiques",
+                                            )
+                                          }
+                                          className={cn(
+                                            "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
+                                            currentRole ===
+                                              "editor_caracteristiques"
+                                              ? "bg-amber-500 border-amber-600 text-white"
+                                              : "bg-white border-slate-200 text-slate-400 hover:bg-amber-50",
+                                          )}
+                                        >
+                                          <ClipboardCheck className="h-2.5 w-2.5" />{" "}
+                                          Caracts.
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        Ed. Característiques — omple camps
+                                        tècnics dels tags validats
+                                      </TooltipContent>
+                                    </Tooltip>
                                   </div>
-                                </div>
-                              </td>
-                              {/* Correu */}
-                              <td className="px-3 py-2.5">
-                                <span className="text-[11px] font-mono text-slate-500">{u.email}</span>
-                              </td>
-                              {/* Selector de rol */}
-                              <td className="px-3 py-2.5">
-                                <div className="flex items-center justify-center gap-1">
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button type="button" onClick={() => setUserProjectRole(u.id, null)}
-                                        className={cn(
-                                          "h-6 w-6 rounded border transition-colors flex items-center justify-center text-[11px] font-bold",
-                                          currentRole === null
-                                            ? "bg-slate-200 border-slate-400 text-slate-700"
-                                            : "bg-white border-slate-200 text-slate-300 hover:bg-slate-50 hover:text-slate-500"
-                                        )}>—</button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Sense accés</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button type="button" onClick={() => setUserProjectRole(u.id, "viewer")}
-                                        className={cn(
-                                          "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
-                                          currentRole === "viewer"
-                                            ? "bg-slate-600 border-slate-700 text-white"
-                                            : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50"
-                                        )}>
-                                        <Eye className="h-2.5 w-2.5" /> Vis.
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Visualitzador — veu projecte i tags, sense edició</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button type="button" onClick={() => setUserProjectRole(u.id, "editor_global")}
-                                        className={cn(
-                                          "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
-                                          currentRole === "editor_global"
-                                            ? "bg-blue-600 border-blue-700 text-white"
-                                            : "bg-white border-slate-200 text-slate-400 hover:bg-blue-50"
-                                        )}>
-                                        <Pencil className="h-2.5 w-2.5" /> Editor
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Editor global — crea tags, edita equips, omple camps i valida</TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <button type="button" onClick={() => setUserProjectRole(u.id, "editor_caracteristiques")}
-                                        className={cn(
-                                          "h-6 px-2 rounded border transition-colors flex items-center gap-1 text-[10px] font-medium",
-                                          currentRole === "editor_caracteristiques"
-                                            ? "bg-amber-500 border-amber-600 text-white"
-                                            : "bg-white border-slate-200 text-slate-400 hover:bg-amber-50"
-                                        )}>
-                                        <ClipboardCheck className="h-2.5 w-2.5" /> Caracts.
-                                      </button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Ed. Característiques — omple camps tècnics dels tags validats</TooltipContent>
-                                  </Tooltip>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                );
-              })()}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()
+              )}
 
               {/* Resum assignacions */}
-              {!loadingUsers && (() => {
-                const assignats = selectedProjectUsers.filter(u =>
-                  ["viewer","editor_global","editor_caracteristiques"].includes(u.role)
-                );
-                return assignats.length > 0 ? (
-                  <p className="text-xs text-[#006E7A] font-medium">
-                    {assignats.length} usuari{assignats.length !== 1 ? "s" : ""} amb accés assignat
-                  </p>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">
-                    🔒 Cap usuari assignat — només els administradors hi tindran accés
-                  </p>
-                );
-              })()}
+              {!loadingUsers &&
+                (() => {
+                  const assignats = selectedProjectUsers.filter((u) =>
+                    [
+                      "viewer",
+                      "editor_global",
+                      "editor_caracteristiques",
+                    ].includes(u.role),
+                  );
+                  return assignats.length > 0 ? (
+                    <p className="text-xs text-[#006E7A] font-medium">
+                      {assignats.length} usuari
+                      {assignats.length !== 1 ? "s" : ""} amb accés assignat
+                    </p>
+                  ) : (
+                    <p className="text-xs text-slate-400 italic">
+                      🔒 Cap usuari assignat — només els administradors hi
+                      tindran accés
+                    </p>
+                  );
+                })()}
             </div>
             <DialogFooter>
-              <Button variant="outline" size="sm" onClick={() => { setDialogUsuaris(null); setUserSearch(""); }}>Cancel·la</Button>
-              <Button size="sm" className="bg-[#0099A8] hover:bg-[#006E7A]" onClick={guardarUsuaris} disabled={savingUsers}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setDialogUsuaris(null);
+                  setUserSearch("");
+                }}
+              >
+                Cancel·la
+              </Button>
+              <Button
+                size="sm"
+                className="bg-[#0099A8] hover:bg-[#006E7A]"
+                onClick={guardarUsuaris}
+                disabled={savingUsers}
+              >
                 {savingUsers ? "Desant…" : "Desa permisos"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
       </div>
     </TooltipProvider>
   );
