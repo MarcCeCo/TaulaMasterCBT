@@ -15,18 +15,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabaseAdmin = createClient(
     process.env.VITE_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
   const supabaseUser = createClient(
     process.env.VITE_SUPABASE_URL!,
     process.env.VITE_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: req.headers.authorization ?? "" } } }
+    { global: { headers: { Authorization: req.headers.authorization ?? "" } } },
   );
 
   // Verificar sessió del admin que fa la crida
-  const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-  if (userError || !user) return res.status(401).json({ error: "Sessió invàlida" });
+  const {
+    data: { user },
+    error: userError,
+  } = await supabaseUser.auth.getUser();
+  if (userError || !user)
+    return res.status(401).json({ error: "Sessió invàlida" });
 
   // Verificar que és admin
   const { data: profile } = await supabaseAdmin
@@ -36,33 +40,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .single();
 
   if (profile?.role !== "admin") {
-    return res.status(403).json({ error: "Necessites permisos d'administrador" });
+    return res
+      .status(403)
+      .json({ error: "Necessites permisos d'administrador" });
   }
 
   const { email, full_name, role, allowed_views, organisation } = req.body;
 
   if (!email || !role) {
-    return res.status(400).json({ error: "El correu i el rol són obligatoris" });
+    return res
+      .status(400)
+      .json({ error: "El correu i el rol són obligatoris" });
   }
   // Ara el rol només pot ser "user" o "admin"
   if (!["user", "admin"].includes(role)) {
-    return res.status(400).json({ error: "Rol no vàlid. Valors acceptats: user, admin" });
+    return res
+      .status(400)
+      .json({ error: "Rol no vàlid. Valors acceptats: user, admin" });
   }
 
   // Convidar l'usuari per correu
-  const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(
-    email,
-    {
+  const { data: inviteData, error: inviteError } =
+    await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
       data: { full_name, role },
       redirectTo: `${process.env.APP_URL ?? "https://taula-master-cbt.vercel.app"}/auth/callback`,
-    }
-  );
+    });
 
   if (inviteError) return res.status(400).json({ error: inviteError.message });
 
   const newUserId = inviteData.user?.id;
   if (!newUserId) {
-    return res.status(500).json({ error: "No s'ha pogut obtenir l'ID del nou usuari" });
+    return res
+      .status(500)
+      .json({ error: "No s'ha pogut obtenir l'ID del nou usuari" });
   }
 
   // Supabase crea el perfil via trigger de forma asíncrona.
@@ -86,26 +96,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .from("user_profiles")
         .update({
           role,
-          full_name:     full_name ?? null,
-          created_by:    user.id,
+          full_name: full_name ?? null,
+          created_by: user.id,
           allowed_views: allowed_views ?? null,
-          organisation:  organisation ?? null,
+          organisation: organisation ?? null,
         })
         .eq("id", newUserId);
       profileError = error ?? null;
     } else {
       // El trigger no l'ha creat encara (o no hi ha trigger): inserim directament
-      const { error } = await supabaseAdmin
-        .from("user_profiles")
-        .upsert({
-          id:            newUserId,
-          email:         email.trim(),
-          role,
-          full_name:     full_name ?? null,
-          created_by:    user.id,
-          allowed_views: allowed_views ?? null,
-          organisation:  organisation ?? null,
-        });
+      const { error } = await supabaseAdmin.from("user_profiles").upsert({
+        id: newUserId,
+        email: email.trim(),
+        role,
+        full_name: full_name ?? null,
+        created_by: user.id,
+        allowed_views: allowed_views ?? null,
+        organisation: organisation ?? null,
+      });
       profileError = error ?? null;
     }
 
@@ -118,7 +126,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({
       success: true,
       user_id: newUserId,
-      warning: "Usuari creat però el perfil no s'ha pogut actualitzar completament",
+      warning:
+        "Usuari creat però el perfil no s'ha pogut actualitzar completament",
     });
   }
 

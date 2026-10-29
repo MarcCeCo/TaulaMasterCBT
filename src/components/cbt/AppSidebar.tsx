@@ -6,16 +6,13 @@ import {
   Box,
   Building2,
   FolderOpen,
-
   KeyRound,
   LayoutDashboard,
   LogOut,
   Menu,
   Package,
-
   Shield,
   Table2,
-
   Users,
   X,
 } from "lucide-react";
@@ -48,7 +45,14 @@ interface Props {
 
 export function AppSidebar({ activeSection, onSectionChange }: Props) {
   const { profile, isAdmin, canEditView, canSeeView, signOut } = useAuth();
-  const ALL_VIEWS_LIST = ["equips", "gubimclass", "fields", "revit", "projectes", "rosmiman"] as const;
+  const ALL_VIEWS_LIST = [
+    "equips",
+    "gubimclass",
+    "fields",
+    "revit",
+    "projectes",
+    "rosmiman",
+  ] as const;
   const hasAnyEditor = ALL_VIEWS_LIST.some((v) => canEditView(v));
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -58,7 +62,12 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       label: "Inici",
       icon: <LayoutDashboard className="h-3.5 w-3.5" />,
       items: [
-        { id: "dashboard", label: "Resum general", icon: <LayoutDashboard className="h-[15px] w-[15px]" />, section: "dashboard" },
+        {
+          id: "dashboard",
+          label: "Resum general",
+          icon: <LayoutDashboard className="h-[15px] w-[15px]" />,
+          section: "dashboard",
+        },
       ],
     },
     {
@@ -66,7 +75,13 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       label: "Dades",
       icon: <Table2 className="h-3.5 w-3.5" />,
       items: [
-        { id: "equips", label: "Taula Master", icon: <Package className="h-[15px] w-[15px]" />, section: "equips", view: "equips" },
+        {
+          id: "equips",
+          label: "Taula Master",
+          icon: <Package className="h-[15px] w-[15px]" />,
+          section: "equips",
+          view: "equips",
+        },
       ],
     },
     {
@@ -74,8 +89,20 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       label: "Portal BIM",
       icon: <Building2 className="h-3.5 w-3.5" />,
       items: [
-        { id: "revit-bim", label: "Documentació BIM", icon: <BookOpen className="h-[15px] w-[15px]" />, section: "revit-bim", view: "revit" },
-        { id: "visualitzador-3d", label: "Visualitzador 3D", icon: <Box className="h-[15px] w-[15px]" />, section: "visualitzador-3d", view: "visor3d" },
+        {
+          id: "revit-bim",
+          label: "Documentació BIM",
+          icon: <BookOpen className="h-[15px] w-[15px]" />,
+          section: "revit-bim",
+          view: "revit",
+        },
+        {
+          id: "visualitzador-3d",
+          label: "Visualitzador 3D",
+          icon: <Box className="h-[15px] w-[15px]" />,
+          section: "visualitzador-3d",
+          view: "visor3d",
+        },
       ],
     },
     {
@@ -83,7 +110,13 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       label: "Projectes",
       icon: <FolderOpen className="h-3.5 w-3.5" />,
       items: [
-        { id: "projectes-equips", label: "Llistat de projectes", icon: <FolderOpen className="h-[15px] w-[15px]" />, section: "projectes-equips", view: "projectes" },
+        {
+          id: "projectes-equips",
+          label: "Llistat de projectes",
+          icon: <FolderOpen className="h-[15px] w-[15px]" />,
+          section: "projectes-equips",
+          view: "projectes",
+        },
       ],
     },
     {
@@ -91,19 +124,41 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       label: "Administració",
       icon: <Shield className="h-3.5 w-3.5" />,
       items: [
-        { id: "usuaris", label: "Gestió d'usuaris", icon: <Users className="h-[15px] w-[15px]" />, section: "usuaris", adminOnly: true },
-        { id: "control-agents", label: "Control d'agents", icon: <Bot className="h-[15px] w-[15px]" />, section: "control-agents", adminOnly: true },
-        { id: "canviapwd", label: "Canvia contrasenya", icon: <KeyRound className="h-[15px] w-[15px]" />, section: "canviapwd" },
+        {
+          id: "usuaris",
+          label: "Gestió d'usuaris",
+          icon: <Users className="h-[15px] w-[15px]" />,
+          section: "usuaris",
+          adminOnly: true,
+        },
+        {
+          id: "control-agents",
+          label: "Control d'agents",
+          icon: <Bot className="h-[15px] w-[15px]" />,
+          section: "control-agents",
+          adminOnly: true,
+        },
+        {
+          id: "canviapwd",
+          label: "Canvia contrasenya",
+          icon: <KeyRound className="h-[15px] w-[15px]" />,
+          section: "canviapwd",
+        },
       ],
     },
   ];
 
-  const handleItemClick = useCallback((item: NavItem) => {
-    onSectionChange(item.section);
-    setMobileOpen(false);
-  }, [onSectionChange]);
+  const handleItemClick = useCallback(
+    (item: NavItem) => {
+      onSectionChange(item.section);
+      setMobileOpen(false);
+    },
+    [onSectionChange],
+  );
 
-  const initials = ((profile?.full_name ?? profile?.email ?? "?")[0] ?? "?").toUpperCase();
+  const initials = (
+    (profile?.full_name ?? profile?.email ?? "?")[0] ?? "?"
+  ).toUpperCase();
 
   const roleBadgeClass = isAdmin
     ? "bg-violet-500/20 text-violet-200 border-violet-400/20"
@@ -111,43 +166,70 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       ? "bg-[#1AAFC0]/20 text-[#8DD9E3] border-[#1AAFC0]/20"
       : "bg-white/10 text-white/40 border-white/10";
 
-  const roleLabel = isAdmin ? "Admin" : hasAnyEditor ? "Editor" : "Visualitzador";
+  const roleLabel = isAdmin
+    ? "Admin"
+    : hasAnyEditor
+      ? "Editor"
+      : "Visualitzador";
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
-
       {/* Capçalera */}
       <div
         className="px-4 pt-5 pb-4 flex items-center gap-3 cursor-pointer select-none shrink-0"
-        onClick={() => { onSectionChange("dashboard"); setMobileOpen(false); }}
+        onClick={() => {
+          onSectionChange("dashboard");
+          setMobileOpen(false);
+        }}
         title="Inici · Resum"
       >
         {/* Logo CBT */}
-        <div className="h-10 w-10 rounded-xl overflow-hidden shrink-0 flex items-center justify-center"
-          style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(77,201,216,0.2)" }}>
-          <img src="/LogoCBT.png" alt="Consorci Besòs Tordera" className="h-9 w-9 object-contain" />
+        <div
+          className="h-10 w-10 rounded-xl overflow-hidden shrink-0 flex items-center justify-center"
+          style={{
+            background: "rgba(255,255,255,0.07)",
+            border: "1px solid rgba(77,201,216,0.2)",
+          }}
+        >
+          <img
+            src="/LogoCBT.png"
+            alt="Consorci Besòs Tordera"
+            className="h-9 w-9 object-contain"
+          />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[9px] font-semibold tracking-[0.16em] uppercase leading-none mb-[3px]" style={{ color: "rgba(77,201,216,0.6)" }}>
+          <div
+            className="text-[9px] font-semibold tracking-[0.16em] uppercase leading-none mb-[3px]"
+            style={{ color: "rgba(77,201,216,0.6)" }}
+          >
             Consorci
           </div>
           <div className="text-[13px] font-bold leading-tight tracking-tight text-white truncate">
             Besòs · Tordera
           </div>
-          <div className="text-[10px] leading-tight mt-[1px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+          <div
+            className="text-[10px] leading-tight mt-[1px]"
+            style={{ color: "rgba(255,255,255,0.3)" }}
+          >
             TaulaMaster
           </div>
         </div>
         <button
           className="lg:hidden text-white/30 hover:text-white/70 transition-colors ml-1 shrink-0"
-          onClick={(e) => { e.stopPropagation(); setMobileOpen(false); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMobileOpen(false);
+          }}
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
       {/* Separator */}
-      <div className="mx-3 mb-3" style={{ height: "1px", background: "rgba(255,255,255,0.06)" }} />
+      <div
+        className="mx-3 mb-3"
+        style={{ height: "1px", background: "rgba(255,255,255,0.06)" }}
+      />
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto pb-3 px-2 space-y-0.5 scrollbar-none">
@@ -156,16 +238,30 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
 
           const visibleItems = group.items.filter((item) => {
             if (item.adminOnly && !isAdmin) return false;
-            if (item.view && !canSeeView(item.view as Parameters<typeof canSeeView>[0])) return false;
+            if (
+              item.view &&
+              !canSeeView(item.view as Parameters<typeof canSeeView>[0])
+            )
+              return false;
             return true;
           });
           if (visibleItems.length === 0) return null;
 
           return (
             <div key={group.id} className="mb-4">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 mb-1"
-                style={{ fontSize: "9px", fontWeight: 700, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(255,255,255,0.25)" }}>
-                <span style={{ color: "rgba(255,255,255,0.2)" }}>{group.icon}</span>
+              <div
+                className="flex items-center gap-1.5 px-3 py-1.5 mb-1"
+                style={{
+                  fontSize: "9px",
+                  fontWeight: 700,
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                  color: "rgba(255,255,255,0.25)",
+                }}
+              >
+                <span style={{ color: "rgba(255,255,255,0.2)" }}>
+                  {group.icon}
+                </span>
                 <span>{group.label}</span>
               </div>
 
@@ -178,37 +274,52 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
                       className={cn(
                         "relative w-full flex items-center gap-2.5 px-3 py-[8px] rounded-[8px]",
                         "text-[12.5px] font-medium transition-all duration-150 text-left",
-                        isActive
-                          ? "cbt-sidebar-active-bar"
-                          : ""
+                        isActive ? "cbt-sidebar-active-bar" : "",
                       )}
-                      style={isActive ? {
-                        background: "rgba(77,201,216,0.12)",
-                        color: "#fff",
-                        boxShadow: "inset 0 0 0 1px rgba(77,201,216,0.15)",
-                      } : {
-                        color: "rgba(255,255,255,0.45)",
-                      }}
+                      style={
+                        isActive
+                          ? {
+                              background: "rgba(77,201,216,0.12)",
+                              color: "#fff",
+                              boxShadow:
+                                "inset 0 0 0 1px rgba(77,201,216,0.15)",
+                            }
+                          : {
+                              color: "rgba(255,255,255,0.45)",
+                            }
+                      }
                       onMouseEnter={(e) => {
                         if (!isActive) {
-                          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)";
-                          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.75)";
+                          (e.currentTarget as HTMLElement).style.background =
+                            "rgba(255,255,255,0.05)";
+                          (e.currentTarget as HTMLElement).style.color =
+                            "rgba(255,255,255,0.75)";
                         }
                       }}
                       onMouseLeave={(e) => {
                         if (!isActive) {
-                          (e.currentTarget as HTMLElement).style.background = "transparent";
-                          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.45)";
+                          (e.currentTarget as HTMLElement).style.background =
+                            "transparent";
+                          (e.currentTarget as HTMLElement).style.color =
+                            "rgba(255,255,255,0.45)";
                         }
                       }}
                       onClick={() => handleItemClick(item)}
                     >
-                      <span style={{ color: isActive ? "#4DC9D8" : "rgba(255,255,255,0.3)", flexShrink: 0 }}>
+                      <span
+                        style={{
+                          color: isActive ? "#4DC9D8" : "rgba(255,255,255,0.3)",
+                          flexShrink: 0,
+                        }}
+                      >
                         {item.icon}
                       </span>
                       <span className="truncate">{item.label}</span>
                       {isActive && (
-                        <span className="ml-auto shrink-0 h-1.5 w-1.5 rounded-full" style={{ background: "#4DC9D8" }} />
+                        <span
+                          className="ml-auto shrink-0 h-1.5 w-1.5 rounded-full"
+                          style={{ background: "#4DC9D8" }}
+                        />
                       )}
                     </button>
                   );
@@ -220,23 +331,35 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       </nav>
 
       {/* Peu d'usuari */}
-      <div className="mx-2 mb-3 rounded-[10px] p-2.5"
-        style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div
+        className="mx-2 mb-3 rounded-[10px] p-2.5"
+        style={{
+          background: "rgba(255,255,255,0.05)",
+          border: "1px solid rgba(255,255,255,0.07)",
+        }}
+      >
         <div className="flex items-center gap-2.5">
           {/* Avatar */}
-          <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 font-bold text-[11.5px]"
+          <div
+            className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 font-bold text-[11.5px]"
             style={{
               background: "linear-gradient(135deg, #005A63, #0099A8)",
               color: "#fff",
               border: "1.5px solid rgba(77,201,216,0.3)",
-            }}>
+            }}
+          >
             {initials}
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-[11.5px] font-semibold text-white/70 truncate leading-tight">
               {profile?.full_name ?? profile?.email ?? ""}
             </div>
-            <Badge className={cn("text-[9px] px-1.5 py-0 border mt-0.5 font-semibold", roleBadgeClass)}>
+            <Badge
+              className={cn(
+                "text-[9px] px-1.5 py-0 border mt-0.5 font-semibold",
+                roleBadgeClass,
+              )}
+            >
               {roleLabel}
             </Badge>
           </div>
@@ -260,9 +383,13 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
       <button
         className={cn(
           "lg:hidden fixed top-3.5 left-3.5 z-50 h-9 w-9 rounded-xl",
-          "shadow-lg border flex items-center justify-center transition-colors"
+          "shadow-lg border flex items-center justify-center transition-colors",
         )}
-        style={{ background: "#001F23", borderColor: "rgba(77,201,216,0.2)", color: "rgba(255,255,255,0.7)" }}
+        style={{
+          background: "#001F23",
+          borderColor: "rgba(77,201,216,0.2)",
+          color: "rgba(255,255,255,0.7)",
+        }}
         onClick={() => setMobileOpen(true)}
       >
         <Menu className="h-4 w-4" />
@@ -270,21 +397,26 @@ export function AppSidebar({ activeSection, onSectionChange }: Props) {
 
       {/* Overlay */}
       {mobileOpen && (
-        <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
       )}
 
       {/* Drawer mòbil */}
       <div
-        className={cn("lg:hidden fixed top-0 left-0 z-50 h-full w-60 transition-transform duration-200 cbt-sidebar-bg")}
-        style={{ transform: mobileOpen ? "translateX(0)" : "translateX(-100%)" }}
+        className={cn(
+          "lg:hidden fixed top-0 left-0 z-50 h-full w-60 transition-transform duration-200 cbt-sidebar-bg",
+        )}
+        style={{
+          transform: mobileOpen ? "translateX(0)" : "translateX(-100%)",
+        }}
       >
         <SidebarContent />
       </div>
 
       {/* Sidebar escriptori */}
-      <aside
-        className="hidden lg:flex flex-col w-[230px] shrink-0 h-screen sticky top-0 cbt-sidebar-bg"
-      >
+      <aside className="hidden lg:flex flex-col w-[230px] shrink-0 h-screen sticky top-0 cbt-sidebar-bg">
         <SidebarContent />
       </aside>
     </>

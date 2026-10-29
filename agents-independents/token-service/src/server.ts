@@ -22,11 +22,16 @@ import crypto from "crypto";
 import WebSocket from "ws";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { obteToken3Legged, ApsReauthError } from "../../shared/agent";
-import { setCors, htmlPagina, APS_AUTH_BASE, APS_SCOPE } from "../../shared/helpers";
+import {
+  setCors,
+  htmlPagina,
+  APS_AUTH_BASE,
+  APS_SCOPE,
+} from "../../shared/helpers";
 
 (globalThis as any).WebSocket = WebSocket;
 
-const PORT                 = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3001;
 const TOKEN_SERVICE_SECRET = process.env.TOKEN_SERVICE_SECRET?.trim() || "";
 
 const pendingStates = new Map<string, number>();
@@ -37,11 +42,22 @@ function creaSupabase(): SupabaseClient | null {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) return null;
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
-function json(res: http.ServerResponse, status: number, body: unknown, extra: http.OutgoingHttpHeaders = {}): void {
-  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...extra });
+function json(
+  res: http.ServerResponse,
+  status: number,
+  body: unknown,
+  extra: http.OutgoingHttpHeaders = {},
+): void {
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Cache-Control": "no-store",
+    ...extra,
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -53,16 +69,29 @@ function segurIgual(a: string, b: string): boolean {
 }
 
 type Autoritzacio =
-  | { ok: true;  origen: "servei" | "usuari" }
-  | { ok: false; status: 401 | 403; code: "UNAUTHORIZED" | "FORBIDDEN"; error: string };
+  | { ok: true; origen: "servei" | "usuari" }
+  | {
+      ok: false;
+      status: 401 | 403;
+      code: "UNAUTHORIZED" | "FORBIDDEN";
+      error: string;
+    };
 
 // Accepta: (1) el secret de servei, o (2) un access_token de sessió de Supabase
 // d'un usuari que tingui perfil a la plataforma (taula user_profiles).
-async function autoritzaPeticio(req: http.IncomingMessage, supabase: SupabaseClient): Promise<Autoritzacio> {
+async function autoritzaPeticio(
+  req: http.IncomingMessage,
+  supabase: SupabaseClient,
+): Promise<Autoritzacio> {
   const capcalera = String(req.headers["authorization"] ?? "");
   const m = /^Bearer\s+(.+)$/i.exec(capcalera);
   if (!m) {
-    return { ok: false, status: 401, code: "UNAUTHORIZED", error: "No autoritzat. Cal iniciar sessió." };
+    return {
+      ok: false,
+      status: 401,
+      code: "UNAUTHORIZED",
+      error: "No autoritzat. Cal iniciar sessió.",
+    };
   }
   const bearer = m[1].trim();
 
@@ -73,13 +102,26 @@ async function autoritzaPeticio(req: http.IncomingMessage, supabase: SupabaseCli
   // Valida el JWT contra Supabase Auth (signatura + caducitat)
   const { data, error } = await supabase.auth.getUser(bearer);
   if (error || !data?.user) {
-    return { ok: false, status: 401, code: "UNAUTHORIZED", error: "La sessió no és vàlida o ha caducat. Torna a iniciar sessió." };
+    return {
+      ok: false,
+      status: 401,
+      code: "UNAUTHORIZED",
+      error: "La sessió no és vàlida o ha caducat. Torna a iniciar sessió.",
+    };
   }
 
   const { data: perfil, error: perfilError } = await supabase
-    .from("user_profiles").select("id").eq("id", data.user.id).maybeSingle();
+    .from("user_profiles")
+    .select("id")
+    .eq("id", data.user.id)
+    .maybeSingle();
   if (perfilError || !perfil) {
-    return { ok: false, status: 403, code: "FORBIDDEN", error: "El teu usuari no té accés als models 3D." };
+    return {
+      ok: false,
+      status: 403,
+      code: "FORBIDDEN",
+      error: "El teu usuari no té accés als models 3D.",
+    };
   }
   return { ok: true, origen: "usuari" };
 }
@@ -100,30 +142,59 @@ function registraRenovacioOk(): void {
 function registraErrorRenovacio(err: unknown): void {
   const reauth = err instanceof ApsReauthError;
   ultimError = { at: new Date().toISOString(), reauth };
-  console.error(`❌ Error renovant token APS${reauth ? " (cal /auth/login)" : ""}:`, err instanceof Error ? err.message : err);
+  console.error(
+    `❌ Error renovant token APS${reauth ? " (cal /auth/login)" : ""}:`,
+    err instanceof Error ? err.message : err,
+  );
 }
 
 type EstatToken =
-  | "ok" | "sense_token" | "reautenticacio_necessaria"
-  | "error_renovacio" | "caducat" | "config_incompleta" | "error_supabase";
+  | "ok"
+  | "sense_token"
+  | "reautenticacio_necessaria"
+  | "error_renovacio"
+  | "caducat"
+  | "config_incompleta"
+  | "error_supabase";
 
-async function llegeixEstatToken(): Promise<{ token_ok: boolean; estat: EstatToken; minuts_restants: number | null }> {
+async function llegeixEstatToken(): Promise<{
+  token_ok: boolean;
+  estat: EstatToken;
+  minuts_restants: number | null;
+}> {
   const supabase = creaSupabase();
-  if (!supabase) return { token_ok: false, estat: "config_incompleta", minuts_restants: null };
+  if (!supabase)
+    return {
+      token_ok: false,
+      estat: "config_incompleta",
+      minuts_restants: null,
+    };
 
   const { data: row, error } = await supabase
-    .from("aps_tokens").select("refresh_token, expires_at").eq("id", 1).maybeSingle();
+    .from("aps_tokens")
+    .select("refresh_token, expires_at")
+    .eq("id", 1)
+    .maybeSingle();
 
-  if (error)                return { token_ok: false, estat: "error_supabase", minuts_restants: null };
-  if (!row?.refresh_token)  return { token_ok: false, estat: "sense_token",    minuts_restants: null };
+  if (error)
+    return { token_ok: false, estat: "error_supabase", minuts_restants: null };
+  if (!row?.refresh_token)
+    return { token_ok: false, estat: "sense_token", minuts_restants: null };
 
   const ara = Date.now();
   const msRestants = (row.expires_at as number) - ara;
   const minuts_restants = Math.max(0, Math.round(msRestants / 60_000));
 
-  if (ultimError?.reauth)                         return { token_ok: false, estat: "reautenticacio_necessaria", minuts_restants };
-  if (ultimError && msRestants < 0)               return { token_ok: false, estat: "error_renovacio",          minuts_restants };
-  if (msRestants < -10 * 60_000)                  return { token_ok: false, estat: "caducat",                   minuts_restants };
+  if (ultimError?.reauth)
+    return {
+      token_ok: false,
+      estat: "reautenticacio_necessaria",
+      minuts_restants,
+    };
+  if (ultimError && msRestants < 0)
+    return { token_ok: false, estat: "error_renovacio", minuts_restants };
+  if (msRestants < -10 * 60_000)
+    return { token_ok: false, estat: "caducat", minuts_restants };
   return { token_ok: true, estat: "ok", minuts_restants };
 }
 
@@ -135,13 +206,15 @@ async function cosHealth() {
     estat = { token_ok: false, estat: "error_supabase", minuts_restants: null };
   }
   return {
-    status: "ok",                       // el procés està viu
+    status: "ok", // el procés està viu
     service: "token-service",
-    token_ok: estat.token_ok,           // la cadena d'Autodesk funciona
+    token_ok: estat.token_ok, // la cadena d'Autodesk funciona
     token: {
       estat: estat.estat,
       minuts_restants: estat.minuts_restants,
-      ultima_renovacio: ultimaRenovacioOk ? ultimaRenovacioOk.toISOString() : null,
+      ultima_renovacio: ultimaRenovacioOk
+        ? ultimaRenovacioOk.toISOString()
+        : null,
       ultim_error: ultimError,
     },
     propera_renovacio: properaRenovacioISO(),
@@ -153,7 +226,11 @@ async function cosHealth() {
 
 const server = http.createServer(async (req, res) => {
   setCors(res);
-  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
   const url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
 
@@ -176,22 +253,34 @@ const server = http.createServer(async (req, res) => {
   // ── Wake-up ───────────────────────────────────────────────────────────────
   if (url.pathname === "/wake") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "despert", timestamp: new Date().toISOString() }));
+    res.end(
+      JSON.stringify({
+        status: "despert",
+        timestamp: new Date().toISOString(),
+      }),
+    );
     return;
   }
 
   // ── OAuth: login ──────────────────────────────────────────────────────────
   if (url.pathname === "/auth/login" && req.method === "GET") {
-    const clientId    = process.env.APS_CLIENT_ID;
+    const clientId = process.env.APS_CLIENT_ID;
     const callbackUrl = process.env.APS_CALLBACK_URL;
 
     if (!clientId || !callbackUrl) {
       res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(htmlPagina("Configuració incompleta", "APS_CLIENT_ID o APS_CALLBACK_URL no definits.", false));
+      res.end(
+        htmlPagina(
+          "Configuració incompleta",
+          "APS_CLIENT_ID o APS_CALLBACK_URL no definits.",
+          false,
+        ),
+      );
       return;
     }
 
-    const state = Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const state =
+      Math.random().toString(36).substring(2) + Date.now().toString(36);
     pendingStates.set(state, Date.now());
     const ara = Date.now();
     for (const [k, ts] of pendingStates.entries()) {
@@ -212,30 +301,48 @@ const server = http.createServer(async (req, res) => {
 
   // ── OAuth: callback ───────────────────────────────────────────────────────
   if (url.pathname === "/auth/callback" && req.method === "GET") {
-    const code          = url.searchParams.get("code");
+    const code = url.searchParams.get("code");
     const returnedState = url.searchParams.get("state");
-    const errorParam    = url.searchParams.get("error");
+    const errorParam = url.searchParams.get("error");
 
     if (errorParam) {
       res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(htmlPagina("Error d'autenticació", url.searchParams.get("error_description") ?? errorParam, false));
+      res.end(
+        htmlPagina(
+          "Error d'autenticació",
+          url.searchParams.get("error_description") ?? errorParam,
+          false,
+        ),
+      );
       return;
     }
     if (!code || !returnedState || !pendingStates.has(returnedState)) {
       res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(htmlPagina("Paràmetres invàlids", "Falta el codi o l'estat no és vàlid.", false));
+      res.end(
+        htmlPagina(
+          "Paràmetres invàlids",
+          "Falta el codi o l'estat no és vàlid.",
+          false,
+        ),
+      );
       return;
     }
     pendingStates.delete(returnedState);
 
-    const supabase     = creaSupabase();
-    const clientId     = process.env.APS_CLIENT_ID;
+    const supabase = creaSupabase();
+    const clientId = process.env.APS_CLIENT_ID;
     const clientSecret = process.env.APS_CLIENT_SECRET;
-    const callbackUrl  = process.env.APS_CALLBACK_URL;
+    const callbackUrl = process.env.APS_CALLBACK_URL;
 
     if (!supabase || !clientId || !clientSecret || !callbackUrl) {
       res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(htmlPagina("Error de configuració", "Variables d'entorn incompletes.", false));
+      res.end(
+        htmlPagina(
+          "Error de configuració",
+          "Variables d'entorn incompletes.",
+          false,
+        ),
+      );
       return;
     }
 
@@ -244,33 +351,46 @@ const server = http.createServer(async (req, res) => {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          grant_type:    "authorization_code",
+          grant_type: "authorization_code",
           code,
-          redirect_uri:  callbackUrl,
-          client_id:     clientId,
+          redirect_uri: callbackUrl,
+          client_id: clientId,
           client_secret: clientSecret,
         }),
       });
       if (!tokenResp.ok) {
-        throw new Error(`Autodesk ha rebutjat el codi d'autorització (${tokenResp.status}). Torna a començar a /auth/login.`);
+        throw new Error(
+          `Autodesk ha rebutjat el codi d'autorització (${tokenResp.status}). Torna a començar a /auth/login.`,
+        );
       }
-      const tokenData = await tokenResp.json() as {
-        access_token: string; refresh_token: string; expires_in: number;
+      const tokenData = (await tokenResp.json()) as {
+        access_token: string;
+        refresh_token: string;
+        expires_in: number;
       };
       const { error: dbError } = await supabase.from("aps_tokens").upsert({
-        id:            1,
-        access_token:  tokenData.access_token,
+        id: 1,
+        access_token: tokenData.access_token,
         refresh_token: tokenData.refresh_token,
-        expires_at:    Date.now() + tokenData.expires_in * 1000,
+        expires_at: Date.now() + tokenData.expires_in * 1000,
       });
-      if (dbError) throw new Error(`No s'ha pogut desar el token a Supabase: ${dbError.message}`);
+      if (dbError)
+        throw new Error(
+          `No s'ha pogut desar el token a Supabase: ${dbError.message}`,
+        );
 
       registraRenovacioOk();
       // Nou token acabat d'obtenir: reprogramem el scheduler
       planificaRenovacio();
 
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(htmlPagina("Autenticació completada", "Sessió APS iniciada correctament. Ja pots tancar aquesta finestra.", true));
+      res.end(
+        htmlPagina(
+          "Autenticació completada",
+          "Sessió APS iniciada correctament. Ja pots tancar aquesta finestra.",
+          true,
+        ),
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
@@ -287,12 +407,15 @@ const server = http.createServer(async (req, res) => {
   //   APS_UPSTREAM_ERROR (502)   Autodesk o Supabase no responen
   //   CONFIG_ERROR (500)         variables d'entorn sense configurar
   if (url.pathname === "/api/aps-token" && req.method === "GET") {
-    const supabase     = creaSupabase();
-    const clientId     = process.env.APS_CLIENT_ID;
+    const supabase = creaSupabase();
+    const clientId = process.env.APS_CLIENT_ID;
     const clientSecret = process.env.APS_CLIENT_SECRET;
 
     if (!supabase || !clientId || !clientSecret) {
-      json(res, 500, { error: "El servei de tokens no està configurat correctament.", code: "CONFIG_ERROR" });
+      json(res, 500, {
+        error: "El servei de tokens no està configurat correctament.",
+        code: "CONFIG_ERROR",
+      });
       return;
     }
 
@@ -311,7 +434,8 @@ const server = http.createServer(async (req, res) => {
 
       if (dbError || !row) {
         json(res, 503, {
-          error: "La connexió amb Autodesk no està activa. L'administrador l'ha de tornar a autenticar (/auth/login).",
+          error:
+            "La connexió amb Autodesk no està activa. L'administrador l'ha de tornar a autenticar (/auth/login).",
           code: "APS_REAUTH_REQUIRED",
         });
         return;
@@ -324,23 +448,33 @@ const server = http.createServer(async (req, res) => {
 
       if (row.access_token && row.expires_at > ara + MARGE_MS) {
         accessToken = row.access_token;
-        expiresIn   = Math.round((row.expires_at - ara) / 1000);
+        expiresIn = Math.round((row.expires_at - ara) / 1000);
       } else if (row.refresh_token) {
         try {
-          accessToken = await obteToken3Legged(supabase, clientId, clientSecret);
+          accessToken = await obteToken3Legged(
+            supabase,
+            clientId,
+            clientSecret,
+          );
           registraRenovacioOk();
         } catch (err) {
           registraErrorRenovacio(err);
           throw err;
         }
         const { data: rowNou } = await supabase
-          .from("aps_tokens").select("expires_at").eq("id", 1).single();
-        expiresIn = rowNou ? Math.round((rowNou.expires_at - Date.now()) / 1000) : 3600;
+          .from("aps_tokens")
+          .select("expires_at")
+          .eq("id", 1)
+          .single();
+        expiresIn = rowNou
+          ? Math.round((rowNou.expires_at - Date.now()) / 1000)
+          : 3600;
         // Token renovat via petició externa: reprogramem el scheduler
         planificaRenovacio();
       } else {
         json(res, 503, {
-          error: "La connexió amb Autodesk no està activa. L'administrador l'ha de tornar a autenticar (/auth/login).",
+          error:
+            "La connexió amb Autodesk no està activa. L'administrador l'ha de tornar a autenticar (/auth/login).",
           code: "APS_REAUTH_REQUIRED",
         });
         return;
@@ -351,14 +485,19 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       if (err instanceof ApsReauthError) {
         json(res, 503, {
-          error: "La connexió amb Autodesk ha caducat. L'administrador l'ha de tornar a autenticar (/auth/login).",
+          error:
+            "La connexió amb Autodesk ha caducat. L'administrador l'ha de tornar a autenticar (/auth/login).",
           code: err.code,
         });
         return;
       }
       const msg = err instanceof Error ? err.message : String(err);
       console.error("❌ /api/aps-token:", msg);
-      json(res, 502, { error: "No s'ha pogut obtenir el token d'Autodesk. Torna-ho a provar d'aquí a una estona.", code: "APS_UPSTREAM_ERROR" });
+      json(res, 502, {
+        error:
+          "No s'ha pogut obtenir el token d'Autodesk. Torna-ho a provar d'aquí a una estona.",
+        code: "APS_UPSTREAM_ERROR",
+      });
     }
     return;
   }
@@ -376,7 +515,9 @@ server.listen(PORT, async () => {
   console.log(`   GET  /auth/callback   → callback OAuth APS`);
   console.log(`   GET  /api/aps-token   → token APS [Bearer requerit]\n`);
   if (!TOKEN_SERVICE_SECRET) {
-    console.warn("⚠️  TOKEN_SERVICE_SECRET no definit: els serveis interns (Visor 3D) no podran demanar el token.");
+    console.warn(
+      "⚠️  TOKEN_SERVICE_SECRET no definit: els serveis interns (Visor 3D) no podran demanar el token.",
+    );
   }
   // En arrencar, llegim expires_at real de Supabase i programem la renovació
   // al moment òptim en lloc d'usar un interval fix des de zero.
@@ -397,7 +538,7 @@ server.listen(PORT, async () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MARGE_RENOVACIO_MS = 10 * 60 * 1000; // Renova quan quedin 10 min per expirar
-const MIN_INTERVAL_MS    =  5 * 60 * 1000; // Mai programar per menys de 5 min
+const MIN_INTERVAL_MS = 5 * 60 * 1000; // Mai programar per menys de 5 min
 
 let renovacioTimeout: NodeJS.Timeout | null = null;
 let properaRenovacioAt: Date | null = null;
@@ -410,7 +551,10 @@ async function planificaRenovacio(): Promise<void> {
   const supabase = creaSupabase();
   if (!supabase) return;
 
-  if (renovacioTimeout) { clearTimeout(renovacioTimeout); renovacioTimeout = null; }
+  if (renovacioTimeout) {
+    clearTimeout(renovacioTimeout);
+    renovacioTimeout = null;
+  }
   properaRenovacioAt = null;
 
   try {
@@ -421,31 +565,42 @@ async function planificaRenovacio(): Promise<void> {
       .maybeSingle();
 
     if (!row?.refresh_token) {
-      console.log("⏸️  Scheduler token APS: cap token a Supabase, esperant autenticació.");
+      console.log(
+        "⏸️  Scheduler token APS: cap token a Supabase, esperant autenticació.",
+      );
       return;
     }
 
-    const ara           = Date.now();
-    const expiresAt     = row.expires_at as number;
-    const msFinsTrigger = Math.max(expiresAt - ara - MARGE_RENOVACIO_MS, MIN_INTERVAL_MS);
-    properaRenovacioAt  = new Date(ara + msFinsTrigger);
+    const ara = Date.now();
+    const expiresAt = row.expires_at as number;
+    const msFinsTrigger = Math.max(
+      expiresAt - ara - MARGE_RENOVACIO_MS,
+      MIN_INTERVAL_MS,
+    );
+    properaRenovacioAt = new Date(ara + msFinsTrigger);
 
     const minsRestants = Math.round(msFinsTrigger / 60_000);
-    console.log(`⏰ Scheduler token APS: propera renovació en ${minsRestants} min (${properaRenovacioAt.toISOString()})`);
+    console.log(
+      `⏰ Scheduler token APS: propera renovació en ${minsRestants} min (${properaRenovacioAt.toISOString()})`,
+    );
 
     renovacioTimeout = setTimeout(async () => {
       const resultat = await renovaTokenProactivament();
       if (resultat === "reauth") {
         properaRenovacioAt = null;
-        console.error("⛔ Scheduler token APS aturat: cal autenticar-se a /auth/login.");
+        console.error(
+          "⛔ Scheduler token APS aturat: cal autenticar-se a /auth/login.",
+        );
         return;
       }
       // "ok" → propera expiració; "error" → reintent d'aquí a ≥ MIN_INTERVAL_MS
       await planificaRenovacio();
     }, msFinsTrigger);
-
   } catch (err) {
-    console.error("❌ Error planificant renovació token:", err instanceof Error ? err.message : err);
+    console.error(
+      "❌ Error planificant renovació token:",
+      err instanceof Error ? err.message : err,
+    );
     // Fallback: reintenta en 5 min si hi ha error de xarxa o Supabase
     renovacioTimeout = setTimeout(planificaRenovacio, MIN_INTERVAL_MS);
     properaRenovacioAt = new Date(Date.now() + MIN_INTERVAL_MS);
@@ -453,8 +608,8 @@ async function planificaRenovacio(): Promise<void> {
 }
 
 async function renovaTokenProactivament(): Promise<"ok" | "reauth" | "error"> {
-  const supabase     = creaSupabase();
-  const clientId     = process.env.APS_CLIENT_ID;
+  const supabase = creaSupabase();
+  const clientId = process.env.APS_CLIENT_ID;
   const clientSecret = process.env.APS_CLIENT_SECRET;
   if (!supabase || !clientId || !clientSecret) return "error";
   try {

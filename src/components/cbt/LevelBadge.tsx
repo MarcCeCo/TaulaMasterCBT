@@ -10,7 +10,13 @@ import { cn } from "@/lib/utils";
  *  N3 → teal clar        (#1AAFC0)
  *  N4 → verd suau        (emerald, per diferenciar sub-nivells)
  */
-export function LevelBadge({ level, className }: { level: 1 | 2 | 3 | 4; className?: string }) {
+export function LevelBadge({
+  level,
+  className,
+}: {
+  level: 1 | 2 | 3 | 4;
+  className?: string;
+}) {
   const map: Record<number, string> = {
     1: "bg-[#003D44] text-white hover:bg-[#003D44]",
     2: "bg-[#007380] text-white hover:bg-[#007380]",
@@ -23,7 +29,7 @@ export function LevelBadge({ level, className }: { level: 1 | 2 | 3 | 4; classNa
       className={cn(
         "border-transparent text-[10px] px-1.5 py-0 font-semibold tracking-wide",
         map[level],
-        className
+        className,
       )}
     >
       N{level}

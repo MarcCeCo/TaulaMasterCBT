@@ -17,11 +17,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel,
-  AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Upload, Trash2, Search, ClipboardList, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  Upload,
+  Trash2,
+  Search,
+  ClipboardList,
+  AlertTriangle,
+  RefreshCw,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProjectes, type RosmimanEquip } from "@/lib/useProjectes";
 import { useAuth } from "@/lib/auth";
@@ -61,13 +73,17 @@ export function RosmimanEquipsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [cerca, setCerca] = useState("");
   const [dialogEsborrarTot, setDialogEsborrarTot] = useState(false);
-  const [dialogEsborrarUn, setDialogEsborrarUn] = useState<RosmimanEquip | null>(null);
-  const [importPreview, setImportPreview] = useState<{ valid: RosmimanEquip[]; invalids: string[] } | null>(null);
+  const [dialogEsborrarUn, setDialogEsborrarUn] =
+    useState<RosmimanEquip | null>(null);
+  const [importPreview, setImportPreview] = useState<{
+    valid: RosmimanEquip[];
+    invalids: string[];
+  } | null>(null);
   const [importLoading, setImportLoading] = useState(false);
 
   // PERF: virtualització — constants
-  const ROW_H = 41;       // altura aprox. de cada fila d'equip (px)
-  const HEADER_H = 34;    // altura de la capçalera de grup (px)
+  const ROW_H = 41; // altura aprox. de cada fila d'equip (px)
+  const HEADER_H = 34; // altura de la capçalera de grup (px)
   const OVERSCAN = 6;
   const CONTAINER_H = 520;
   const [scrollTop, setScrollTop] = useState(0);
@@ -79,10 +95,11 @@ export function RosmimanEquipsPage() {
   const equipsFiltered = useMemo(() => {
     const q = debouncedCerca.trim().toLowerCase();
     if (!q) return rosmimanEquips;
-    return rosmimanEquips.filter(e =>
-      e.tag.toLowerCase().includes(q) ||
-      e.descripcio.toLowerCase().includes(q) ||
-      e.codiInstallacio.toLowerCase().includes(q)
+    return rosmimanEquips.filter(
+      (e) =>
+        e.tag.toLowerCase().includes(q) ||
+        e.descripcio.toLowerCase().includes(q) ||
+        e.codiInstallacio.toLowerCase().includes(q),
     );
   }, [rosmimanEquips, debouncedCerca]);
 
@@ -107,7 +124,12 @@ export function RosmimanEquipsPage() {
     for (const [codi, equips] of grups) {
       items.push({ type: "header", codi, total: equips.length, h: HEADER_H });
       equips.forEach((equip, i) =>
-        items.push({ type: "row", equip, lastInGroup: i === equips.length - 1, h: ROW_H })
+        items.push({
+          type: "row",
+          equip,
+          lastInGroup: i === equips.length - 1,
+          h: ROW_H,
+        }),
       );
     }
     return items;
@@ -124,30 +146,33 @@ export function RosmimanEquipsPage() {
       const XLSX = await getXLSX();
       const wb = XLSX.read(data, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      const rows: any[][] = XLSX.utils.sheet_to_json(ws, {
+        header: 1,
+        defval: "",
+      });
 
-        const valid: RosmimanEquip[] = [];
-        const invalids: string[] = [];
+      const valid: RosmimanEquip[] = [];
+      const invalids: string[] = [];
 
-        for (const row of rows) {
-          const tagRaw = String(row[0] ?? "").trim();
-          const desc   = String(row[1] ?? "").trim();
-          if (!tagRaw) continue;
+      for (const row of rows) {
+        const tagRaw = String(row[0] ?? "").trim();
+        const desc = String(row[1] ?? "").trim();
+        if (!tagRaw) continue;
 
-          if (isTagValid(tagRaw)) {
-            valid.push({
-              id:              "",
-              tag:             tagRaw.toUpperCase(),
-              descripcio:      desc,
-              codiInstallacio: extractCodiInstallacio(tagRaw),
-              createdAt:       0,
-            });
-          } else {
-            invalids.push(tagRaw);
-          }
+        if (isTagValid(tagRaw)) {
+          valid.push({
+            id: "",
+            tag: tagRaw.toUpperCase(),
+            descripcio: desc,
+            codiInstallacio: extractCodiInstallacio(tagRaw),
+            createdAt: 0,
+          });
+        } else {
+          invalids.push(tagRaw);
         }
+      }
 
-        setImportPreview({ valid, invalids });
+      setImportPreview({ valid, invalids });
     } catch {
       toast.error("Error llegint el fitxer Excel.");
     }
@@ -157,8 +182,12 @@ export function RosmimanEquipsPage() {
     if (!importPreview) return;
     setImportLoading(true);
     try {
-      const { inserted, skipped } = await importRosmimanEquips(importPreview.valid);
-      toast.success(`Importació completada: ${inserted} nous, ${skipped} ja existien.`);
+      const { inserted, skipped } = await importRosmimanEquips(
+        importPreview.valid,
+      );
+      toast.success(
+        `Importació completada: ${inserted} nous, ${skipped} ja existien.`,
+      );
       setImportPreview(null);
     } catch (e: any) {
       toast.error(e?.message ?? "Error en la importació.");
@@ -263,17 +292,22 @@ export function RosmimanEquipsPage() {
           </div>
           <div className="text-sm text-slate-700 space-y-1">
             <p>
-              <span className="font-medium text-emerald-700">{importPreview.valid.length}</span> equips vàlids a importar
+              <span className="font-medium text-emerald-700">
+                {importPreview.valid.length}
+              </span>{" "}
+              equips vàlids a importar
               {importPreview.invalids.length > 0 && (
                 <span className="ml-3 text-red-600 font-medium">
-                  · {importPreview.invalids.length} files ignorades (format TAG invàlid)
+                  · {importPreview.invalids.length} files ignorades (format TAG
+                  invàlid)
                 </span>
               )}
             </p>
             {importPreview.invalids.length > 0 && (
               <p className="text-xs text-slate-500">
                 Files ignorades: {importPreview.invalids.slice(0, 5).join(", ")}
-                {importPreview.invalids.length > 5 && ` i ${importPreview.invalids.length - 5} més`}
+                {importPreview.invalids.length > 5 &&
+                  ` i ${importPreview.invalids.length - 5} més`}
               </p>
             )}
           </div>
@@ -306,7 +340,7 @@ export function RosmimanEquipsPage() {
             className="pl-9 h-9 text-sm"
             placeholder="Cerca TAG, descripció o codi…"
             value={cerca}
-            onChange={e => setCerca(e.target.value)}
+            onChange={(e) => setCerca(e.target.value)}
           />
         </div>
       )}
@@ -320,7 +354,8 @@ export function RosmimanEquipsPage() {
           <div>
             <p className="font-semibold text-slate-700">Llistat buit</p>
             <p className="text-sm text-slate-500 mt-1">
-              Importa un Excel amb la columna A (TAG) i la columna B (descripció).
+              Importa un Excel amb la columna A (TAG) i la columna B
+              (descripció).
             </p>
           </div>
           {canEdit && (
@@ -345,7 +380,9 @@ export function RosmimanEquipsPage() {
             ref={containerRef}
             className="overflow-y-auto"
             style={{ maxHeight: CONTAINER_H }}
-            onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
+            onScroll={(e) =>
+              setScrollTop((e.target as HTMLDivElement).scrollTop)
+            }
           >
             {(() => {
               // Calculem offset acumulat per trobar el rang visible
@@ -357,29 +394,51 @@ export function RosmimanEquipsPage() {
               });
               const totalH = offset;
 
-              const startIdx = Math.max(0, offsets.findLastIndex((o) => o <= scrollTop - OVERSCAN * ROW_H));
-              const endIdx   = Math.min(
+              const startIdx = Math.max(
+                0,
+                offsets.findLastIndex((o) => o <= scrollTop - OVERSCAN * ROW_H),
+              );
+              const endIdx = Math.min(
                 virtualItems.length - 1,
-                offsets.findIndex((o) => o >= scrollTop + CONTAINER_H + OVERSCAN * ROW_H) !== -1
-                  ? offsets.findIndex((o) => o >= scrollTop + CONTAINER_H + OVERSCAN * ROW_H)
-                  : virtualItems.length - 1
+                offsets.findIndex(
+                  (o) => o >= scrollTop + CONTAINER_H + OVERSCAN * ROW_H,
+                ) !== -1
+                  ? offsets.findIndex(
+                      (o) => o >= scrollTop + CONTAINER_H + OVERSCAN * ROW_H,
+                    )
+                  : virtualItems.length - 1,
               );
 
               const padTop = offsets[startIdx] ?? 0;
-              const padBot = Math.max(0, totalH - (offsets[endIdx] ?? 0) - (virtualItems[endIdx]?.h ?? 0));
+              const padBot = Math.max(
+                0,
+                totalH -
+                  (offsets[endIdx] ?? 0) -
+                  (virtualItems[endIdx]?.h ?? 0),
+              );
               const visible = virtualItems.slice(startIdx, endIdx + 1);
 
               return (
                 <div style={{ paddingTop: padTop, paddingBottom: padBot }}>
                   {visible.map((item, i) => {
-                    const key = item.type === "header" ? `h-${item.codi}` : `r-${item.equip.id}`;
+                    const key =
+                      item.type === "header"
+                        ? `h-${item.codi}`
+                        : `r-${item.equip.id}`;
                     if (item.type === "header") {
-                      const isFirst = startIdx + i === 0 || virtualItems[startIdx + i - 1]?.type === "row";
+                      const isFirst =
+                        startIdx + i === 0 ||
+                        virtualItems[startIdx + i - 1]?.type === "row";
                       return (
-                        <div key={key} className={cn(
-                          "flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100",
-                          isFirst ? "border-t-0" : "border-t border-slate-200"
-                        )}>
+                        <div
+                          key={key}
+                          className={cn(
+                            "flex items-center gap-3 px-4 py-2 bg-slate-50 border-b border-slate-100",
+                            isFirst
+                              ? "border-t-0"
+                              : "border-t border-slate-200",
+                          )}
+                        >
                           <Badge className="bg-[#0099A8]/15 text-[#006E7A] border-0 font-mono text-xs">
                             {item.codi}
                           </Badge>
@@ -395,7 +454,7 @@ export function RosmimanEquipsPage() {
                         key={key}
                         className={cn(
                           "flex items-center border-b border-slate-50 hover:bg-slate-50/70 transition-colors",
-                          lastInGroup && "border-b-0"
+                          lastInGroup && "border-b-0",
                         )}
                         style={{ height: ROW_H }}
                       >
@@ -403,7 +462,11 @@ export function RosmimanEquipsPage() {
                           {equip.tag}
                         </span>
                         <span className="px-4 text-slate-600 flex-1 text-sm truncate">
-                          {equip.descripcio || <span className="text-slate-300 italic">sense descripció</span>}
+                          {equip.descripcio || (
+                            <span className="text-slate-300 italic">
+                              sense descripció
+                            </span>
+                          )}
                         </span>
                         {canEdit && (
                           <div className="px-3 shrink-0">
@@ -427,20 +490,29 @@ export function RosmimanEquipsPage() {
       )}
 
       {/* Dialog esborrar un */}
-      <AlertDialog open={!!dialogEsborrarUn} onOpenChange={o => !o && setDialogEsborrarUn(null)}>
+      <AlertDialog
+        open={!!dialogEsborrarUn}
+        onOpenChange={(o) => !o && setDialogEsborrarUn(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Eliminar equip?</AlertDialogTitle>
             <AlertDialogDescription>
-              S'eliminarà <span className="font-mono font-semibold">{dialogEsborrarUn?.tag}</span> del llistat Rosmiman.
-              Això no afecta els tags dels projectes existents.
+              S'eliminarà{" "}
+              <span className="font-mono font-semibold">
+                {dialogEsborrarUn?.tag}
+              </span>{" "}
+              del llistat Rosmiman. Això no afecta els tags dels projectes
+              existents.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel·lar</AlertDialogCancel>
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
-              onClick={() => dialogEsborrarUn && handleEsborrarUn(dialogEsborrarUn)}
+              onClick={() =>
+                dialogEsborrarUn && handleEsborrarUn(dialogEsborrarUn)
+              }
             >
               Eliminar
             </AlertDialogAction>
@@ -454,8 +526,8 @@ export function RosmimanEquipsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Buidar tot el llistat?</AlertDialogTitle>
             <AlertDialogDescription>
-              S'eliminaran tots els {rosmimanEquips.length} equips del llistat Rosmiman.
-              Aquesta acció no es pot desfer.
+              S'eliminaran tots els {rosmimanEquips.length} equips del llistat
+              Rosmiman. Aquesta acció no es pot desfer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

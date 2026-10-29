@@ -4,8 +4,14 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  AlertTriangle, Database, Layers, ListChecks,
-  Package, RefreshCw, Table2, WifiOff,
+  AlertTriangle,
+  Database,
+  Layers,
+  ListChecks,
+  Package,
+  RefreshCw,
+  Table2,
+  WifiOff,
 } from "lucide-react";
 import { isClassifier } from "@/lib/fields";
 import { useDataStore } from "@/lib/dataStore";
@@ -25,7 +31,18 @@ interface StatCardProps {
   stagger?: number;
 }
 
-function StatCard({ icon, accentColor, accentBg, label, value, sub, badge, badgeStyle, highlight, stagger = 1 }: StatCardProps) {
+function StatCard({
+  icon,
+  accentColor,
+  accentBg,
+  label,
+  value,
+  sub,
+  badge,
+  badgeStyle,
+  highlight,
+  stagger = 1,
+}: StatCardProps) {
   return (
     <div
       className={`cbt-stat-card animate-fade-in-up stagger-${stagger} relative overflow-hidden rounded-2xl p-5 border cursor-default`}
@@ -38,7 +55,11 @@ function StatCard({ icon, accentColor, accentBg, label, value, sub, badge, badge
       {/* Top accent bar */}
       <div
         className="absolute top-0 left-5 right-5 h-[2px] rounded-b-full"
-        style={{ background: highlight ? "linear-gradient(90deg, #F59E0B, #FBBF24)" : `linear-gradient(90deg, ${accentColor}, ${accentColor}88)` }}
+        style={{
+          background: highlight
+            ? "linear-gradient(90deg, #F59E0B, #FBBF24)"
+            : `linear-gradient(90deg, ${accentColor}, ${accentColor}88)`,
+        }}
       />
 
       <div className="flex items-start gap-4">
@@ -47,7 +68,9 @@ function StatCard({ icon, accentColor, accentBg, label, value, sub, badge, badge
           className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
           style={{ background: highlight ? "rgba(245,158,11,0.1)" : accentBg }}
         >
-          <span style={{ color: highlight ? "#D97706" : accentColor }}>{icon}</span>
+          <span style={{ color: highlight ? "#D97706" : accentColor }}>
+            {icon}
+          </span>
         </div>
 
         {/* Text */}
@@ -70,12 +93,20 @@ function StatCard({ icon, accentColor, accentBg, label, value, sub, badge, badge
           </div>
           <div
             className="font-bold tracking-tight leading-none mb-1"
-            style={{ fontSize: "28px", color: highlight ? "#B45309" : "#1A2E35" }}
+            style={{
+              fontSize: "28px",
+              color: highlight ? "#B45309" : "#1A2E35",
+            }}
           >
             {value}
           </div>
           {sub && (
-            <div className="text-[11.5px] leading-tight" style={{ color: "#94a3b8" }}>{sub}</div>
+            <div
+              className="text-[11.5px] leading-tight"
+              style={{ color: "#94a3b8" }}
+            >
+              {sub}
+            </div>
           )}
         </div>
       </div>
@@ -85,7 +116,10 @@ function StatCard({ icon, accentColor, accentBg, label, value, sub, badge, badge
 
 function StatCardSkeleton() {
   return (
-    <div className="rounded-2xl border p-5 bg-white" style={{ borderColor: "rgba(0,90,99,0.08)" }}>
+    <div
+      className="rounded-2xl border p-5 bg-white"
+      style={{ borderColor: "rgba(0,90,99,0.08)" }}
+    >
       <div className="flex items-center gap-4">
         <Skeleton className="h-11 w-11 rounded-xl shrink-0" />
         <div className="space-y-2 flex-1">
@@ -100,7 +134,15 @@ function StatCardSkeleton() {
 
 /* ─ Component principal ───────────────────────────────────────────────────── */
 export function DashboardHome() {
-  const { fields, fieldMap, fieldGroups, equipments: items, loading, error, retry } = useDataStore();
+  const {
+    fields,
+    fieldMap,
+    fieldGroups,
+    equipments: items,
+    loading,
+    error,
+    retry,
+  } = useDataStore();
   const { canSeeView } = useAuth();
 
   const stats = useMemo(() => {
@@ -125,16 +167,26 @@ export function DashboardHome() {
     }
 
     const usagePercent = total > 0 ? Math.round((usedCount / total) * 100) : 0;
-    return { total, totalEquips, equipWithTable, usedCount, usagePercent, orphanCount, fieldGroups: fieldGroups.length };
+    return {
+      total,
+      totalEquips,
+      equipWithTable,
+      usedCount,
+      usagePercent,
+      orphanCount,
+      fieldGroups: fieldGroups.length,
+    };
   }, [fields, items, fieldMap, fieldGroups]);
 
   return (
     <div className="space-y-6">
-
       {/* ── Capçalera ─────────────────────────────────────────────────────── */}
       <div className="animate-fade-in-up stagger-1 flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-[22px] font-extrabold tracking-tight leading-tight" style={{ color: "#0D2027" }}>
+          <h1
+            className="text-[22px] font-extrabold tracking-tight leading-tight"
+            style={{ color: "#0D2027" }}
+          >
             Resum general
           </h1>
           <p className="text-[13px] mt-1" style={{ color: "#94a3b8" }}>
@@ -163,14 +215,24 @@ export function DashboardHome() {
       {error && !loading && (
         <div
           className="animate-fade-in-up p-4 rounded-2xl flex items-center gap-3"
-          style={{ background: "#FFFBF0", border: "1px solid rgba(245,158,11,0.25)" }}
+          style={{
+            background: "#FFFBF0",
+            border: "1px solid rgba(245,158,11,0.25)",
+          }}
         >
-          <div className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "rgba(245,158,11,0.12)" }}>
+          <div
+            className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: "rgba(245,158,11,0.12)" }}
+          >
             <WifiOff className="h-4.5 w-4.5" style={{ color: "#D97706" }} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold" style={{ color: "#92400E" }}>Error carregant dades</p>
-            <p className="text-[12px] truncate" style={{ color: "#B45309" }}>{error}</p>
+            <p className="text-[13px] font-bold" style={{ color: "#92400E" }}>
+              Error carregant dades
+            </p>
+            <p className="text-[12px] truncate" style={{ color: "#B45309" }}>
+              {error}
+            </p>
           </div>
           <Button
             size="sm"
@@ -190,15 +252,23 @@ export function DashboardHome() {
         <>
           {/* Mini title */}
           <div className="animate-fade-in-up stagger-2 flex items-center gap-3">
-            <span className="text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: "#94a3b8" }}>
+            <span
+              className="text-[10.5px] font-bold uppercase tracking-[0.12em]"
+              style={{ color: "#94a3b8" }}
+            >
               Estadístiques
             </span>
-            <div className="flex-1 h-px" style={{ background: "rgba(0,90,99,0.08)" }} />
+            <div
+              className="flex-1 h-px"
+              style={{ background: "rgba(0,90,99,0.08)" }}
+            />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             {loading ? (
-              Array.from({ length: 6 }).map((_, i) => <StatCardSkeleton key={i} />)
+              Array.from({ length: 6 }).map((_, i) => (
+                <StatCardSkeleton key={i} />
+              ))
             ) : (
               <>
                 <StatCard
@@ -207,9 +277,20 @@ export function DashboardHome() {
                   accentBg="rgba(124,58,237,0.08)"
                   label="Equips totals"
                   value={stats.totalEquips}
-                  sub={<><span style={{ color: "#059669", fontWeight: 600 }}>{stats.equipWithTable}</span>{" "}amb taula definida</>}
+                  sub={
+                    <>
+                      <span style={{ color: "#059669", fontWeight: 600 }}>
+                        {stats.equipWithTable}
+                      </span>{" "}
+                      amb taula definida
+                    </>
+                  }
                   badge="+12 nous"
-                  badgeStyle={{ background: "rgba(16,185,129,0.1)", color: "#047857", border: "1px solid rgba(16,185,129,0.2)" }}
+                  badgeStyle={{
+                    background: "rgba(16,185,129,0.1)",
+                    color: "#047857",
+                    border: "1px solid rgba(16,185,129,0.2)",
+                  }}
                   stagger={1}
                 />
 
@@ -221,7 +302,11 @@ export function DashboardHome() {
                   value={stats.total}
                   sub={`${stats.usagePercent}% en ús actiu`}
                   badge={`${stats.usagePercent}%`}
-                  badgeStyle={{ background: "rgba(0,153,168,0.1)", color: "#007380", border: "1px solid rgba(0,153,168,0.2)" }}
+                  badgeStyle={{
+                    background: "rgba(0,153,168,0.1)",
+                    color: "#007380",
+                    border: "1px solid rgba(0,153,168,0.2)",
+                  }}
                   stagger={2}
                 />
 
@@ -233,7 +318,11 @@ export function DashboardHome() {
                   value={stats.usedCount}
                   sub={`De ${stats.total} disponibles`}
                   badge="Complet"
-                  badgeStyle={{ background: "rgba(5,150,105,0.1)", color: "#047857", border: "1px solid rgba(5,150,105,0.2)" }}
+                  badgeStyle={{
+                    background: "rgba(5,150,105,0.1)",
+                    color: "#047857",
+                    border: "1px solid rgba(5,150,105,0.2)",
+                  }}
                   stagger={3}
                 />
 
@@ -255,19 +344,35 @@ export function DashboardHome() {
                   value={stats.equipWithTable}
                   sub="Equips amb taula de valors"
                   badge="+3 nous"
-                  badgeStyle={{ background: "rgba(14,165,233,0.1)", color: "#0369A1", border: "1px solid rgba(14,165,233,0.2)" }}
+                  badgeStyle={{
+                    background: "rgba(14,165,233,0.1)",
+                    color: "#0369A1",
+                    border: "1px solid rgba(14,165,233,0.2)",
+                  }}
                   stagger={5}
                 />
 
                 <StatCard
                   icon={<AlertTriangle className="h-5 w-5" />}
                   accentColor={stats.orphanCount > 0 ? "#D97706" : "#94a3b8"}
-                  accentBg={stats.orphanCount > 0 ? "rgba(217,119,6,0.08)" : "rgba(148,163,184,0.08)"}
+                  accentBg={
+                    stats.orphanCount > 0
+                      ? "rgba(217,119,6,0.08)"
+                      : "rgba(148,163,184,0.08)"
+                  }
                   label="Refs. trencades"
                   value={stats.orphanCount}
-                  sub={stats.orphanCount > 0 ? "Camps no trobats al diccionari" : "Tot correcte ✓"}
+                  sub={
+                    stats.orphanCount > 0
+                      ? "Camps no trobats al diccionari"
+                      : "Tot correcte ✓"
+                  }
                   badge={stats.orphanCount > 0 ? "Atenció" : undefined}
-                  badgeStyle={{ background: "rgba(245,158,11,0.12)", color: "#92400E", border: "1px solid rgba(245,158,11,0.25)" }}
+                  badgeStyle={{
+                    background: "rgba(245,158,11,0.12)",
+                    color: "#92400E",
+                    border: "1px solid rgba(245,158,11,0.25)",
+                  }}
                   highlight={stats.orphanCount > 0}
                   stagger={6}
                 />

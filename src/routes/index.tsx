@@ -7,7 +7,10 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "CBT · TaulaMaster" },
-      { name: "description", content: "Gestió d'actius BIM i paràmetres tècnics segons GuBIMClass" },
+      {
+        name: "description",
+        content: "Gestió d'actius BIM i paràmetres tècnics segons GuBIMClass",
+      },
     ],
   }),
 });

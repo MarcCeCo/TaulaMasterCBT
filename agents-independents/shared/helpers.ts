@@ -3,14 +3,19 @@
 
 import http from "http";
 
-export const APS_AUTH_BASE = "https://developer.api.autodesk.com/authentication/v2";
-export const APS_SCOPE     = "data:read viewables:read account:read";
+export const APS_AUTH_BASE =
+  "https://developer.api.autodesk.com/authentication/v2";
+export const APS_SCOPE = "data:read viewables:read account:read";
 
 // ─── HTML per pàgines OAuth ───────────────────────────────────────────────────
 
-export function htmlPagina(titol: string, missatge: string, ok: boolean): string {
+export function htmlPagina(
+  titol: string,
+  missatge: string,
+  ok: boolean,
+): string {
   const color = ok ? "#0099A8" : "#EF4444";
-  const icon  = ok ? "✅" : "❌";
+  const icon = ok ? "✅" : "❌";
   return `<!DOCTYPE html>
 <html lang="ca">
 <head>
@@ -58,7 +63,10 @@ export function setCors(res: http.ServerResponse): void {
 
 // ─── Autenticació per secret ──────────────────────────────────────────────────
 
-export function verificaAuth(req: http.IncomingMessage, secret: string): boolean {
+export function verificaAuth(
+  req: http.IncomingMessage,
+  secret: string,
+): boolean {
   if (!secret) return true;
   const authHeader = req.headers["authorization"] ?? "";
   return authHeader.replace("Bearer ", "") === secret;
@@ -69,10 +77,15 @@ export function verificaAuth(req: http.IncomingMessage, secret: string): boolean
 export function llegeixBody(req: http.IncomingMessage): Promise<any> {
   return new Promise((resolve) => {
     let data = "";
-    req.on("data", (chunk) => { data += chunk; });
+    req.on("data", (chunk) => {
+      data += chunk;
+    });
     req.on("end", () => {
-      try { resolve(JSON.parse(data)); }
-      catch { resolve({}); }
+      try {
+        resolve(JSON.parse(data));
+      } catch {
+        resolve({});
+      }
     });
   });
 }

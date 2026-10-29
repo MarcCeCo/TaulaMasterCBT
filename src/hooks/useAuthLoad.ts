@@ -34,7 +34,7 @@ import { useAuth } from "@/lib/auth";
 
 export function useAuthLoad() {
   const { getToken, loading: authLoading, user } = useAuth();
-  const loadingRef     = useRef(false);
+  const loadingRef = useRef(false);
   const needsReloadRef = useRef(false);
 
   /**
@@ -45,13 +45,17 @@ export function useAuthLoad() {
     let token = getToken();
     if (token) return token;
 
-    const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     token = session?.access_token ?? "";
     if (token) return token;
 
     for (let i = 0; i < 6; i++) {
       await new Promise<void>((r) => setTimeout(r, 500));
-      const { data: { session: s } } = await supabase.auth.getSession();
+      const {
+        data: { session: s },
+      } = await supabase.auth.getSession();
       token = s?.access_token ?? "";
       if (token) return token;
     }
@@ -73,14 +77,10 @@ export function useAuthLoad() {
    * @param guardRef   - ref booleà extern per a loadingRef (si el store el gestiona)
    */
   const setupAuthListeners = useCallback(
-    ({
-      onLoad,
-      onSignOut,
-    }: {
-      onLoad: () => void;
-      onSignOut: () => void;
-    }) => {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    ({ onLoad, onSignOut }: { onLoad: () => void; onSignOut: () => void }) => {
+      const {
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event) => {
         if (event === "SIGNED_IN") {
           setTimeout(() => onLoad(), 50);
         }

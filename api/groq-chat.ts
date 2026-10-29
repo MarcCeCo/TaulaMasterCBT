@@ -43,7 +43,11 @@ interface RagResult {
 
 // ─── Utilitats de cerca ───────────────────────────────────────────────────────
 
-async function supaGet(supaUrl: string, supaKey: string, path: string): Promise<unknown[]> {
+async function supaGet(
+  supaUrl: string,
+  supaKey: string,
+  path: string,
+): Promise<unknown[]> {
   const r = await fetch(`${supaUrl}/rest/v1/${path}`, {
     headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}` },
   });
@@ -59,17 +63,39 @@ async function supaGet(supaUrl: string, supaKey: string, path: string): Promise<
 function normalitza(text: string): string {
   return text
     .toLowerCase()
-    .normalize("NFD")                        // descompon accents: á → a + ́
-    .replace(/[\u0300-\u036f]/g, "")         // elimina els diacrítics
-    .replace(/[^a-z0-9\s]/g, " ")           // elimina caràcters especials
+    .normalize("NFD") // descompon accents: á → a + ́
+    .replace(/[\u0300-\u036f]/g, "") // elimina els diacrítics
+    .replace(/[^a-z0-9\s]/g, " ") // elimina caràcters especials
     .replace(/\s+/g, " ")
     .trim();
 }
 
-const STOP_WORDS = new Set(["de","del","la","el","els","les","i","a","al","des","per","amb","una","uns","en","o","d","l","s"]);
+const STOP_WORDS = new Set([
+  "de",
+  "del",
+  "la",
+  "el",
+  "els",
+  "les",
+  "i",
+  "a",
+  "al",
+  "des",
+  "per",
+  "amb",
+  "una",
+  "uns",
+  "en",
+  "o",
+  "d",
+  "l",
+  "s",
+]);
 
 function paraulesCerca(frase: string): string[] {
-  const ps = normalitza(frase).split(/\s+/).filter(p => p.length > 1 && !STOP_WORDS.has(p));
+  const ps = normalitza(frase)
+    .split(/\s+/)
+    .filter((p) => p.length > 1 && !STOP_WORDS.has(p));
   return ps.length > 0 ? ps : [normalitza(frase)];
 }
 
@@ -90,7 +116,7 @@ function puntuacioParaula(query: string, candidata: string): number {
   const cobertura = qi / query.length;
   if (cobertura < 0.5) return 0; // mínim 50% de lletres en ordre
 
-  const prefixBonus   = candidata.startsWith(query) ? 1.5 : 1.0;
+  const prefixBonus = candidata.startsWith(query) ? 1.5 : 1.0;
   const longitudPenal = query.length / candidata.length; // penalitza candidata molt més llarga
 
   return Math.min(1.0, cobertura * prefixBonus * longitudPenal);
@@ -112,7 +138,10 @@ function puntua(query: string, text: string): number {
   let scoreTot = 0;
   for (const qp of qParaules) {
     // Pren la millor puntuació entre totes les paraules del text candidat
-    const millor = tParaules.reduce((max, tp) => Math.max(max, puntuacioParaula(qp, tp)), 0);
+    const millor = tParaules.reduce(
+      (max, tp) => Math.max(max, puntuacioParaula(qp, tp)),
+      0,
+    );
     scoreTot += millor;
   }
   return qParaules.length > 0 ? scoreTot / qParaules.length : 0;
@@ -133,19 +162,19 @@ interface ResultatPuntuat {
 function classificaResultats<T extends ResultatPuntuat>(
   resultats: T[],
   llindarEmpat = 0.08,
-  llindarMinim = 0.50,
+  llindarMinim = 0.5,
 ): { unic: boolean; empat: boolean; top: T[] } {
   const filtrats = resultats
-    .filter(r => r.score >= llindarMinim)
+    .filter((r) => r.score >= llindarMinim)
     .sort((a, b) => b.score - a.score || a.jerarquia - b.jerarquia);
 
   if (!filtrats.length) return { unic: false, empat: false, top: [] };
 
   const maxScore = filtrats[0].score;
   // Retorna NOMÉS els resultats del grup de màxima puntuació
-  const topGrup  = filtrats.filter(r => maxScore - r.score <= llindarEmpat);
-  const unic     = topGrup.length === 1;
-  const empat    = topGrup.length > 1;
+  const topGrup = filtrats.filter((r) => maxScore - r.score <= llindarEmpat);
+  const unic = topGrup.length === 1;
+  const empat = topGrup.length > 1;
 
   return { unic, empat, top: topGrup };
 }
@@ -164,65 +193,173 @@ function prefixCerca(paraula: string): string {
 }
 
 // Manté compatibilitat amb cerques antigues que usen coincideixFlexible
-function coincideixFlexible(text: string, termes: string[], mode: "and" | "or" = "and"): boolean {
+function coincideixFlexible(
+  text: string,
+  termes: string[],
+  mode: "and" | "or" = "and",
+): boolean {
   const t = normalitza(text);
   const tNorm = termes.map(normalitza);
-  return mode === "and" ? tNorm.every(p => t.includes(p)) : tNorm.some(p => t.includes(p));
+  return mode === "and"
+    ? tNorm.every((p) => t.includes(p))
+    : tNorm.some((p) => t.includes(p));
 }
 
 // ─── Tools disponibles per al model ──────────────────────────────────────────
 
 const TOOLS = [
-  { type:"function", function:{ name:"cerca_installacio",
-    description:"Cerca installacions per nom o codi (visor3d_installacions). Retorna codi (ex:ED014) i nom.",
-    parameters:{ type:"object", properties:{
-      nom:{ type:"string" }, codi:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"cerca_equips",
-    description:"Cerca equips per nom/tipus (equipments). Retorna equip_code(ex:BCCS), equip_name, gubim_code. Params: nom, tipus, keyword, equip_code, gubim_code.",
-    parameters:{ type:"object", properties:{
-      nom:{ type:"string" }, tipus:{ type:"string" }, keyword:{ type:"string" },
-      equip_code:{ type:"string" }, gubim_code:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"cerca_gubim",
-    description:"Cerca codis GuBIMClass (gubim_class) per nom o codi.",
-    parameters:{ type:"object", properties:{
-      nom:{ type:"string" }, codi:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"cerca_camps",
-    description:"Cerca camps del diccionari BIM (fields) per nom, disciplina o codi.",
-    parameters:{ type:"object", properties:{
-      nom:{ type:"string" }, disciplina:{ type:"string" }, codi:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"cerca_projecte",
-    description:"Cerca projectes (projectes) per nom, codi o status(actiu/arxivat).",
-    parameters:{ type:"object", properties:{
-      codi_projecte:{ type:"string" }, nom:{ type:"string" }, status:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"cerca_tags_projecte",
-    description:"Llista TAGs d un projecte (projecte_tags). Requereix codi_projecte.",
-    parameters:{ type:"object", required:["codi_projecte"], properties:{
-      codi_projecte:{ type:"string" }, status:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"cerca_tags_rosmiman",
-    description:"Cerca TAGs Rosmiman globals (rosmiman_equips). Verifica si un TAG existeix.",
-    parameters:{ type:"object", properties:{
-      codi_installacio:{ type:"string" }, codi_equip:{ type:"string" }, tag_exacte:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"primer_tag_disponible",
-    description:"Calcula primer TAG disponible (lletra A-Z lliure). OBLIGATORI: codi_installacio ha de venir del resultat de cerca_installacio (mai inventat). codi_equip ha de venir del resultat de cerca_equips (mai inventat). Si no has cridat prèviament cerca_installacio i cerca_equips, crida'ls primer.",
-    parameters:{ type:"object", required:["codi_installacio","codi_equip"], properties:{
-      codi_installacio:{ type:"string" }, codi_equip:{ type:"string" },
-      ccm:{ type:"string" }, funcio:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"cerca_visor3d",
-    description:"Cerca sistemes i installacions del Visualitzador 3D.",
-    parameters:{ type:"object", properties:{
-      nom:{ type:"string" }, codi:{ type:"string" }, sistema:{ type:"string" }
-    }}}},
-  { type:"function", function:{ name:"estadistiques_globals",
-    description:"Totals de totes les taules de la plataforma.",
-    parameters:{ type:"object", properties:{} }}},
+  {
+    type: "function",
+    function: {
+      name: "cerca_installacio",
+      description:
+        "Cerca installacions per nom o codi (visor3d_installacions). Retorna codi (ex:ED014) i nom.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          codi: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cerca_equips",
+      description:
+        "Cerca equips per nom/tipus (equipments). Retorna equip_code(ex:BCCS), equip_name, gubim_code. Params: nom, tipus, keyword, equip_code, gubim_code.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          tipus: { type: "string" },
+          keyword: { type: "string" },
+          equip_code: { type: "string" },
+          gubim_code: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cerca_gubim",
+      description: "Cerca codis GuBIMClass (gubim_class) per nom o codi.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          codi: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cerca_camps",
+      description:
+        "Cerca camps del diccionari BIM (fields) per nom, disciplina o codi.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          disciplina: { type: "string" },
+          codi: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cerca_projecte",
+      description:
+        "Cerca projectes (projectes) per nom, codi o status(actiu/arxivat).",
+      parameters: {
+        type: "object",
+        properties: {
+          codi_projecte: { type: "string" },
+          nom: { type: "string" },
+          status: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cerca_tags_projecte",
+      description:
+        "Llista TAGs d un projecte (projecte_tags). Requereix codi_projecte.",
+      parameters: {
+        type: "object",
+        required: ["codi_projecte"],
+        properties: {
+          codi_projecte: { type: "string" },
+          status: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cerca_tags_rosmiman",
+      description:
+        "Cerca TAGs Rosmiman globals (rosmiman_equips). Verifica si un TAG existeix.",
+      parameters: {
+        type: "object",
+        properties: {
+          codi_installacio: { type: "string" },
+          codi_equip: { type: "string" },
+          tag_exacte: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "primer_tag_disponible",
+      description:
+        "Calcula primer TAG disponible (lletra A-Z lliure). OBLIGATORI: codi_installacio ha de venir del resultat de cerca_installacio (mai inventat). codi_equip ha de venir del resultat de cerca_equips (mai inventat). Si no has cridat prèviament cerca_installacio i cerca_equips, crida'ls primer.",
+      parameters: {
+        type: "object",
+        required: ["codi_installacio", "codi_equip"],
+        properties: {
+          codi_installacio: { type: "string" },
+          codi_equip: { type: "string" },
+          ccm: { type: "string" },
+          funcio: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "cerca_visor3d",
+      description: "Cerca sistemes i installacions del Visualitzador 3D.",
+      parameters: {
+        type: "object",
+        properties: {
+          nom: { type: "string" },
+          codi: { type: "string" },
+          sistema: { type: "string" },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "estadistiques_globals",
+      description: "Totals de totes les taules de la plataforma.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
 ];
 
 // ─── Executors de tools ───────────────────────────────────────────────────────
@@ -237,92 +374,157 @@ async function executaTool(
 ): Promise<string> {
   try {
     switch (name) {
-
       // ── cerca_installacio ──────────────────────────────────────────────────
       case "cerca_installacio": {
-        type InstRow = { codi_installacio: string; nom: string; descripcio: string | null };
+        type InstRow = {
+          codi_installacio: string;
+          nom: string;
+          descripcio: string | null;
+        };
 
         if (args.codi) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom,descripcio&codi_installacio=eq.${encodeURIComponent((args.codi as string).toUpperCase())}&limit=1`
-          ) as InstRow[];
-          if (rows.length) return `Instal·lació: ${rows[0].codi_installacio}: ${rows[0].nom}${rows[0].descripcio ? ` | ${rows[0].descripcio}` : ""}`;
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&codi_installacio=eq.${encodeURIComponent((args.codi as string).toUpperCase())}&limit=1`,
+          )) as InstRow[];
+          if (rows.length)
+            return `Instal·lació: ${rows[0].codi_installacio}: ${rows[0].nom}${rows[0].descripcio ? ` | ${rows[0].descripcio}` : ""}`;
           return `No s'ha trobat cap instal·lació amb el codi "${args.codi}".`;
         }
         if (!args.nom) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom,descripcio&order=codi_installacio.asc&limit=500`
-          ) as InstRow[];
-          if (!rows.length) return "No hi ha instal·lacions a la base de dades.";
-          return `Totes les instal·lacions (${rows.length}):\n` + rows.map(r => `- ${r.codi_installacio}: ${r.nom}`).join("\n");
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `visor3d_installacions?select=codi_installacio,nom,descripcio&order=codi_installacio.asc&limit=500`,
+          )) as InstRow[];
+          if (!rows.length)
+            return "No hi ha instal·lacions a la base de dades.";
+          return (
+            `Totes les instal·lacions (${rows.length}):\n` +
+            rows.map((r) => `- ${r.codi_installacio}: ${r.nom}`).join("\n")
+          );
         }
 
         const nomCerca = args.nom as string;
-        const termes   = paraulesCerca(nomCerca);
+        const termes = paraulesCerca(nomCerca);
 
         const resultatsPerTerme = await Promise.all(
-          termes.map(t => supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + prefixCerca(t) + "*")}&order=codi_installacio.asc&limit=200`
-          ) as Promise<InstRow[]>)
+          termes.map(
+            (t) =>
+              supaGet(
+                supaUrl,
+                supaKey,
+                `visor3d_installacions?select=codi_installacio,nom,descripcio&nom=ilike.${encodeURIComponent("*" + prefixCerca(t) + "*")}&order=codi_installacio.asc&limit=200`,
+              ) as Promise<InstRow[]>,
+          ),
         );
 
         const mapCodis = new Map<string, InstRow>();
         for (const llista of resultatsPerTerme)
           for (const r of llista)
-            if (!mapCodis.has(r.codi_installacio)) mapCodis.set(r.codi_installacio, r);
+            if (!mapCodis.has(r.codi_installacio))
+              mapCodis.set(r.codi_installacio, r);
         const totes = [...mapCodis.values()];
 
-        if (!totes.length) return `No s'ha trobat cap instal·lació per "${nomCerca}". Comprova l'ortografia o usa el codi exacte (ex: ED008).`;
+        if (!totes.length)
+          return `No s'ha trobat cap instal·lació per "${nomCerca}". Comprova l'ortografia o usa el codi exacte (ex: ED008).`;
 
         type InstPunt = InstRow & ResultatPuntuat;
-        const puntuats: InstPunt[] = totes.map(r => ({
-          ...r, score: puntua(nomCerca, r.nom), jerarquia: 0, nom: r.nom,
+        const puntuats: InstPunt[] = totes.map((r) => ({
+          ...r,
+          score: puntua(nomCerca, r.nom),
+          jerarquia: 0,
+          nom: r.nom,
         }));
 
         const { unic, empat, top } = classificaResultats(puntuats);
-        if (!top.length) return `No s'ha trobat cap instal·lació per "${nomCerca}".`;
-        if (unic)        return `Instal·lació: ${top[0].codi_installacio}: ${top[0].nom}${top[0].descripcio ? ` | ${top[0].descripcio}` : ""}`;
+        if (!top.length)
+          return `No s'ha trobat cap instal·lació per "${nomCerca}".`;
+        if (unic)
+          return `Instal·lació: ${top[0].codi_installacio}: ${top[0].nom}${top[0].descripcio ? ` | ${top[0].descripcio}` : ""}`;
 
         const prefix = empat
           ? `Hi ha ${top.length} instal·lacions amb puntuació similar per "${nomCerca}". Presenta-les a l'usuari:`
           : `S'han trobat ${top.length} instal·lacions per "${nomCerca}":`;
-        return prefix + "\n" + top.map(r => `- ${r.codi_installacio}: ${r.nom}${r.descripcio ? ` | ${r.descripcio}` : ""}`).join("\n");
+        return (
+          prefix +
+          "\n" +
+          top
+            .map(
+              (r) =>
+                `- ${r.codi_installacio}: ${r.nom}${r.descripcio ? ` | ${r.descripcio}` : ""}`,
+            )
+            .join("\n")
+        );
       }
       // ── cerca_equips ───────────────────────────────────────────────────────
       case "cerca_equips": {
-        type EquipRow = { equip_code: string; equip_name: string; gubim_code: string; revit_category: string };
+        type EquipRow = {
+          equip_code: string;
+          equip_name: string;
+          gubim_code: string;
+          revit_category: string;
+        };
 
         if (args.equip_code) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_code=eq.${encodeURIComponent(args.equip_code as string)}`
-          ) as EquipRow[];
-          if (rows.length) return `Equip: ${rows[0].equip_code}: ${rows[0].equip_name} | GuBIMClass: ${rows[0].gubim_code}`;
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_code=eq.${encodeURIComponent(args.equip_code as string)}`,
+          )) as EquipRow[];
+          if (rows.length)
+            return `Equip: ${rows[0].equip_code}: ${rows[0].equip_name} | GuBIMClass: ${rows[0].gubim_code}`;
           return `No s'ha trobat cap equip amb codi "${args.equip_code}".`;
         }
         if (args.gubim_code) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`
-          ) as EquipRow[];
-          if (rows.length) return `Equips amb GuBIMClass ${args.gubim_code} (${rows.length}):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name}`).join("\n");
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&gubim_code=eq.${encodeURIComponent(args.gubim_code as string)}`,
+          )) as EquipRow[];
+          if (rows.length)
+            return (
+              `Equips amb GuBIMClass ${args.gubim_code} (${rows.length}):\n` +
+              rows.map((e) => `- ${e.equip_code}: ${e.equip_name}`).join("\n")
+            );
           return `No s'han trobat equips amb GuBIMClass "${args.gubim_code}".`;
         }
 
-        const cercaNomRaw = (args.nom ?? args.tipus ?? args.keyword ?? args.equip_name) as string | undefined;
+        const cercaNomRaw = (args.nom ??
+          args.tipus ??
+          args.keyword ??
+          args.equip_name) as string | undefined;
         if (!cercaNomRaw) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200`
-          ) as EquipRow[];
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `equipments?select=equip_code,equip_name,gubim_code,revit_category&order=equip_name.asc&limit=200`,
+          )) as EquipRow[];
           if (!rows.length) return "El catàleg d'equips és buit.";
-          return `Catàleg complet (${rows.length} equips):\n` + rows.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
+          return (
+            `Catàleg complet (${rows.length} equips):\n` +
+            rows
+              .map(
+                (e) =>
+                  `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`,
+              )
+              .join("\n")
+          );
         }
 
         // Carrega candidats per cada terme usant prefix normalitzat (65% de la paraula)
         // Prou curt per capturar plurals i variants d'accents, prou llarg per evitar soroll.
         const termes = paraulesCerca(cercaNomRaw);
         const resultatsPerTerme = await Promise.all(
-          termes.map(t => supaGet(supaUrl, supaKey,
-            `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + prefixCerca(t) + "*")}&order=equip_name.asc&limit=300`
-          ) as Promise<EquipRow[]>)
+          termes.map(
+            (t) =>
+              supaGet(
+                supaUrl,
+                supaKey,
+                `equipments?select=equip_code,equip_name,gubim_code,revit_category&equip_name=ilike.${encodeURIComponent("*" + prefixCerca(t) + "*")}&order=equip_name.asc&limit=300`,
+              ) as Promise<EquipRow[]>,
+          ),
         );
 
         // Combina sense duplicats
@@ -332,49 +534,76 @@ async function executaTool(
             if (!codisTots.has(e.equip_code)) codisTots.set(e.equip_code, e);
         const tots = [...codisTots.values()];
 
-        if (!tots.length) return `No s'ha trobat cap equip per "${cercaNomRaw}".`;
+        if (!tots.length)
+          return `No s'ha trobat cap equip per "${cercaNomRaw}".`;
 
         type EquipPunt = EquipRow & ResultatPuntuat;
-        const puntuats: EquipPunt[] = tots.map(e => ({
-          ...e, score: puntua(cercaNomRaw, e.equip_name), jerarquia: 0, nom: e.equip_name,
+        const puntuats: EquipPunt[] = tots.map((e) => ({
+          ...e,
+          score: puntua(cercaNomRaw, e.equip_name),
+          jerarquia: 0,
+          nom: e.equip_name,
         }));
 
         const { unic, empat, top } = classificaResultats(puntuats);
-        if (!top.length) return `No s'ha trobat cap equip per "${cercaNomRaw}".`;
-        if (unic)        return `Equip: ${top[0].equip_code}: ${top[0].equip_name} | GuBIMClass: ${top[0].gubim_code}${top[0].revit_category ? ` | Revit: ${top[0].revit_category}` : ""}`;
+        if (!top.length)
+          return `No s'ha trobat cap equip per "${cercaNomRaw}".`;
+        if (unic)
+          return `Equip: ${top[0].equip_code}: ${top[0].equip_name} | GuBIMClass: ${top[0].gubim_code}${top[0].revit_category ? ` | Revit: ${top[0].revit_category}` : ""}`;
 
         const prefix = empat
           ? `Hi ha ${top.length} equips amb puntuació similar per "${cercaNomRaw}". Presenta'ls tots a l'usuari i demana que confirmi quin és:`
           : `S'han trobat ${top.length} equips per "${cercaNomRaw}" (ordenats per rellevància):`;
-        return prefix + "\n" + top.map(e => `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`).join("\n");
+        return (
+          prefix +
+          "\n" +
+          top
+            .map(
+              (e) =>
+                `- ${e.equip_code}: ${e.equip_name} | GuBIMClass: ${e.gubim_code}`,
+            )
+            .join("\n")
+        );
       }
-
 
       // ── cerca_gubim ────────────────────────────────────────────────────────
       case "cerca_gubim": {
         type GubimRow = { code: string; name: string };
 
         if (args.codi) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `gubim_class?select=code,name&code=eq.${encodeURIComponent(args.codi as string)}`
-          ) as GubimRow[];
-          if (rows.length) return `GuBIMClass: ${rows[0].code}: ${rows[0].name}`;
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `gubim_class?select=code,name&code=eq.${encodeURIComponent(args.codi as string)}`,
+          )) as GubimRow[];
+          if (rows.length)
+            return `GuBIMClass: ${rows[0].code}: ${rows[0].name}`;
           return `No s'ha trobat cap codi GuBIMClass "${args.codi}".`;
         }
         if (!args.nom) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `gubim_class?select=code,name&order=code.asc&limit=200`
-          ) as GubimRow[];
-          return `GuBIMClass (${rows.length}):\n` + rows.map(r => `- ${r.code}: ${r.name}`).join("\n");
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `gubim_class?select=code,name&order=code.asc&limit=200`,
+          )) as GubimRow[];
+          return (
+            `GuBIMClass (${rows.length}):\n` +
+            rows.map((r) => `- ${r.code}: ${r.name}`).join("\n")
+          );
         }
 
         const nomCerca = args.nom as string;
-        const termes   = paraulesCerca(nomCerca);
+        const termes = paraulesCerca(nomCerca);
 
         const resultatsPerTerme = await Promise.all(
-          termes.map(t => supaGet(supaUrl, supaKey,
-            `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + prefixCerca(t) + "*")}&order=code.asc&limit=300`
-          ) as Promise<GubimRow[]>)
+          termes.map(
+            (t) =>
+              supaGet(
+                supaUrl,
+                supaKey,
+                `gubim_class?select=code,name&name=ilike.${encodeURIComponent("*" + prefixCerca(t) + "*")}&order=code.asc&limit=300`,
+              ) as Promise<GubimRow[]>,
+          ),
         );
 
         const mapCodis = new Map<string, GubimRow>();
@@ -383,200 +612,329 @@ async function executaTool(
             if (!mapCodis.has(r.code)) mapCodis.set(r.code, r);
         const tots = [...mapCodis.values()];
 
-        if (!tots.length) return `No s'ha trobat cap codi GuBIMClass per "${nomCerca}".`;
+        if (!tots.length)
+          return `No s'ha trobat cap codi GuBIMClass per "${nomCerca}".`;
 
         type GubimPunt = GubimRow & ResultatPuntuat;
-        const puntuats: GubimPunt[] = tots.map(r => ({
-          ...r, score: puntua(nomCerca, r.name), jerarquia: r.code.split(".").length, nom: r.name,
+        const puntuats: GubimPunt[] = tots.map((r) => ({
+          ...r,
+          score: puntua(nomCerca, r.name),
+          jerarquia: r.code.split(".").length,
+          nom: r.name,
         }));
 
         const { unic, empat, top } = classificaResultats(puntuats);
-        if (!top.length) return `No s'ha trobat cap codi GuBIMClass per "${nomCerca}".`;
-        if (unic)        return `GuBIMClass: ${top[0].code}: ${top[0].name}`;
+        if (!top.length)
+          return `No s'ha trobat cap codi GuBIMClass per "${nomCerca}".`;
+        if (unic) return `GuBIMClass: ${top[0].code}: ${top[0].name}`;
 
         const prefix = empat
           ? `Hi ha ${top.length} codis GuBIMClass amb puntuació similar per "${nomCerca}". Presenta'ls tots a l'usuari i demana que confirmi quin és:`
           : `S'han trobat ${top.length} codis GuBIMClass per "${nomCerca}". Presenta'ls a l'usuari:`;
-        return prefix + "\n" + top.map(r => `- ${r.code}: ${r.name}`).join("\n");
+        return (
+          prefix + "\n" + top.map((r) => `- ${r.code}: ${r.name}`).join("\n")
+        );
       }
-
 
       // ── cerca_camps ────────────────────────────────────────────────────────
       case "cerca_camps": {
-        type CampRow = { col: string; codi: string; tipus_dada: string; disciplina: string; agrupacio_revit: string };
+        type CampRow = {
+          col: string;
+          codi: string;
+          tipus_dada: string;
+          disciplina: string;
+          agrupacio_revit: string;
+        };
 
         // Codi exacte
         if (args.codi) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=eq.${encodeURIComponent(args.codi as string)}`
-          ) as CampRow[];
-          if (rows.length) return `Camp: ${rows[0].col}${rows[0].codi ? ` (${rows[0].codi})` : ""}${rows[0].tipus_dada ? ` | ${rows[0].tipus_dada}` : ""}${rows[0].disciplina ? ` | ${rows[0].disciplina}` : ""}`;
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=eq.${encodeURIComponent(args.codi as string)}`,
+          )) as CampRow[];
+          if (rows.length)
+            return `Camp: ${rows[0].col}${rows[0].codi ? ` (${rows[0].codi})` : ""}${rows[0].tipus_dada ? ` | ${rows[0].tipus_dada}` : ""}${rows[0].disciplina ? ` | ${rows[0].disciplina}` : ""}`;
           return `No s'ha trobat cap camp amb codi "${args.codi}".`;
         }
 
         // Sense filtres → llista tots
         if (!args.nom && !args.disciplina) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&order=col.asc&limit=200`
-          ) as CampRow[];
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&order=col.asc&limit=200`,
+          )) as CampRow[];
           if (!rows.length) return "El diccionari de camps és buit.";
-          return `Tots els camps (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
+          return (
+            `Tots els camps (${rows.length}):\n` +
+            rows
+              .map(
+                (r) =>
+                  `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`,
+              )
+              .join("\n")
+          );
         }
 
         // Cerca per disciplina sola
         if (args.disciplina && !args.nom) {
-          const rows = await supaGet(supaUrl, supaKey,
-            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}&order=col.asc&limit=100`
-          ) as CampRow[];
-          if (!rows.length) return `No s'han trobat camps de la disciplina "${args.disciplina}".`;
-          return `Camps de disciplina "${args.disciplina}" (${rows.length}):\n` + rows.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}`).join("\n");
+          const rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&disciplina=ilike.${encodeURIComponent("*" + args.disciplina + "*")}&order=col.asc&limit=100`,
+          )) as CampRow[];
+          if (!rows.length)
+            return `No s'han trobat camps de la disciplina "${args.disciplina}".`;
+          return (
+            `Camps de disciplina "${args.disciplina}" (${rows.length}):\n` +
+            rows
+              .map(
+                (r) =>
+                  `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}`,
+              )
+              .join("\n")
+          );
         }
 
         // Cerca fuzzy per nom
         const nomCerca = args.nom as string;
-        const termes   = paraulesCerca(nomCerca);
-        const termePrincipal = [...termes].sort((a,b) => b.length - a.length)[0];
+        const termes = paraulesCerca(nomCerca);
+        const termePrincipal = [...termes].sort(
+          (a, b) => b.length - a.length,
+        )[0];
 
-        let candidats = await supaGet(supaUrl, supaKey,
-          `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + prefixCerca(termePrincipal) + "*")}&order=col.asc&limit=200`
-        ) as CampRow[];
+        let candidats = (await supaGet(
+          supaUrl,
+          supaKey,
+          `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&col=ilike.${encodeURIComponent("*" + prefixCerca(termePrincipal) + "*")}&order=col.asc&limit=200`,
+        )) as CampRow[];
 
         // Filtra per disciplina si s'ha indicat
         if (args.disciplina) {
           const disc = (args.disciplina as string).toLowerCase();
-          candidats = candidats.filter(r => r.disciplina?.toLowerCase().includes(disc));
+          candidats = candidats.filter((r) =>
+            r.disciplina?.toLowerCase().includes(disc),
+          );
         }
 
         if (!candidats.length) {
           // Fallback: cerca per codi
-          candidats = await supaGet(supaUrl, supaKey,
-            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=col.asc&limit=50`
-          ) as CampRow[];
+          candidats = (await supaGet(
+            supaUrl,
+            supaKey,
+            `fields?select=col,codi,tipus_dada,disciplina,agrupacio_revit&codi=ilike.${encodeURIComponent("*" + termePrincipal + "*")}&order=col.asc&limit=50`,
+          )) as CampRow[];
         }
 
-        if (!candidats.length) return `No s'han trobat camps per "${nomCerca}".`;
+        if (!candidats.length)
+          return `No s'han trobat camps per "${nomCerca}".`;
 
         type CampPunt = CampRow & ResultatPuntuat;
-        const puntuats: CampPunt[] = candidats.map(r => ({
+        const puntuats: CampPunt[] = candidats.map((r) => ({
           ...r,
-          score:     puntua(nomCerca, r.col),
+          score: puntua(nomCerca, r.col),
           jerarquia: 0,
-          nom:       r.col,
+          nom: r.col,
         }));
 
         const { unic, empat, top } = classificaResultats(puntuats);
 
         if (!top.length) return `No s'han trobat camps per "${nomCerca}".`;
-        if (unic)        return `Camp: ${top[0].col}${top[0].codi ? ` (${top[0].codi})` : ""}${top[0].tipus_dada ? ` | ${top[0].tipus_dada}` : ""}${top[0].disciplina ? ` | ${top[0].disciplina}` : ""}${top[0].agrupacio_revit ? ` | Revit: ${top[0].agrupacio_revit}` : ""}`;
+        if (unic)
+          return `Camp: ${top[0].col}${top[0].codi ? ` (${top[0].codi})` : ""}${top[0].tipus_dada ? ` | ${top[0].tipus_dada}` : ""}${top[0].disciplina ? ` | ${top[0].disciplina}` : ""}${top[0].agrupacio_revit ? ` | Revit: ${top[0].agrupacio_revit}` : ""}`;
 
         const prefix = empat
           ? `Hi ha ${top.length} camps amb puntuació similar per "${nomCerca}". Presenta'ls a l'usuari:`
           : `S'han trobat ${top.length} camps per "${nomCerca}":`;
-        return prefix + "\n" + top.map(r => `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`).join("\n");
+        return (
+          prefix +
+          "\n" +
+          top
+            .map(
+              (r) =>
+                `- ${r.col}${r.codi ? ` (${r.codi})` : ""}${r.tipus_dada ? ` | ${r.tipus_dada}` : ""}${r.disciplina ? ` | ${r.disciplina}` : ""}`,
+            )
+            .join("\n")
+        );
       }
-
 
       // ── cerca_projecte ─────────────────────────────────────────────────────
       case "cerca_projecte": {
-        type ProjRow = { id: string; codi_projecte: string; nom: string; status: string; codi_installacio: string; codis_installacio: {codi:string;nom:string}[]|null; allowed_users: unknown };
+        type ProjRow = {
+          id: string;
+          codi_projecte: string;
+          nom: string;
+          status: string;
+          codi_installacio: string;
+          codis_installacio: { codi: string; nom: string }[] | null;
+          allowed_users: unknown;
+        };
         let rows: ProjRow[] = [];
 
         if (args.codi_projecte) {
-          rows = await supaGet(supaUrl, supaKey,
-            `projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio,allowed_users&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=5`
-          ) as ProjRow[];
+          rows = (await supaGet(
+            supaUrl,
+            supaKey,
+            `projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio,allowed_users&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=5`,
+          )) as ProjRow[];
         }
 
         if (!rows.length) {
-          let query = "projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio,allowed_users&order=codi_projecte.desc&limit=500";
-          if (args.status) query += `&status=eq.${encodeURIComponent(args.status as string)}`;
-          const tots = await supaGet(supaUrl, supaKey, query) as ProjRow[];
+          let query =
+            "projectes?select=id,codi_projecte,nom,status,codi_installacio,codis_installacio,allowed_users&order=codi_projecte.desc&limit=500";
+          if (args.status)
+            query += `&status=eq.${encodeURIComponent(args.status as string)}`;
+          const tots = (await supaGet(supaUrl, supaKey, query)) as ProjRow[];
 
           // ── Filtre d'accés per userId ──────────────────────────────────────
           // allowed_users === null → accés obert (tothom el veu)
           // allowed_users === []   → accés tancat (només admins)
           // allowed_users = [{userId, role},...] → accés restringit
-          const visibles = isAdmin ? tots : tots.filter(p => {
-            if (p.allowed_users === null) return true;               // obert
-            if (!Array.isArray(p.allowed_users)) return false;       // format inesperat
-            if ((p.allowed_users as unknown[]).length === 0) return false; // tancat
-            if (!userId) return false;
-            return (p.allowed_users as { userId: string }[]).some(u => u.userId === userId);
-          });
+          const visibles = isAdmin
+            ? tots
+            : tots.filter((p) => {
+                if (p.allowed_users === null) return true; // obert
+                if (!Array.isArray(p.allowed_users)) return false; // format inesperat
+                if ((p.allowed_users as unknown[]).length === 0) return false; // tancat
+                if (!userId) return false;
+                return (p.allowed_users as { userId: string }[]).some(
+                  (u) => u.userId === userId,
+                );
+              });
 
           if (args.nom) {
             const termes = paraulesCerca(args.nom as string);
-            rows = visibles.filter(p =>
-              coincideixFlexible(p.nom, termes, "and") ||
-              p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "and"))
+            rows = visibles.filter(
+              (p) =>
+                coincideixFlexible(p.nom, termes, "and") ||
+                p.codis_installacio?.some(
+                  (c) => c.nom && coincideixFlexible(c.nom, termes, "and"),
+                ),
             );
-            if (!rows.length) rows = visibles.filter(p =>
-              coincideixFlexible(p.nom, termes, "or") ||
-              p.codis_installacio?.some(c => c.nom && coincideixFlexible(c.nom, termes, "or"))
-            );
+            if (!rows.length)
+              rows = visibles.filter(
+                (p) =>
+                  coincideixFlexible(p.nom, termes, "or") ||
+                  p.codis_installacio?.some(
+                    (c) => c.nom && coincideixFlexible(c.nom, termes, "or"),
+                  ),
+              );
           } else {
             rows = visibles.slice(0, 20);
           }
         }
 
-        if (!rows.length) return args.nom ? `No s'ha trobat cap projecte accessible amb el nom "${args.nom}".` : "No tens accés a cap projecte o no n'hi ha a la base de dades.";
-        return rows.map(p => {
-          const codis = p.codis_installacio?.map(c => c.nom ? `${c.codi} (${c.nom})` : c.codi).join(", ") ?? p.codi_installacio ?? "(sense codi)";
-          return `Projecte ${p.codi_projecte}: "${p.nom}" | Estat: ${p.status} | Instal·lacions: ${codis}`;
-        }).join("\n");
+        if (!rows.length)
+          return args.nom
+            ? `No s'ha trobat cap projecte accessible amb el nom "${args.nom}".`
+            : "No tens accés a cap projecte o no n'hi ha a la base de dades.";
+        return rows
+          .map((p) => {
+            const codis =
+              p.codis_installacio
+                ?.map((c) => (c.nom ? `${c.codi} (${c.nom})` : c.codi))
+                .join(", ") ??
+              p.codi_installacio ??
+              "(sense codi)";
+            return `Projecte ${p.codi_projecte}: "${p.nom}" | Estat: ${p.status} | Instal·lacions: ${codis}`;
+          })
+          .join("\n");
       }
 
       // ── cerca_tags_projecte ────────────────────────────────────────────────
       case "cerca_tags_projecte": {
-        const prRows = await supaGet(supaUrl, supaKey,
-          `projectes?select=id,nom,allowed_users&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=1`
-        ) as { id: string; nom: string; allowed_users: unknown }[];
-        if (!prRows.length) return `No existeix el projecte ${args.codi_projecte}.`;
+        const prRows = (await supaGet(
+          supaUrl,
+          supaKey,
+          `projectes?select=id,nom,allowed_users&codi_projecte=eq.${encodeURIComponent(args.codi_projecte as string)}&limit=1`,
+        )) as { id: string; nom: string; allowed_users: unknown }[];
+        if (!prRows.length)
+          return `No existeix el projecte ${args.codi_projecte}.`;
 
         // Verifica accés de l'usuari al projecte concret
         if (!isAdmin) {
           const au = prRows[0].allowed_users;
           const esTancat = Array.isArray(au) && (au as unknown[]).length === 0;
-          const esRestringit = Array.isArray(au) && (au as unknown[]).length > 0;
+          const esRestringit =
+            Array.isArray(au) && (au as unknown[]).length > 0;
           if (esTancat) {
             return `No tens accés al projecte ${args.codi_projecte}. Contacta amb l'administrador.`;
           }
-          if (esRestringit && (!userId || !(au as { userId: string }[]).some(u => u.userId === userId))) {
+          if (
+            esRestringit &&
+            (!userId ||
+              !(au as { userId: string }[]).some((u) => u.userId === userId))
+          ) {
             return `No tens accés al projecte ${args.codi_projecte}. Contacta amb l'administrador.`;
           }
         }
 
         let tagQuery = `projecte_tags?select=tag_complet,status,descripcio_equip,codi_installacio&projecte_id=eq.${encodeURIComponent(prRows[0].id)}&order=tag_complet.asc&limit=500`;
-        if (args.status) tagQuery += `&status=eq.${encodeURIComponent(args.status as string)}`;
-        const tags = await supaGet(supaUrl, supaKey, tagQuery) as { tag_complet: string; status: string; descripcio_equip: string; codi_installacio: string }[];
-        if (!tags.length) return `El projecte ${args.codi_projecte} "${prRows[0].nom}" no té TAGs${args.status ? ` amb estat "${args.status}"` : ""}.`;
-        const validats  = tags.filter(t => t.status === "validat").length;
-        const pendents  = tags.filter(t => t.status === "pendent").length;
-        const rebutjats = tags.filter(t => t.status === "rebutjat").length;
-        const resum = tags.map(t => `- ${t.tag_complet} | ${t.status}${t.descripcio_equip ? ` | ${t.descripcio_equip}` : ""}`).join("\n");
+        if (args.status)
+          tagQuery += `&status=eq.${encodeURIComponent(args.status as string)}`;
+        const tags = (await supaGet(supaUrl, supaKey, tagQuery)) as {
+          tag_complet: string;
+          status: string;
+          descripcio_equip: string;
+          codi_installacio: string;
+        }[];
+        if (!tags.length)
+          return `El projecte ${args.codi_projecte} "${prRows[0].nom}" no té TAGs${args.status ? ` amb estat "${args.status}"` : ""}.`;
+        const validats = tags.filter((t) => t.status === "validat").length;
+        const pendents = tags.filter((t) => t.status === "pendent").length;
+        const rebutjats = tags.filter((t) => t.status === "rebutjat").length;
+        const resum = tags
+          .map(
+            (t) =>
+              `- ${t.tag_complet} | ${t.status}${t.descripcio_equip ? ` | ${t.descripcio_equip}` : ""}`,
+          )
+          .join("\n");
         return `TAGs del projecte ${args.codi_projecte} "${prRows[0].nom}" (${tags.length} TAGs — ${validats} validats, ${pendents} pendents, ${rebutjats} rebutjats):\n${resum}`;
       }
 
       // ── cerca_tags_rosmiman ────────────────────────────────────────────────
       case "cerca_tags_rosmiman": {
-        const filtres: string[] = ["select=tag,descripcio,codi_installacio", "order=tag.asc", "limit=100"];
+        const filtres: string[] = [
+          "select=tag,descripcio,codi_installacio",
+          "order=tag.asc",
+          "limit=100",
+        ];
         if (args.tag_exacte) {
-          filtres.push(`tag=eq.${encodeURIComponent(args.tag_exacte as string)}`);
+          filtres.push(
+            `tag=eq.${encodeURIComponent(args.tag_exacte as string)}`,
+          );
         } else {
-          if (args.codi_installacio) filtres.push(`codi_installacio=eq.${encodeURIComponent((args.codi_installacio as string).toUpperCase())}`);
+          if (args.codi_installacio)
+            filtres.push(
+              `codi_installacio=eq.${encodeURIComponent((args.codi_installacio as string).toUpperCase())}`,
+            );
           if (args.codi_equip) {
-            const ci = (args.codi_installacio as string ?? "").toUpperCase();
+            const ci = ((args.codi_installacio as string) ?? "").toUpperCase();
             const ce = (args.codi_equip as string).toUpperCase();
-            filtres.push(`tag=like.${encodeURIComponent((ci ? ci + "_" : "") + ce + "_%")}`);
+            filtres.push(
+              `tag=like.${encodeURIComponent((ci ? ci + "_" : "") + ce + "_%")}`,
+            );
           }
         }
-        const rows = await supaGet(supaUrl, supaKey, `rosmiman_equips?${filtres.join("&")}`) as {tag:string;descripcio:string}[];
+        const rows = (await supaGet(
+          supaUrl,
+          supaKey,
+          `rosmiman_equips?${filtres.join("&")}`,
+        )) as { tag: string; descripcio: string }[];
         if (!rows.length) {
-          if (args.tag_exacte) return `El TAG ${args.tag_exacte} NO existeix al llistat Rosmiman.`;
+          if (args.tag_exacte)
+            return `El TAG ${args.tag_exacte} NO existeix al llistat Rosmiman.`;
           return "No s'han trobat TAGs amb aquests criteris.";
         }
-        if (args.tag_exacte) return `El TAG ${args.tag_exacte} SÍ existeix al llistat Rosmiman: ${rows[0].descripcio || "(sense descripció)"}`;
-        return `TAGs Rosmiman trobats (${rows.length}):\n` + rows.map(r => `- ${r.tag}${r.descripcio ? `: ${r.descripcio}` : ""}`).join("\n");
+        if (args.tag_exacte)
+          return `El TAG ${args.tag_exacte} SÍ existeix al llistat Rosmiman: ${rows[0].descripcio || "(sense descripció)"}`;
+        return (
+          `TAGs Rosmiman trobats (${rows.length}):\n` +
+          rows
+            .map((r) => `- ${r.tag}${r.descripcio ? `: ${r.descripcio}` : ""}`)
+            .join("\n")
+        );
       }
 
       // ── primer_tag_disponible ──────────────────────────────────────────────
@@ -591,50 +949,68 @@ async function executaTool(
       //             ex: funcio=02 si 01 ja té tagging
       case "primer_tag_disponible": {
         const codiInst = (args.codi_installacio as string).trim().toUpperCase();
-        const codiEq   = (args.codi_equip as string).trim().toUpperCase();
-        const ccm      = String(args.ccm ?? "1").trim();
-        const funcioInici = String(args.funcio ?? "01").trim().padStart(2, "0");
+        const codiEq = (args.codi_equip as string).trim().toUpperCase();
+        const ccm = String(args.ccm ?? "1").trim();
+        const funcioInici = String(args.funcio ?? "01")
+          .trim()
+          .padStart(2, "0");
 
         // Validacions bàsiques
-        if (!/^[A-Z0-9]{2,6}$/.test(codiInst)) return `Codi instal·lació invàlid: "${codiInst}". Ha de ser 5 car. (ex: ED014).`;
-        if (!/^\d$/.test(ccm)) return `CCM invàlid: "${ccm}". Ha de ser 1 dígit 0-9.`;
+        if (!/^[A-Z0-9]{2,6}$/.test(codiInst))
+          return `Codi instal·lació invàlid: "${codiInst}". Ha de ser 5 car. (ex: ED014).`;
+        if (!/^\d$/.test(ccm))
+          return `CCM invàlid: "${ccm}". Ha de ser 1 dígit 0-9.`;
         if (funcioInici === "00") return "La funció no pot ser 00.";
 
         // Validació crítica: verifica que codi_installacio existeix realment a la BD.
         // Evita calcular TAGs amb codis inventats pel model.
-        const instCheck = await supaGet(supaUrl, supaKey,
-          `visor3d_installacions?select=codi_installacio,nom&codi_installacio=eq.${encodeURIComponent(codiInst)}&limit=1`
-        ) as { codi_installacio: string; nom: string }[];
+        const instCheck = (await supaGet(
+          supaUrl,
+          supaKey,
+          `visor3d_installacions?select=codi_installacio,nom&codi_installacio=eq.${encodeURIComponent(codiInst)}&limit=1`,
+        )) as { codi_installacio: string; nom: string }[];
         if (!instCheck.length) {
           // El codi no existeix — busca alternatives per ajudar l'usuari
-          const alternativesRaw = await supaGet(supaUrl, supaKey,
-            `visor3d_installacions?select=codi_installacio,nom&codi_installacio=ilike.${encodeURIComponent(codiInst.slice(0,2) + "%")}&order=codi_installacio.asc&limit=10`
-          ) as { codi_installacio: string; nom: string }[];
-          const alt = alternativesRaw.map(r => `${r.codi_installacio}: ${r.nom}`).join(", ");
+          const alternativesRaw = (await supaGet(
+            supaUrl,
+            supaKey,
+            `visor3d_installacions?select=codi_installacio,nom&codi_installacio=ilike.${encodeURIComponent(codiInst.slice(0, 2) + "%")}&order=codi_installacio.asc&limit=10`,
+          )) as { codi_installacio: string; nom: string }[];
+          const alt = alternativesRaw
+            .map((r) => `${r.codi_installacio}: ${r.nom}`)
+            .join(", ");
           return `El codi d'instal·lació "${codiInst}" no existeix a la base de dades. Instal·lacions similars: ${alt || "cap"}. Crida cerca_installacio per obtenir el codi correcte.`;
         }
-        console.log(`primer_tag_disponible: instal·lació verificada: ${codiInst} = ${instCheck[0].nom}`);
+        console.log(
+          `primer_tag_disponible: instal·lació verificada: ${codiInst} = ${instCheck[0].nom}`,
+        );
 
         // Carregar TOTS els TAGs d'aquesta instal·lació+equip independentment del CCM
         // Prefix sense CCM per veure el panorama complet
         const prefixEquip = `${codiInst}_${codiEq}_`;
         const [rosmiman, projecteTags] = await Promise.all([
-          supaGet(supaUrl, supaKey,
-            `rosmiman_equips?select=tag&tag=like.${encodeURIComponent(prefixEquip + "%")}&limit=500`
-          ) as Promise<{tag:string}[]>,
-          supaGet(supaUrl, supaKey,
-            `projecte_tags?select=tag_complet&tag_complet=like.${encodeURIComponent(prefixEquip + "%")}&limit=500`
-          ) as Promise<{tag_complet:string}[]>,
+          supaGet(
+            supaUrl,
+            supaKey,
+            `rosmiman_equips?select=tag&tag=like.${encodeURIComponent(prefixEquip + "%")}&limit=500`,
+          ) as Promise<{ tag: string }[]>,
+          supaGet(
+            supaUrl,
+            supaKey,
+            `projecte_tags?select=tag_complet&tag_complet=like.${encodeURIComponent(prefixEquip + "%")}&limit=500`,
+          ) as Promise<{ tag_complet: string }[]>,
         ]);
 
         const totsElsTags = new Set([
-          ...(rosmiman as {tag:string}[]).map(r => r.tag),
-          ...(projecteTags as {tag_complet:string}[]).map(r => r.tag_complet),
+          ...(rosmiman as { tag: string }[]).map((r) => r.tag),
+          ...(projecteTags as { tag_complet: string }[]).map(
+            (r) => r.tag_complet,
+          ),
         ]);
 
         // Filtra els TAGs del CCM demanat
         const tagsCCM = [...totsElsTags]
-          .filter(t => t.startsWith(`${codiInst}_${codiEq}_${ccm}`))
+          .filter((t) => t.startsWith(`${codiInst}_${codiEq}_${ccm}`))
           .sort();
 
         // Funció auxiliar: primera lletra lliure per a un prefix
@@ -651,7 +1027,9 @@ async function executaTool(
         const funcioMap = new Map<string, string[]>();
         for (const tag of tagsCCM) {
           // Format: INST_EQUIP_CCMfuLLETRA → extreu "fu" (2 digits) i "LLETRA"
-          const match = tag.match(new RegExp(`^${codiInst}_${codiEq}_${ccm}(\\d{2})([A-Z])$`));
+          const match = tag.match(
+            new RegExp(`^${codiInst}_${codiEq}_${ccm}(\\d{2})([A-Z])$`),
+          );
           if (match) {
             const fn = match[1];
             if (!funcioMap.has(fn)) funcioMap.set(fn, []);
@@ -660,15 +1038,19 @@ async function executaTool(
         }
 
         const grupsFuncio: GrupFuncio[] = [...funcioMap.entries()]
-          .sort(([a],[b]) => a.localeCompare(b))
+          .sort(([a], [b]) => a.localeCompare(b))
           .map(([funcio, tags]) => ({ funcio, tags: tags.sort() }));
 
         // Calcula el pròxim TAG per a cada funció existent (lletra nova)
         // i la primera funció nova disponible
-        const suggeriments = grupsFuncio.map(g => {
+        const suggeriments = grupsFuncio.map((g) => {
           const prefix = `${codiInst}_${codiEq}_${ccm}${g.funcio}`;
           const lletra = primerLletraLliure(prefix);
-          return { funcio: g.funcio, tagsExistents: g.tags, propera: lletra ? prefix + lletra : null };
+          return {
+            funcio: g.funcio,
+            tagsExistents: g.tags,
+            propera: lletra ? prefix + lletra : null,
+          };
         });
 
         // Primera funció nova (sense cap TAG)
@@ -676,7 +1058,7 @@ async function executaTool(
         for (let fn = 1; fn <= 99; fn++) {
           const fnStr = String(fn).padStart(2, "0");
           const prefixFn = `${codiInst}_${codiEq}_${ccm}${fnStr}`;
-          if (![...totsElsTags].some(t => t.startsWith(prefixFn))) {
+          if (![...totsElsTags].some((t) => t.startsWith(prefixFn))) {
             primerFuncioNova = prefixFn + "A";
             break;
           }
@@ -689,16 +1071,24 @@ async function executaTool(
         ];
 
         if (grupsFuncio.length === 0) {
-          lines.push(`  Cap TAG existent. Primer TAG disponible: ${codiInst}_${codiEq}_${ccm}01A`);
+          lines.push(
+            `  Cap TAG existent. Primer TAG disponible: ${codiInst}_${codiEq}_${ccm}01A`,
+          );
           lines.push(`SUGGERIMENT_UNIC:${codiInst}_${codiEq}_${ccm}01A`);
         } else {
           for (const g of grupsFuncio) {
-            lines.push(`  Funció ${g.funcio}: ${g.tags.join(", ")}  →  pròxim disponible: ${g.propera ?? "esgotada"}`);
+            lines.push(
+              `  Funció ${g.funcio}: ${g.tags.join(", ")}  →  pròxim disponible: ${g.propera ?? "esgotada"}`,
+            );
           }
           lines.push(``);
-          lines.push(`Funció nova disponible: ${primerFuncioNova ?? "esgotada"}`);
+          lines.push(
+            `Funció nova disponible: ${primerFuncioNova ?? "esgotada"}`,
+          );
           lines.push(``);
-          lines.push(`PREGUNTA_OBLIGATORIA: Pregunta a l'usuari si la nova unitat fa la MATEIXA funció que alguna de les existents (${grupsFuncio.map(g => `funció ${g.funcio}`).join(", ")}) o si és una funció DIFERENT. Segons la resposta, suggereix el TAG corresponent.`);
+          lines.push(
+            `PREGUNTA_OBLIGATORIA: Pregunta a l'usuari si la nova unitat fa la MATEIXA funció que alguna de les existents (${grupsFuncio.map((g) => `funció ${g.funcio}`).join(", ")}) o si és una funció DIFERENT. Segons la resposta, suggereix el TAG corresponent.`,
+          );
         }
 
         return lines.join("\n");
@@ -706,28 +1096,59 @@ async function executaTool(
 
       // ── cerca_visor3d ──────────────────────────────────────────────────────
       case "cerca_visor3d": {
-        type SistRow = { id: string; nom: string; codi: string | null; color: string };
-        type Inst3DRow = { id: string; sistema_id: string; nom: string; codi_installacio: string | null; urn: string | null };
+        type SistRow = {
+          id: string;
+          nom: string;
+          codi: string | null;
+          color: string;
+        };
+        type Inst3DRow = {
+          id: string;
+          sistema_id: string;
+          nom: string;
+          codi_installacio: string | null;
+          urn: string | null;
+        };
 
         const [sistemes, installacions] = await Promise.all([
-          supaGet(supaUrl, supaKey, `visor3d_sistemes?select=id,nom,codi,color&order=ordre.asc&limit=100`) as Promise<SistRow[]>,
-          supaGet(supaUrl, supaKey, `visor3d_installacions?select=id,sistema_id,nom,codi_installacio,urn&order=codi_installacio.asc&limit=200`) as Promise<Inst3DRow[]>,
+          supaGet(
+            supaUrl,
+            supaKey,
+            `visor3d_sistemes?select=id,nom,codi,color&order=ordre.asc&limit=100`,
+          ) as Promise<SistRow[]>,
+          supaGet(
+            supaUrl,
+            supaKey,
+            `visor3d_installacions?select=id,sistema_id,nom,codi_installacio,urn&order=codi_installacio.asc&limit=200`,
+          ) as Promise<Inst3DRow[]>,
         ]);
 
-        if (!sistemes.length) return "No hi ha sistemes configurats al Visualitzador 3D.";
+        if (!sistemes.length)
+          return "No hi ha sistemes configurats al Visualitzador 3D.";
 
         // Filtrar si hi ha criteris de cerca
         let instFiltrades = installacions;
         if (args.nom || args.codi || args.sistema) {
-          const termes = paraulesCerca((args.nom ?? args.sistema ?? args.codi ?? "") as string);
+          const termes = paraulesCerca(
+            (args.nom ?? args.sistema ?? args.codi ?? "") as string,
+          );
           if (args.codi) {
-            instFiltrades = installacions.filter(i => i.codi_installacio?.toUpperCase() === (args.codi as string).toUpperCase());
-          } else {
-            instFiltrades = installacions.filter(i =>
-              coincideixFlexible(i.nom, termes, "and") ||
-              (i.codi_installacio && coincideixFlexible(i.codi_installacio, termes, "or"))
+            instFiltrades = installacions.filter(
+              (i) =>
+                i.codi_installacio?.toUpperCase() ===
+                (args.codi as string).toUpperCase(),
             );
-            if (!instFiltrades.length) instFiltrades = installacions.filter(i => coincideixFlexible(i.nom, termes, "or"));
+          } else {
+            instFiltrades = installacions.filter(
+              (i) =>
+                coincideixFlexible(i.nom, termes, "and") ||
+                (i.codi_installacio &&
+                  coincideixFlexible(i.codi_installacio, termes, "or")),
+            );
+            if (!instFiltrades.length)
+              instFiltrades = installacions.filter((i) =>
+                coincideixFlexible(i.nom, termes, "or"),
+              );
           }
         }
 
@@ -739,7 +1160,13 @@ async function executaTool(
         }
 
         const sistemesFiltrats = args.sistema
-          ? sistemes.filter(s => coincideixFlexible(s.nom, paraulesCerca(args.sistema as string), "or"))
+          ? sistemes.filter((s) =>
+              coincideixFlexible(
+                s.nom,
+                paraulesCerca(args.sistema as string),
+                "or",
+              ),
+            )
           : sistemes;
 
         const lines: string[] = [];
@@ -747,13 +1174,19 @@ async function executaTool(
           const insts = instPerSistema.get(s.id) ?? [];
           if (!insts.length && (args.nom || args.codi)) continue;
           lines.push(`\nSistema: ${s.nom}${s.codi ? ` (${s.codi})` : ""}`);
-          if (!insts.length) { lines.push("  (sense instal·lacions)"); continue; }
+          if (!insts.length) {
+            lines.push("  (sense instal·lacions)");
+            continue;
+          }
           for (const i of insts) {
-            lines.push(`  - ${i.codi_installacio ?? "—"}: ${i.nom}${i.urn ? " | Model BIM disponible" : ""}`);
+            lines.push(
+              `  - ${i.codi_installacio ?? "—"}: ${i.nom}${i.urn ? " | Model BIM disponible" : ""}`,
+            );
           }
         }
 
-        if (!lines.length) return `No s'ha trobat cap instal·lació al Visor 3D per "${args.nom ?? args.codi ?? args.sistema}".`;
+        if (!lines.length)
+          return `No s'ha trobat cap instal·lació al Visor 3D per "${args.nom ?? args.codi ?? args.sistema}".`;
         return `Contingut del Visualitzador 3D (${instFiltrades.length} instal·lacions en ${sistemesFiltrats.length} sistemes):${lines.join("\n")}`;
       }
 
@@ -764,41 +1197,113 @@ async function executaTool(
         // les files amb allowed_users i comptem manualment.
         const comptaProjectesActius = async (): Promise<string> => {
           if (isAdmin) {
-            return fetch(`${supaUrl}/rest/v1/projectes?select=id&status=eq.actiu`, {
-              headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" }
-            }).then(r => r.headers.get("content-range")?.split("/")[1] ?? "?");
+            return fetch(
+              `${supaUrl}/rest/v1/projectes?select=id&status=eq.actiu`,
+              {
+                headers: {
+                  apikey: supaKey,
+                  Authorization: `Bearer ${supaKey}`,
+                  Prefer: "count=exact",
+                  "Range-Unit": "items",
+                  Range: "0-0",
+                },
+              },
+            ).then((r) => r.headers.get("content-range")?.split("/")[1] ?? "?");
           }
           // Usuari normal: carrega tots els projectes actius amb allowed_users
-          const tots = await supaGet(supaUrl, supaKey,
-            "projectes?select=id,allowed_users&status=eq.actiu&limit=500"
-          ) as { id: string; allowed_users: unknown }[];
-          const accessibles = tots.filter(p => {
+          const tots = (await supaGet(
+            supaUrl,
+            supaKey,
+            "projectes?select=id,allowed_users&status=eq.actiu&limit=500",
+          )) as { id: string; allowed_users: unknown }[];
+          const accessibles = tots.filter((p) => {
             if (p.allowed_users === null) return true;
             if (!Array.isArray(p.allowed_users)) return false;
             if ((p.allowed_users as unknown[]).length === 0) return false;
             if (!userId) return false;
-            return (p.allowed_users as { userId: string }[]).some(u => u.userId === userId);
+            return (p.allowed_users as { userId: string }[]).some(
+              (u) => u.userId === userId,
+            );
           });
           return String(accessibles.length);
         };
 
-        const [equips, camps, gubim, projectesActius, tags, rosmiman, inst3d] = await Promise.all([
-          supaGet(supaUrl, supaKey, "equipments?select=id&limit=1&offset=0").then(() =>
-            fetch(`${supaUrl}/rest/v1/equipments?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
-              .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?")
-          ),
-          fetch(`${supaUrl}/rest/v1/fields?select=col`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
-            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
-          fetch(`${supaUrl}/rest/v1/gubim_class?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
-            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
-          comptaProjectesActius(),
-          fetch(`${supaUrl}/rest/v1/projecte_tags?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
-            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
-          fetch(`${supaUrl}/rest/v1/rosmiman_equips?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
-            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
-          fetch(`${supaUrl}/rest/v1/visor3d_installacions?select=id`, { headers: { apikey: supaKey, Authorization: `Bearer ${supaKey}`, "Prefer": "count=exact", "Range-Unit": "items", Range: "0-0" } })
-            .then(r => r.headers.get("content-range")?.split("/")[1] ?? "?"),
-        ]);
+        const [equips, camps, gubim, projectesActius, tags, rosmiman, inst3d] =
+          await Promise.all([
+            supaGet(
+              supaUrl,
+              supaKey,
+              "equipments?select=id&limit=1&offset=0",
+            ).then(() =>
+              fetch(`${supaUrl}/rest/v1/equipments?select=id`, {
+                headers: {
+                  apikey: supaKey,
+                  Authorization: `Bearer ${supaKey}`,
+                  Prefer: "count=exact",
+                  "Range-Unit": "items",
+                  Range: "0-0",
+                },
+              }).then(
+                (r) => r.headers.get("content-range")?.split("/")[1] ?? "?",
+              ),
+            ),
+            fetch(`${supaUrl}/rest/v1/fields?select=col`, {
+              headers: {
+                apikey: supaKey,
+                Authorization: `Bearer ${supaKey}`,
+                Prefer: "count=exact",
+                "Range-Unit": "items",
+                Range: "0-0",
+              },
+            }).then(
+              (r) => r.headers.get("content-range")?.split("/")[1] ?? "?",
+            ),
+            fetch(`${supaUrl}/rest/v1/gubim_class?select=id`, {
+              headers: {
+                apikey: supaKey,
+                Authorization: `Bearer ${supaKey}`,
+                Prefer: "count=exact",
+                "Range-Unit": "items",
+                Range: "0-0",
+              },
+            }).then(
+              (r) => r.headers.get("content-range")?.split("/")[1] ?? "?",
+            ),
+            comptaProjectesActius(),
+            fetch(`${supaUrl}/rest/v1/projecte_tags?select=id`, {
+              headers: {
+                apikey: supaKey,
+                Authorization: `Bearer ${supaKey}`,
+                Prefer: "count=exact",
+                "Range-Unit": "items",
+                Range: "0-0",
+              },
+            }).then(
+              (r) => r.headers.get("content-range")?.split("/")[1] ?? "?",
+            ),
+            fetch(`${supaUrl}/rest/v1/rosmiman_equips?select=id`, {
+              headers: {
+                apikey: supaKey,
+                Authorization: `Bearer ${supaKey}`,
+                Prefer: "count=exact",
+                "Range-Unit": "items",
+                Range: "0-0",
+              },
+            }).then(
+              (r) => r.headers.get("content-range")?.split("/")[1] ?? "?",
+            ),
+            fetch(`${supaUrl}/rest/v1/visor3d_installacions?select=id`, {
+              headers: {
+                apikey: supaKey,
+                Authorization: `Bearer ${supaKey}`,
+                Prefer: "count=exact",
+                "Range-Unit": "items",
+                Range: "0-0",
+              },
+            }).then(
+              (r) => r.headers.get("content-range")?.split("/")[1] ?? "?",
+            ),
+          ]);
 
         return [
           "Estadístiques globals de TaulaMaster CBT:",
@@ -816,7 +1321,10 @@ async function executaTool(
         return `Tool desconeguda: ${name}`;
     }
   } catch (err) {
-    console.error(`groq-chat: executaTool ERROR [${name}]:`, err instanceof Error ? err.message : String(err));
+    console.error(
+      `groq-chat: executaTool ERROR [${name}]:`,
+      err instanceof Error ? err.message : String(err),
+    );
     return `Error executant ${name}: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
@@ -841,8 +1349,8 @@ interface UserPerfilVerificat {
 async function verificaJWT(
   jwt: string,
   supaUrl: string,
-  supaAnonKey: string,      // clau anon per a /auth/v1/user
-  supaServiceKey: string,   // clau service_role per a /rest/v1/user_profiles
+  supaAnonKey: string, // clau anon per a /auth/v1/user
+  supaServiceKey: string, // clau service_role per a /rest/v1/user_profiles
 ): Promise<UserPerfilVerificat | null> {
   // 1. Valida el JWT contra Supabase Auth
   const authRes = await fetch(`${supaUrl}/auth/v1/user`, {
@@ -853,7 +1361,7 @@ async function verificaJWT(
   });
   if (!authRes.ok) return null;
 
-  const authUser = await authRes.json() as SupabaseUserRow;
+  const authUser = (await authRes.json()) as SupabaseUserRow;
   const userId = authUser?.id;
   if (!userId) return null;
 
@@ -865,20 +1373,28 @@ async function verificaJWT(
         apikey: supaServiceKey,
         Authorization: `Bearer ${supaServiceKey}`,
       },
-    }
+    },
   );
 
   let isAdmin = false;
   let seccions: Record<string, string> = {};
 
   if (profileRes.ok) {
-    const rows = await profileRes.json() as { role: string; allowed_views: unknown }[];
+    const rows = (await profileRes.json()) as {
+      role: string;
+      allowed_views: unknown;
+    }[];
     if (rows.length > 0) {
       const row = rows[0];
       isAdmin = row.role === "admin";
 
       // Parseja allowed_views (objecte { equips: "editor", ... })
-      if (!isAdmin && row.allowed_views && typeof row.allowed_views === "object" && !Array.isArray(row.allowed_views)) {
+      if (
+        !isAdmin &&
+        row.allowed_views &&
+        typeof row.allowed_views === "object" &&
+        !Array.isArray(row.allowed_views)
+      ) {
         seccions = row.allowed_views as Record<string, string>;
       } else if (!isAdmin && Array.isArray(row.allowed_views)) {
         // Format llegacy: array de strings → viewer per a cada secció
@@ -897,19 +1413,38 @@ async function verificaJWT(
 async function embedQuery(text: string, voyageKey: string): Promise<number[]> {
   const res = await fetch("https://api.voyageai.com/v1/embeddings", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${voyageKey}` },
-    body: JSON.stringify({ model: "voyage-3", input: [text], input_type: "query" }),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${voyageKey}`,
+    },
+    body: JSON.stringify({
+      model: "voyage-3",
+      input: [text],
+      input_type: "query",
+    }),
   });
   if (!res.ok) throw new Error(`Voyage AI ${res.status}: ${await res.text()}`);
-  const data = await res.json() as { data: { embedding: number[] }[] };
+  const data = (await res.json()) as { data: { embedding: number[] }[] };
   return data.data[0].embedding;
 }
 
-async function cercaRag(queryEmbedding: number[], supaUrl: string, supaKey: string, matchCount = 8): Promise<RagResult[]> {
+async function cercaRag(
+  queryEmbedding: number[],
+  supaUrl: string,
+  supaKey: string,
+  matchCount = 8,
+): Promise<RagResult[]> {
   const res = await fetch(`${supaUrl}/rest/v1/rpc/cerca_rag`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", apikey: supaKey, Authorization: `Bearer ${supaKey}` },
-    body: JSON.stringify({ query_embedding: queryEmbedding, match_count: matchCount }),
+    headers: {
+      "Content-Type": "application/json",
+      apikey: supaKey,
+      Authorization: `Bearer ${supaKey}`,
+    },
+    body: JSON.stringify({
+      query_embedding: queryEmbedding,
+      match_count: matchCount,
+    }),
   });
   if (!res.ok) return [];
   return res.json() as Promise<RagResult[]>;
@@ -950,19 +1485,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") { res.status(204).end(); return; }
-  if (req.method !== "POST")   { res.status(405).json({ error: "Mètode no permès" }); return; }
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  if (req.method !== "POST") {
+    res.status(405).json({ error: "Mètode no permès" });
+    return;
+  }
 
-  const groqKey    = process.env.GROQ_API_KEY;
-  const voyageKey  = process.env.VOYAGE_API_KEY;
-  const supaUrl    = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const supaKey    = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const supaAnon   = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+  const voyageKey = process.env.VOYAGE_API_KEY;
+  const supaUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
+  const supaKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const supaAnon =
+    process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
 
-  if (!groqKey)   { res.status(500).json({ error: "Falta GROQ_API_KEY" }); return; }
-  if (!voyageKey) { res.status(500).json({ error: "Falta VOYAGE_API_KEY" }); return; }
-  if (!supaUrl)   { res.status(500).json({ error: "Falta SUPABASE_URL" }); return; }
-  if (!supaKey)   { res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" }); return; }
+  if (!groqKey) {
+    res.status(500).json({ error: "Falta GROQ_API_KEY" });
+    return;
+  }
+  if (!voyageKey) {
+    res.status(500).json({ error: "Falta VOYAGE_API_KEY" });
+    return;
+  }
+  if (!supaUrl) {
+    res.status(500).json({ error: "Falta SUPABASE_URL" });
+    return;
+  }
+  if (!supaKey) {
+    res.status(500).json({ error: "Falta SUPABASE_SERVICE_ROLE_KEY" });
+    return;
+  }
 
   let body: {
     messages?: MissatgeAPI[];
@@ -974,12 +1528,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
   } catch {
-    res.status(400).json({ error: "Body invàlid" }); return;
+    res.status(400).json({ error: "Body invàlid" });
+    return;
   }
 
   const missatgesUsuari = body.messages ?? [];
   if (!Array.isArray(missatgesUsuari) || missatgesUsuari.length === 0) {
-    res.status(400).json({ error: "Cap missatge rebut" }); return;
+    res.status(400).json({ error: "Cap missatge rebut" });
+    return;
   }
 
   // ── Verificació d'identitat: JWT → perfil real del servidor ───────────────
@@ -987,44 +1543,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Si és vàlid, la identitat i permisos provenen de Supabase (font de veritat).
   // Si no n'hi ha (context embegut, tests), es fa servir el hint del body com a
   // fallback —menys segur, però compatible amb entorns sense autenticació.
-  let isAdmin  = false;
+  let isAdmin = false;
   let seccions: Record<string, string> = {};
   let userId: string | null = null;
 
-  const authHeader = req.headers?.authorization ?? req.headers?.Authorization ?? "";
-  const jwt = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : "";
+  const authHeader =
+    req.headers?.authorization ?? req.headers?.Authorization ?? "";
+  const jwt =
+    typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : "";
 
   if (jwt && supaAnon) {
     // Ruta segura: verifica el JWT contra Supabase i n'extreu el perfil real
     const perfil = await verificaJWT(jwt, supaUrl, supaAnon, supaKey);
     if (!perfil) {
       console.error("groq-chat: JWT invàlid o caducat");
-      res.status(401).json({ error: "Token invàlid o caducat. Torna a iniciar sessió." }); return;
+      res
+        .status(401)
+        .json({ error: "Token invàlid o caducat. Torna a iniciar sessió." });
+      return;
     }
-    isAdmin  = perfil.isAdmin;
+    isAdmin = perfil.isAdmin;
     seccions = perfil.seccions;
-    userId   = perfil.userId;
-    console.log(`groq-chat: userId=${userId} isAdmin=${isAdmin} seccions=${JSON.stringify(seccions)}`);
+    userId = perfil.userId;
+    console.log(
+      `groq-chat: userId=${userId} isAdmin=${isAdmin} seccions=${JSON.stringify(seccions)}`,
+    );
   } else {
     // Fallback: usa el hint del client (sectionPermisos del body).
-    console.warn(`groq-chat: sense JWT (jwt=${!!jwt}) o SUPABASE_ANON_KEY (anon=${!!supaAnon}) — mode insegur`);
+    console.warn(
+      `groq-chat: sense JWT (jwt=${!!jwt}) o SUPABASE_ANON_KEY (anon=${!!supaAnon}) — mode insegur`,
+    );
     seccions = body.context?.sectionPermisos ?? {};
-    isAdmin  = false;
-    userId   = null;
+    isAdmin = false;
+    userId = null;
   }
 
   const TOOL_SECCIO: Record<string, string> = {
-    cerca_installacio:     "visor3d",
-    cerca_equips:          "equips",
-    cerca_gubim:           "gubimclass",
-    cerca_camps:           "fields",
-    cerca_projecte:        "projectes",
-    cerca_tags_projecte:   "projectes",
+    cerca_installacio: "visor3d",
+    cerca_equips: "equips",
+    cerca_gubim: "gubimclass",
+    cerca_camps: "fields",
+    cerca_projecte: "projectes",
+    cerca_tags_projecte: "projectes",
     primer_tag_disponible: "projectes",
-    cerca_tags_rosmiman:   "rosmiman",
-    cerca_visor3d:         "visor3d",
+    cerca_tags_rosmiman: "rosmiman",
+    cerca_visor3d: "visor3d",
     // estadistiques_globals: accessible a tothom (no necessita seccio restringida)
   };
 
@@ -1035,46 +1600,60 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return (seccions[seccio] ?? "none") !== "none";
   }
 
-  const NOMS_SECCIO: Record<string,string> = {
-    equips:"Taula Master", gubimclass:"GuBIMClass", fields:"Diccionari de camps",
-    projectes:"Projectes i TAGs", rosmiman:"Llistat Rosmiman", visor3d:"Visualitzador 3D",
+  const NOMS_SECCIO: Record<string, string> = {
+    equips: "Taula Master",
+    gubimclass: "GuBIMClass",
+    fields: "Diccionari de camps",
+    projectes: "Projectes i TAGs",
+    rosmiman: "Llistat Rosmiman",
+    visor3d: "Visualitzador 3D",
   };
 
   function missatgeDenegat(toolName: string): string {
     const s = TOOL_SECCIO[toolName] ?? toolName;
-    return "No tens acces a la seccio \"" + (NOMS_SECCIO[s] ?? s) + "\". Contacta amb l'administrador.";
+    return (
+      'No tens acces a la seccio "' +
+      (NOMS_SECCIO[s] ?? s) +
+      "\". Contacta amb l'administrador."
+    );
   }
 
   // ── Filtra les tools per permisos (el model no veu eines inaccessibles) ───
-  const toolsPermeses = TOOLS.filter(t => teAcces(t.function.name));
+  const toolsPermeses = TOOLS.filter((t) => teAcces(t.function.name));
 
   // ── Resum de permisos per injectar al system prompt ───────────────────────
   let resumPermisos: string;
   if (isAdmin) {
-    resumPermisos = "\n\nROL: Administrador. Tens accés complet a totes les seccions i dades.";
+    resumPermisos =
+      "\n\nROL: Administrador. Tens accés complet a totes les seccions i dades.";
   } else {
     const accessibles: string[] = ["Dashboard (estadístiques globals)"];
     const negades: string[] = [];
     const mapa: Array<[string, string]> = [
-      ["equips",     "Taula Master (equips, GuBIMClass, diccionari de camps)"],
+      ["equips", "Taula Master (equips, GuBIMClass, diccionari de camps)"],
       ["gubimclass", "GuBIMClass"],
-      ["fields",     "Diccionari de camps"],
-      ["projectes",  "Projectes i TAGs"],
-      ["rosmiman",   "Llistat Rosmiman"],
-      ["visor3d",    "Visualitzador 3D i instal·lacions"],
+      ["fields", "Diccionari de camps"],
+      ["projectes", "Projectes i TAGs"],
+      ["rosmiman", "Llistat Rosmiman"],
+      ["visor3d", "Visualitzador 3D i instal·lacions"],
     ];
     for (const [clau, nom] of mapa) {
       const perm = seccions[clau] ?? "none";
-      if (perm !== "none") { accessibles.push(`${nom} (${perm})`); }
-      else { negades.push(nom); }
+      if (perm !== "none") {
+        accessibles.push(`${nom} (${perm})`);
+      } else {
+        negades.push(nom);
+      }
     }
-    resumPermisos = `\n\nPERMISOS D'AQUEST USUARI:\nSeccions accessibles: ${accessibles.join(", ")}.\nSeccions SENSE accés: ${negades.length > 0 ? negades.join(", ") : "cap (accés total)"}.` +
+    resumPermisos =
+      `\n\nPERMISOS D'AQUEST USUARI:\nSeccions accessibles: ${accessibles.join(", ")}.\nSeccions SENSE accés: ${negades.length > 0 ? negades.join(", ") : "cap (accés total)"}.` +
       (negades.length > 0
         ? "\nIMPORTANT: Si l'usuari pregunta sobre una secció sense accés, respon exactament: \"No tens accés a la secció [nom]. Contacta amb l'administrador.\" No proporcionis cap dada d'aquestes seccions."
         : "");
   }
 
-  const ultimaPregunta = missatgesUsuari.filter(m => m.role === "user").at(-1)?.content ?? "";
+  const ultimaPregunta =
+    missatgesUsuari.filter((m) => m.role === "user").at(-1)?.content ?? "";
 
   // ── RAG semàntic ───────────────────────────────────────────────────────────
   let ragContext = "";
@@ -1083,18 +1662,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ragResults = await cercaRag(embedding, supaUrl, supaKey, 8);
     if (ragResults.length > 0) {
       const lines = ragResults
-        .filter(r => r.similitud > 0.85)
-        .map(r => `[${r.tipus.toUpperCase()} ${(r.similitud*100).toFixed(0)}%] ${r.contingut}`);
-      if (lines.length > 0) ragContext = `\n\n## Context semàntic addicional\n${lines.join("\n")}`;
+        .filter((r) => r.similitud > 0.85)
+        .map(
+          (r) =>
+            `[${r.tipus.toUpperCase()} ${(r.similitud * 100).toFixed(0)}%] ${r.contingut}`,
+        );
+      if (lines.length > 0)
+        ragContext = `\n\n## Context semàntic addicional\n${lines.join("\n")}`;
     }
   } catch (err) {
     console.error("RAG error:", err);
   }
 
-  const systemContent = SYSTEM_PROMPT
-    + resumPermisos
-    + (body.context?.pageContext ? `\n\nPàgina on és l'usuari ara: ${body.context.pageContext} (orientatiu — pots respondre consultes de qualsevol secció accessible)` : "")
-    + ragContext;
+  const systemContent =
+    SYSTEM_PROMPT +
+    resumPermisos +
+    (body.context?.pageContext
+      ? `\n\nPàgina on és l'usuari ara: ${body.context.pageContext} (orientatiu — pots respondre consultes de qualsevol secció accessible)`
+      : "") +
+    ragContext;
 
   // Historial limitat a 8 torns
   const historial: MissatgeAPI[] = [
@@ -1106,28 +1692,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Per a preguntes que clarament demanen dades de la BD, forcem tool_choice:"required"
   // per evitar que el model respongui de memòria sense consultar. Per a preguntes de
   // cortesia o conversacionals, usem "auto" per no forçar una crida innecessària.
-  const ultimPregunta = (missatgesUsuari[missatgesUsuari.length - 1]?.content ?? "").toLowerCase();
-  const semblaPreguntaDeDades = /\b(quant[s]?|quin[s]?|quina[s]?|llista|mostra|cerca|busca|existeix|hi ha|quins|troba|dame|dóna|actiu|activa|estat|status|projecte|equip|instal·laci|tag|rosmiman|visor|gubim|camp[s]?)\b/.test(ultimPregunta);
+  const ultimPregunta = (
+    missatgesUsuari[missatgesUsuari.length - 1]?.content ?? ""
+  ).toLowerCase();
+  const semblaPreguntaDeDades =
+    /\b(quant[s]?|quin[s]?|quina[s]?|llista|mostra|cerca|busca|existeix|hi ha|quins|troba|dame|dóna|actiu|activa|estat|status|projecte|equip|instal·laci|tag|rosmiman|visor|gubim|camp[s]?)\b/.test(
+      ultimPregunta,
+    );
 
   const toolChoiceValue = semblaPreguntaDeDades ? "required" : "auto";
-  const toolsPayload = toolsPermeses.length > 0
-    ? { tools: toolsPermeses, tool_choice: toolChoiceValue as "required" | "auto" }
-    : {};
+  const toolsPayload =
+    toolsPermeses.length > 0
+      ? {
+          tools: toolsPermeses,
+          tool_choice: toolChoiceValue as "required" | "auto",
+        }
+      : {};
 
   try {
-    console.log(`groq-chat: toolsPermeses=${toolsPermeses.length} tool_choice=${toolChoiceValue || "none"} pregunta="${ultimPregunta.slice(0,60)}"`);
+    console.log(
+      `groq-chat: toolsPermeses=${toolsPermeses.length} tool_choice=${toolChoiceValue || "none"} pregunta="${ultimPregunta.slice(0, 60)}"`,
+    );
     // ── Primera crida a Groq (amb tools) ────────────────────────────────────
-    const groqRes1 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        max_tokens: 1500,
-        temperature: 0.1,
-        ...toolsPayload,
-        messages: historial,
-      }),
-    });
+    const groqRes1 = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${groqKey}`,
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          max_tokens: 1500,
+          temperature: 0.1,
+          ...toolsPayload,
+          messages: historial,
+        }),
+      },
+    );
 
     if (!groqRes1.ok) {
       const errText = await groqRes1.text();
@@ -1136,81 +1739,201 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (groqRes1.status === 400 && errText.includes("tool_use_failed")) {
         console.warn("tool_use_failed — reintentant amb historial redu�t");
         const ultimMissatge = missatgesUsuari[missatgesUsuari.length - 1];
-        const groqRetry = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            max_tokens: 1500,
-            temperature: 0,
-            ...toolsPayload,
-            messages: [{ role: "system", content: systemContent }, ultimMissatge],
-          }),
-        });
+        const groqRetry = await fetch(
+          "https://api.groq.com/openai/v1/chat/completions",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${groqKey}`,
+            },
+            body: JSON.stringify({
+              model: "llama-3.3-70b-versatile",
+              max_tokens: 1500,
+              temperature: 0,
+              ...toolsPayload,
+              messages: [
+                { role: "system", content: systemContent },
+                ultimMissatge,
+              ],
+            }),
+          },
+        );
         if (!groqRetry.ok) {
           const e2 = await groqRetry.text();
-          res.status(502).json({ error: `Error Groq (reintent): ${groqRetry.status} — ${e2}` }); return;
-        }
-        const retryData = await groqRetry.json() as { choices: { message: MissatgeAPI; finish_reason: string }[] };
-        const retryMsg = retryData.choices[0].message;
-        if (retryData.choices[0].finish_reason === "tool_calls" && retryMsg.tool_calls?.length) {
-          const toolMsgs: MissatgeAPI[] = [];
-          const rets = await Promise.all(retryMsg.tool_calls.map(async tc => {
-            const a = JSON.parse(tc.function.arguments) as Record<string, unknown>;
-            const resultat = teAcces(tc.function.name)
-              ? await executaTool(tc.function.name, a, supaUrl!, supaKey!, isAdmin, userId)
-              : missatgeDenegat(tc.function.name);
-            return { id: tc.id, name: tc.function.name, resultat };
-          }));
-          rets.forEach(r => toolMsgs.push({ role: "tool", tool_call_id: r.id, name: r.name, content: r.resultat }));
-          const gr2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-            body: JSON.stringify({
-              model: "llama-3.3-70b-versatile", max_tokens: 1500, temperature: 0,
-              // Sense tools a la 2a crida del reintent
-              messages: [{ role: "system", content: systemContent }, ultimMissatge, retryMsg, ...toolMsgs],
-            }),
+          res.status(502).json({
+            error: `Error Groq (reintent): ${groqRetry.status} — ${e2}`,
           });
-          if (!gr2.ok) { res.status(502).json({ error: "Error Groq reintent 2a crida" }); return; }
-          const d2 = await gr2.json() as { choices: { message: { content: string } }[] };
+          return;
+        }
+        const retryData = (await groqRetry.json()) as {
+          choices: { message: MissatgeAPI; finish_reason: string }[];
+        };
+        const retryMsg = retryData.choices[0].message;
+        if (
+          retryData.choices[0].finish_reason === "tool_calls" &&
+          retryMsg.tool_calls?.length
+        ) {
+          const toolMsgs: MissatgeAPI[] = [];
+          const rets = await Promise.all(
+            retryMsg.tool_calls.map(async (tc) => {
+              const a = JSON.parse(tc.function.arguments) as Record<
+                string,
+                unknown
+              >;
+              const resultat = teAcces(tc.function.name)
+                ? await executaTool(
+                    tc.function.name,
+                    a,
+                    supaUrl!,
+                    supaKey!,
+                    isAdmin,
+                    userId,
+                  )
+                : missatgeDenegat(tc.function.name);
+              return { id: tc.id, name: tc.function.name, resultat };
+            }),
+          );
+          rets.forEach((r) =>
+            toolMsgs.push({
+              role: "tool",
+              tool_call_id: r.id,
+              name: r.name,
+              content: r.resultat,
+            }),
+          );
+          const gr2 = await fetch(
+            "https://api.groq.com/openai/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${groqKey}`,
+              },
+              body: JSON.stringify({
+                model: "llama-3.3-70b-versatile",
+                max_tokens: 1500,
+                temperature: 0,
+                // Sense tools a la 2a crida del reintent
+                messages: [
+                  { role: "system", content: systemContent },
+                  ultimMissatge,
+                  retryMsg,
+                  ...toolMsgs,
+                ],
+              }),
+            },
+          );
+          if (!gr2.ok) {
+            res.status(502).json({ error: "Error Groq reintent 2a crida" });
+            return;
+          }
+          const d2 = (await gr2.json()) as {
+            choices: { message: { content: string } }[];
+          };
           const reintentResp = d2.choices[0].message.content ?? "";
-          const _names = ["cerca_installacio","cerca_equips","cerca_gubim","cerca_camps","cerca_projecte","cerca_tags_projecte","cerca_tags_rosmiman","cerca_visor3d","primer_tag_disponible","estadistiques_globals"];
-          const teFuncioReintent = /<function=\w+\(/.test(reintentResp) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(reintentResp) || new RegExp("\\b(" + _names.join("|") + ")\\s*$").test(reintentResp.trim());
-          res.status(200).json({ reply: teFuncioReintent ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." : reintentResp }); return;
+          const _names = [
+            "cerca_installacio",
+            "cerca_equips",
+            "cerca_gubim",
+            "cerca_camps",
+            "cerca_projecte",
+            "cerca_tags_projecte",
+            "cerca_tags_rosmiman",
+            "cerca_visor3d",
+            "primer_tag_disponible",
+            "estadistiques_globals",
+          ];
+          const teFuncioReintent =
+            /<function=\w+\(/.test(reintentResp) ||
+            /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(
+              reintentResp,
+            ) ||
+            new RegExp("\\b(" + _names.join("|") + ")\\s*$").test(
+              reintentResp.trim(),
+            );
+          res.status(200).json({
+            reply: teFuncioReintent
+              ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta."
+              : reintentResp,
+          });
+          return;
         }
         const retryContent = retryMsg.content ?? "";
-        const _names2 = ["cerca_installacio","cerca_equips","cerca_gubim","cerca_camps","cerca_projecte","cerca_tags_projecte","cerca_tags_rosmiman","cerca_visor3d","primer_tag_disponible","estadistiques_globals"];
-        const teFuncioRetry = /<function=\w+\(/.test(retryContent) || /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(retryContent) || new RegExp("\\b(" + _names2.join("|") + ")\\s*$").test(retryContent.trim());
-        res.status(200).json({ reply: teFuncioRetry ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." : retryContent }); return;
+        const _names2 = [
+          "cerca_installacio",
+          "cerca_equips",
+          "cerca_gubim",
+          "cerca_camps",
+          "cerca_projecte",
+          "cerca_tags_projecte",
+          "cerca_tags_rosmiman",
+          "cerca_visor3d",
+          "primer_tag_disponible",
+          "estadistiques_globals",
+        ];
+        const teFuncioRetry =
+          /<function=\w+\(/.test(retryContent) ||
+          /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/.test(
+            retryContent,
+          ) ||
+          new RegExp("\\b(" + _names2.join("|") + ")\\s*$").test(
+            retryContent.trim(),
+          );
+        res.status(200).json({
+          reply: teFuncioRetry
+            ? "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta."
+            : retryContent,
+        });
+        return;
       }
-      res.status(502).json({ error: `Error Groq: ${groqRes1.status} — ${errText}` }); return;
+      res
+        .status(502)
+        .json({ error: `Error Groq: ${groqRes1.status} — ${errText}` });
+      return;
     }
 
-    const data1 = await groqRes1.json() as {
+    const data1 = (await groqRes1.json()) as {
       choices: { message: MissatgeAPI; finish_reason: string }[];
     };
 
     const missatgeAssistent = data1.choices[0].message;
     const finishReason1 = data1.choices[0].finish_reason;
-    console.log(`groq-chat: finish_reason=${finishReason1} tool_calls=${missatgeAssistent.tool_calls?.length ?? 0} content="${(missatgeAssistent.content ?? "").slice(0,100)}"`);
+    console.log(
+      `groq-chat: finish_reason=${finishReason1} tool_calls=${missatgeAssistent.tool_calls?.length ?? 0} content="${(missatgeAssistent.content ?? "").slice(0, 100)}"`,
+    );
 
     // ── Si el model crida tools → executar i fer segona crida ───────────────
-    if (data1.choices[0].finish_reason === "tool_calls" && missatgeAssistent.tool_calls?.length) {
+    if (
+      data1.choices[0].finish_reason === "tool_calls" &&
+      missatgeAssistent.tool_calls?.length
+    ) {
       const toolMessages: MissatgeAPI[] = [];
 
       const resultats = await Promise.all(
-        missatgeAssistent.tool_calls.map(async tc => {
-          const args = JSON.parse(tc.function.arguments) as Record<string, unknown>;
+        missatgeAssistent.tool_calls.map(async (tc) => {
+          const args = JSON.parse(tc.function.arguments) as Record<
+            string,
+            unknown
+          >;
           const resultat = teAcces(tc.function.name)
-            ? await executaTool(tc.function.name, args, supaUrl!, supaKey!, isAdmin, userId)
+            ? await executaTool(
+                tc.function.name,
+                args,
+                supaUrl!,
+                supaKey!,
+                isAdmin,
+                userId,
+              )
             : missatgeDenegat(tc.function.name);
           return { id: tc.id, name: tc.function.name, resultat };
-        })
+        }),
       );
 
-      resultats.forEach(r => {
-        console.log(`groq-chat: tool [${r.name}] resultat="${r.resultat.slice(0,120)}"`);
+      resultats.forEach((r) => {
+        console.log(
+          `groq-chat: tool [${r.name}] resultat="${r.resultat.slice(0, 120)}"`,
+        );
         toolMessages.push({
           role: "tool",
           tool_call_id: r.id,
@@ -1219,38 +1942,48 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       });
 
-      console.log(`groq-chat: iniciant 2a crida Groq amb ${toolMessages.length} tool results`);
+      console.log(
+        `groq-chat: iniciant 2a crida Groq amb ${toolMessages.length} tool results`,
+      );
 
-      const groqRes2 = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          max_tokens: 1500,
-          temperature: 0.1,
-          // Sense tools a la 2a crida per evitar bucles, però amb el system prompt complet
-          // perquè el model conegui les regles (flux TAGs, PREGUNTA_OBLIGATORIA, etc.)
-          messages: [
-            ...historial,
-            missatgeAssistent,
-            ...toolMessages,
-          ],
-        }),
-      });
+      const groqRes2 = await fetch(
+        "https://api.groq.com/openai/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${groqKey}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            max_tokens: 1500,
+            temperature: 0.1,
+            // Sense tools a la 2a crida per evitar bucles, però amb el system prompt complet
+            // perquè el model conegui les regles (flux TAGs, PREGUNTA_OBLIGATORIA, etc.)
+            messages: [...historial, missatgeAssistent, ...toolMessages],
+          }),
+        },
+      );
 
       console.log(`groq-chat: 2a crida Groq status=${groqRes2.status}`);
       if (!groqRes2.ok) {
         const err = await groqRes2.text();
-        res.status(502).json({ error: `Error Groq 2a crida: ${groqRes2.status} — ${err}` }); return;
+        res
+          .status(502)
+          .json({ error: `Error Groq 2a crida: ${groqRes2.status} — ${err}` });
+        return;
       }
 
-      const data2 = await groqRes2.json() as {
+      const data2 = (await groqRes2.json()) as {
         choices: { message: { content: string } }[];
       };
 
       const respostaFinal = data2.choices[0].message.content ?? "";
-      console.log(`groq-chat: 2a crida resposta="${respostaFinal.slice(0,150)}" bloquejat=false`);
-      res.status(200).json({ reply: respostaFinal }); return;
+      console.log(
+        `groq-chat: 2a crida resposta="${respostaFinal.slice(0, 150)}" bloquejat=false`,
+      );
+      res.status(200).json({ reply: respostaFinal });
+      return;
     }
 
     // ── Resposta directa sense tool calls ────────────────────────────────────
@@ -1263,25 +1996,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     //   cerca_projecte(...)             → crida directa amb parèntesi
     //   text acabat en "cerca_projecte" → model no ha sabut cridar la tool i ha escrit el nom
     const NOMS_TOOLS = [
-      "cerca_installacio","cerca_equips","cerca_gubim","cerca_camps",
-      "cerca_projecte","cerca_tags_projecte","cerca_tags_rosmiman",
-      "cerca_visor3d","primer_tag_disponible","estadistiques_globals",
+      "cerca_installacio",
+      "cerca_equips",
+      "cerca_gubim",
+      "cerca_camps",
+      "cerca_projecte",
+      "cerca_tags_projecte",
+      "cerca_tags_rosmiman",
+      "cerca_visor3d",
+      "primer_tag_disponible",
+      "estadistiques_globals",
     ];
-    const reToolInline  = /<function=\w+\(/;
-    const reToolParens  = /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/;
-    const reToolSolt    = new RegExp("\\b(" + NOMS_TOOLS.join("|") + ")\\s*$");
-    const teniaFuncioInline = reToolInline.test(contingutFinal) ||
+    const reToolInline = /<function=\w+\(/;
+    const reToolParens =
+      /\b(cerca_\w+|estadistiques_globals|primer_tag_disponible)\s*\(/;
+    const reToolSolt = new RegExp("\\b(" + NOMS_TOOLS.join("|") + ")\\s*$");
+    const teniaFuncioInline =
+      reToolInline.test(contingutFinal) ||
       reToolParens.test(contingutFinal) ||
       reToolSolt.test(contingutFinal.trim());
 
     if (teniaFuncioInline) {
-      res.status(200).json({ reply: "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta." }); return;
+      res.status(200).json({
+        reply:
+          "Ho sento, no he pogut obtenir la informació en aquest moment. Torna a fer la pregunta.",
+      });
+      return;
     }
 
-    res.status(200).json({ reply: contingutFinal }); return;
-
+    res.status(200).json({ reply: contingutFinal });
+    return;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: msg }); return;
+    res.status(500).json({ error: msg });
+    return;
   }
 }

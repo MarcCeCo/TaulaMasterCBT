@@ -14,11 +14,11 @@ interface Missatge {
 }
 
 interface Props {
-  pageContext?:    string;
-  pageLabel?:      string;
-  isAdmin?:        boolean;
+  pageContext?: string;
+  pageLabel?: string;
+  isAdmin?: boolean;
   sectionPermisos?: Record<string, string>; // { equips: "editor"|"viewer"|"none", ... }
-  getToken?:       () => string; // Retorna el JWT de Supabase per verificació server-side
+  getToken?: () => string; // Retorna el JWT de Supabase per verificació server-side
 }
 
 // ─── Suggeriments per secció ──────────────────────────────────────────────────
@@ -70,26 +70,37 @@ const SUGGERIMENTS_DEFECTE = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatHora(ts: number): string {
-  return new Date(ts).toLocaleTimeString("ca-ES", { hour: "2-digit", minute: "2-digit" });
+  return new Date(ts).toLocaleTimeString("ca-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 // ─── Component principal ──────────────────────────────────────────────────────
 
-export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermisos, getToken }: Props) {
-  const [obert, setObert]             = useState(false);
-  const [missatges, setMissatges]     = useState<Missatge[]>([]);
-  const [input, setInput]             = useState("");
-  const [carregant, setCarregant]     = useState(false);
-  const [error, setError]             = useState<string | null>(null);
+export function GroqChatWidget({
+  pageContext,
+  pageLabel,
+  isAdmin,
+  sectionPermisos,
+  getToken,
+}: Props) {
+  const [obert, setObert] = useState(false);
+  const [missatges, setMissatges] = useState<Missatge[]>([]);
+  const [input, setInput] = useState("");
+  const [carregant, setCarregant] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [nouMissatge, setNouMissatge] = useState(false);
 
-  const endRef          = useRef<HTMLDivElement>(null);
-  const inputRef        = useRef<HTMLTextAreaElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const ultimaActivitat = useRef<number>(Date.now());
 
   // Neteja l'historial si han passat més de 30 minuts d'inactivitat
   const TIMEOUT_MS = 30 * 60 * 1000; // 30 minuts
-  const actualitzaActivitat = () => { ultimaActivitat.current = Date.now(); };
+  const actualitzaActivitat = () => {
+    ultimaActivitat.current = Date.now();
+  };
 
   // ── Efectes UI ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -101,15 +112,23 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
   }, [obert]);
 
   useEffect(() => {
-    if (!obert && missatges.length > 0 && missatges.at(-1)?.rol === "assistant") {
+    if (
+      !obert &&
+      missatges.length > 0 &&
+      missatges.at(-1)?.rol === "assistant"
+    ) {
       setNouMissatge(true);
     }
   }, [missatges, obert]);
 
-  const obrePanell  = () => { setObert(true); setNouMissatge(false); };
+  const obrePanell = () => {
+    setObert(true);
+    setNouMissatge(false);
+  };
   const tancaPanell = () => setObert(false);
 
-  const suggeriments = (pageContext && SUGGERIMENTS[pageContext]) ?? SUGGERIMENTS_DEFECTE;
+  const suggeriments =
+    (pageContext && SUGGERIMENTS[pageContext]) ?? SUGGERIMENTS_DEFECTE;
 
   // ── Enviar missatge ────────────────────────────────────────────────────────
   const envia = async () => {
@@ -124,7 +143,10 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
     actualitzaActivitat();
 
     const nouUserMsg: Missatge = { rol: "user", text, ts: Date.now() };
-    const historial = [...(ara - ultimaActivitat.current > TIMEOUT_MS ? [] : missatges), nouUserMsg];
+    const historial = [
+      ...(ara - ultimaActivitat.current > TIMEOUT_MS ? [] : missatges),
+      nouUserMsg,
+    ];
 
     setMissatges(historial);
     setInput("");
@@ -140,18 +162,25 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
           ...(jwt ? { Authorization: `Bearer ${jwt}` } : {}),
         },
         body: JSON.stringify({
-          messages: historial.slice(-8).map(m => ({ role: m.rol, content: m.text })), // màx 4 torns
-          context: { pageContext: pageLabel ?? pageContext, sectionPermisos: sectionPermisos ?? {} },
+          messages: historial
+            .slice(-8)
+            .map((m) => ({ role: m.rol, content: m.text })), // màx 4 torns
+          context: {
+            pageContext: pageLabel ?? pageContext,
+            sectionPermisos: sectionPermisos ?? {},
+          },
         }),
       });
 
       if (!res.ok) {
         const b = await res.json().catch(() => ({}));
-        throw new Error((b as { error?: string })?.error ?? `Error ${res.status}`);
+        throw new Error(
+          (b as { error?: string })?.error ?? `Error ${res.status}`,
+        );
       }
 
-      const data = await res.json() as { reply: string };
-      setMissatges(prev => [
+      const data = (await res.json()) as { reply: string };
+      setMissatges((prev) => [
         ...prev,
         { rol: "assistant", text: data.reply, ts: Date.now() },
       ]);
@@ -163,7 +192,10 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); envia(); }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      envia();
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -174,14 +206,18 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
       <div
         className="fixed bottom-[84px] right-5 z-50 flex flex-col"
         style={{
-          width: 360, height: 540,
+          width: 360,
+          height: 540,
           background: "white",
           borderRadius: 20,
-          boxShadow: "0 8px 40px rgba(0,90,99,0.18), 0 2px 8px rgba(0,0,0,0.08)",
+          boxShadow:
+            "0 8px 40px rgba(0,90,99,0.18), 0 2px 8px rgba(0,0,0,0.08)",
           border: "1px solid rgba(0,153,168,0.15)",
           transition: "opacity 180ms ease, transform 180ms ease",
           opacity: obert ? 1 : 0,
-          transform: obert ? "translateY(0) scale(1)" : "translateY(12px) scale(0.97)",
+          transform: obert
+            ? "translateY(0) scale(1)"
+            : "translateY(12px) scale(0.97)",
           pointerEvents: obert ? "auto" : "none",
         }}
       >
@@ -195,15 +231,26 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
           }}
         >
           <div className="h-9 w-9 rounded-xl overflow-hidden shrink-0 bg-white/20 flex items-center justify-center">
-            <img src="/NutriaCBT.png" alt="Assistent CBT" className="h-full w-full object-cover" />
+            <img
+              src="/NutriaCBT.png"
+              alt="Assistent CBT"
+              className="h-full w-full object-cover"
+            />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white font-semibold text-sm leading-tight">Assistent CBT</p>
+            <p className="text-white font-semibold text-sm leading-tight">
+              Assistent CBT
+            </p>
             <div className="flex items-center gap-1.5">
               {pageLabel && (
-                <p className="text-white/70 text-[10.5px] truncate">{pageLabel}</p>
+                <p className="text-white/70 text-[10.5px] truncate">
+                  {pageLabel}
+                </p>
               )}
-              <span className="flex items-center gap-0.5 text-[9px] text-white/50" title="RAG actiu">
+              <span
+                className="flex items-center gap-0.5 text-[9px] text-white/50"
+                title="RAG actiu"
+              >
                 <BookOpen className="h-2.5 w-2.5" />
                 RAG actiu
               </span>
@@ -221,25 +268,40 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
         {/* Zona de missatges */}
         <div
           className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0"
-          style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(0,153,168,0.2) transparent" }}
+          style={{
+            scrollbarWidth: "thin",
+            scrollbarColor: "rgba(0,153,168,0.2) transparent",
+          }}
         >
           {missatges.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-4">
               <div
                 className="h-16 w-16 rounded-2xl overflow-hidden"
-                style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}
+                style={{
+                  background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)",
+                }}
               >
-                <img src="/NutriaCBT.png" alt="Assistent CBT" className="h-full w-full object-cover" />
+                <img
+                  src="/NutriaCBT.png"
+                  alt="Assistent CBT"
+                  className="h-full w-full object-cover"
+                />
               </div>
-              <p className="text-sm font-semibold text-slate-700">Com puc ajudar-te?</p>
+              <p className="text-sm font-semibold text-slate-700">
+                Com puc ajudar-te?
+              </p>
               <p className="text-[11.5px] text-slate-400 leading-relaxed">
-                Tinc accés a <strong>tota</strong> la informació de la plataforma gràcies al RAG.
+                Tinc accés a <strong>tota</strong> la informació de la
+                plataforma gràcies al RAG.
               </p>
               <div className="flex flex-col gap-1.5 w-full mt-1">
-                {suggeriments.map(s => (
+                {suggeriments.map((s) => (
                   <button
                     key={s}
-                    onClick={() => { setInput(s); setTimeout(() => inputRef.current?.focus(), 50); }}
+                    onClick={() => {
+                      setInput(s);
+                      setTimeout(() => inputRef.current?.focus(), 50);
+                    }}
                     className="text-left text-[11.5px] px-3 py-2 rounded-xl transition-colors"
                     style={{
                       background: "rgba(0,153,168,0.06)",
@@ -255,25 +317,49 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
           )}
 
           {missatges.map((m, i) => (
-            <div key={i} className={`flex gap-2 ${m.rol === "user" ? "flex-row-reverse" : "flex-row"}`}>
+            <div
+              key={i}
+              className={`flex gap-2 ${m.rol === "user" ? "flex-row-reverse" : "flex-row"}`}
+            >
               {m.rol === "assistant" && (
-                <div className="h-6 w-6 rounded-lg shrink-0 overflow-hidden mt-0.5"
-                  style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}>
-                  <img src="/NutriaCBT.png" alt="" className="h-full w-full object-cover" />
+                <div
+                  className="h-6 w-6 rounded-lg shrink-0 overflow-hidden mt-0.5"
+                  style={{
+                    background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)",
+                  }}
+                >
+                  <img
+                    src="/NutriaCBT.png"
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
                 </div>
               )}
               <div
                 className="max-w-[78%] px-3 py-2 rounded-2xl text-[12.5px] leading-relaxed"
                 style={
                   m.rol === "user"
-                    ? { background: "linear-gradient(135deg, #0099A8, #007380)", color: "white", borderBottomRightRadius: 6 }
-                    : { background: "#F3F4F2", color: "#1e293b", borderBottomLeftRadius: 6 }
+                    ? {
+                        background: "linear-gradient(135deg, #0099A8, #007380)",
+                        color: "white",
+                        borderBottomRightRadius: 6,
+                      }
+                    : {
+                        background: "#F3F4F2",
+                        color: "#1e293b",
+                        borderBottomLeftRadius: 6,
+                      }
                 }
               >
                 {m.text.split("\n").map((linia, li, arr) => (
-                  <span key={li}>{linia}{li < arr.length - 1 && <br />}</span>
+                  <span key={li}>
+                    {linia}
+                    {li < arr.length - 1 && <br />}
+                  </span>
                 ))}
-                <div className={`text-[9.5px] mt-1 ${m.rol === "user" ? "text-white/60 text-right" : "text-slate-400"}`}>
+                <div
+                  className={`text-[9.5px] mt-1 ${m.rol === "user" ? "text-white/60 text-right" : "text-slate-400"}`}
+                >
                   {formatHora(m.ts)}
                 </div>
               </div>
@@ -282,23 +368,45 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
 
           {carregant && (
             <div className="flex gap-2 items-center">
-              <div className="h-6 w-6 rounded-lg shrink-0 overflow-hidden"
-                style={{ background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)" }}>
-                <img src="/NutriaCBT.png" alt="" className="h-full w-full object-cover" />
+              <div
+                className="h-6 w-6 rounded-lg shrink-0 overflow-hidden"
+                style={{
+                  background: "linear-gradient(135deg, #EAF8FA, #C8EFF4)",
+                }}
+              >
+                <img
+                  src="/NutriaCBT.png"
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
               </div>
-              <div className="px-3 py-2.5 rounded-2xl rounded-bl-md flex gap-1 items-center"
-                style={{ background: "#F3F4F2" }}>
-                {[0, 1, 2].map(i => (
-                  <span key={i} className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: "#0099A8", animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+              <div
+                className="px-3 py-2.5 rounded-2xl rounded-bl-md flex gap-1 items-center"
+                style={{ background: "#F3F4F2" }}
+              >
+                {[0, 1, 2].map((i) => (
+                  <span
+                    key={i}
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{
+                      background: "#0099A8",
+                      animation: `bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+                    }}
+                  />
                 ))}
               </div>
             </div>
           )}
 
           {error && (
-            <div className="px-3 py-2 rounded-xl text-[11.5px]"
-              style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
+            <div
+              className="px-3 py-2 rounded-xl text-[11.5px]"
+              style={{
+                background: "#FEF2F2",
+                color: "#DC2626",
+                border: "1px solid #FECACA",
+              }}
+            >
               ❌ {error}
             </div>
           )}
@@ -307,19 +415,25 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
         </div>
 
         {/* Input */}
-        <div className="px-3 pb-3 pt-2 shrink-0"
-          style={{ borderTop: "1px solid rgba(0,153,168,0.08)" }}>
-          <div className="flex items-end gap-2 rounded-2xl px-3 py-2"
+        <div
+          className="px-3 pb-3 pt-2 shrink-0"
+          style={{ borderTop: "1px solid rgba(0,153,168,0.08)" }}
+        >
+          <div
+            className="flex items-end gap-2 rounded-2xl px-3 py-2"
             style={{
               background: "#F3F4F2",
               border: "1.5px solid",
-              borderColor: input ? "rgba(0,153,168,0.35)" : "rgba(0,153,168,0.12)",
+              borderColor: input
+                ? "rgba(0,153,168,0.35)"
+                : "rgba(0,153,168,0.12)",
               transition: "border-color 150ms",
-            }}>
+            }}
+          >
             <textarea
               ref={inputRef}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
               placeholder="Escriu la teva pregunta…"
               rows={1}
@@ -332,15 +446,19 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
               disabled={!input.trim() || carregant}
               className="h-7 w-7 rounded-xl flex items-center justify-center shrink-0 transition-all"
               style={{
-                background: input.trim() && !carregant
-                  ? "linear-gradient(135deg, #0099A8, #007380)"
-                  : "rgba(0,153,168,0.12)",
-                color: input.trim() && !carregant ? "white" : "rgba(0,153,168,0.4)",
+                background:
+                  input.trim() && !carregant
+                    ? "linear-gradient(135deg, #0099A8, #007380)"
+                    : "rgba(0,153,168,0.12)",
+                color:
+                  input.trim() && !carregant ? "white" : "rgba(0,153,168,0.4)",
               }}
             >
-              {carregant
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <Send className="h-3.5 w-3.5" />}
+              {carregant ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
             </button>
           </div>
           <p className="text-[9.5px] text-slate-300 text-center mt-1.5">
@@ -364,15 +482,22 @@ export function GroqChatWidget({ pageContext, pageLabel, isAdmin, sectionPermiso
         }}
         title={obert ? "Tancar assistent" : "Obrir assistent CBT"}
       >
-        {obert
-          ? <X className="h-5 w-5 text-white" />
-          : <img src="/NutriaCBT.png" alt="Assistent CBT" className="h-11 w-11 object-cover rounded-xl" />
-        }
+        {obert ? (
+          <X className="h-5 w-5 text-white" />
+        ) : (
+          <img
+            src="/NutriaCBT.png"
+            alt="Assistent CBT"
+            className="h-11 w-11 object-cover rounded-xl"
+          />
+        )}
         {nouMissatge && !obert && (
           <span
             className="absolute -top-1 -right-1 h-4 w-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white"
             style={{ background: "#EF4444" }}
-          >!</span>
+          >
+            !
+          </span>
         )}
       </button>
 

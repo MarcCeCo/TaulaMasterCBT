@@ -5,9 +5,35 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TooltipProvider, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { AlertTriangle, Download, Eye, Pencil, Plus, Trash2, Upload, Search, RefreshCw, X } from "lucide-react";
+import {
+  TooltipProvider,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  AlertTriangle,
+  Download,
+  Eye,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+  Search,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { useDataStore } from "@/lib/dataStore";
 import { codeLevel, parentCode } from "@/hooks/useGubimClass";
 import type { Equipment } from "@/hooks/useEquipments";
@@ -34,93 +60,200 @@ const GROUP_COLORS = [
 // PERF FIX: TooltipProvider eliminat de dins EquipmentRow — ara viu al component pare
 // Això evita muntar/desmuntar centenars de proveïdors en cada interacció de la taula
 const EquipmentRow = memo(function EquipmentRow({
-  e, gubimName, parentName, parentEquipName, level, onEdit, onDelete, onView, fieldCount, orphanCols, isChild,
-  isSharedCode, groupColorIdx, isFirstInGroup, groupSize, childDepth, canEdit,
+  e,
+  gubimName,
+  parentName,
+  parentEquipName,
+  level,
+  onEdit,
+  onDelete,
+  onView,
+  fieldCount,
+  orphanCols,
+  isChild,
+  isSharedCode,
+  groupColorIdx,
+  isFirstInGroup,
+  groupSize,
+  childDepth,
+  canEdit,
 }: {
-  e: Equipment; gubimName: string; parentName: string; parentEquipName: string; level: 1|2|3|4;
-  onEdit: (e: Equipment) => void; onDelete: (e: Equipment) => void; onView: (e: Equipment) => void;
-  fieldCount: number; orphanCols: string[]; isChild: boolean;
-  isSharedCode: boolean; groupColorIdx: number; isFirstInGroup: boolean; groupSize: number;
-  childDepth: number; canEdit: boolean;
+  e: Equipment;
+  gubimName: string;
+  parentName: string;
+  parentEquipName: string;
+  level: 1 | 2 | 3 | 4;
+  onEdit: (e: Equipment) => void;
+  onDelete: (e: Equipment) => void;
+  onView: (e: Equipment) => void;
+  fieldCount: number;
+  orphanCols: string[];
+  isChild: boolean;
+  isSharedCode: boolean;
+  groupColorIdx: number;
+  isFirstInGroup: boolean;
+  groupSize: number;
+  childDepth: number;
+  canEdit: boolean;
 }) {
   // N1-N3: indentació per nivell al GuBIMClass. N4: sempre alineats (pl-11 fix)
   const gubimIndent = level < 4 ? ["pl-2", "pl-5", "pl-8"][level - 1] : "pl-11";
   const childIndentPx = childDepth * 32;
   const hasOrphans = orphanCols.length > 0;
-  const groupClass = isSharedCode ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}` : "";
+  const groupClass = isSharedCode
+    ? `border-l-4 ${GROUP_COLORS[groupColorIdx % GROUP_COLORS.length]}`
+    : "";
   // Nom complet: si té equip pare, mostrem "NomPare · NomEquip"
-  const displayName = parentEquipName ? `${parentEquipName} · ${e.equipName}` : e.equipName;
+  const displayName = parentEquipName
+    ? `${parentEquipName} · ${e.equipName}`
+    : e.equipName;
   return (
-    <tr className={cn("border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors", isChild && !isSharedCode && "bg-slate-50/40", groupClass)} onClick={() => onView(e)}>
+    <tr
+      className={cn(
+        "border-t border-slate-100 hover:bg-slate-50/70 cursor-pointer transition-colors",
+        isChild && !isSharedCode && "bg-slate-50/40",
+        groupClass,
+      )}
+      onClick={() => onView(e)}
+    >
       <td className={cn("px-3 py-2", gubimIndent)}>
         <div className="flex items-center gap-2">
           <LevelBadge level={level} />
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="font-mono text-xs cursor-default">{e.gubimCode}</span>
+              <span className="font-mono text-xs cursor-default">
+                {e.gubimCode}
+              </span>
             </TooltipTrigger>
             {gubimName && <TooltipContent>{gubimName}</TooltipContent>}
           </Tooltip>
           {!gubimName && (
             <Tooltip>
-              <TooltipTrigger asChild><AlertTriangle className="h-3.5 w-3.5 text-amber-500" /></TooltipTrigger>
+              <TooltipTrigger asChild>
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+              </TooltipTrigger>
               <TooltipContent>Codi GuBIMClass no trobat</TooltipContent>
             </Tooltip>
           )}
-
         </div>
-        {parentName && <div className="text-[11px] text-muted-foreground pl-6 truncate hidden">↳ {parentName}</div>}
+        {parentName && (
+          <div className="text-[11px] text-muted-foreground pl-6 truncate hidden">
+            ↳ {parentName}
+          </div>
+        )}
       </td>
       <td className="px-3 py-2 font-mono text-xs text-slate-600">
         {e.equipCode || <span className="text-slate-400 italic">—</span>}
       </td>
       <td className="px-3 py-2 font-medium text-[13px] text-slate-700">
-        <div className="flex items-center gap-1.5" style={{ paddingLeft: childIndentPx }}>
+        <div
+          className="flex items-center gap-1.5"
+          style={{ paddingLeft: childIndentPx }}
+        >
           {childDepth > 0 && (
-            <svg width="12" height="14" viewBox="0 0 12 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 text-slate-300">
-              <path d="M1 0 L1 10 Q1 13 4 13 L12 13" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+            <svg
+              width="12"
+              height="14"
+              viewBox="0 0 12 14"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="shrink-0 text-slate-300"
+            >
+              <path
+                d="M1 0 L1 10 Q1 13 4 13 L12 13"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+                strokeLinecap="round"
+              />
             </svg>
           )}
           {displayName}
         </div>
       </td>
       <td className="px-3 py-2">
-        {e.needsTable
-          ? <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0 text-[10px] font-semibold px-2">Sí</Badge>
-          : <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 border-0 text-[10px] font-semibold px-2">No</Badge>}
+        {e.needsTable ? (
+          <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-0 text-[10px] font-semibold px-2">
+            Sí
+          </Badge>
+        ) : (
+          <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 border-0 text-[10px] font-semibold px-2">
+            No
+          </Badge>
+        )}
       </td>
-      <td className="px-3 py-2 font-mono text-xs text-slate-500">{e.tableCode || "—"}</td>
-      <td className="px-3 py-2 text-xs text-slate-500 truncate max-w-[160px]">{e.tableName || "—"}</td>
+      <td className="px-3 py-2 font-mono text-xs text-slate-500">
+        {e.tableCode || "—"}
+      </td>
+      <td className="px-3 py-2 text-xs text-slate-500 truncate max-w-[160px]">
+        {e.tableName || "—"}
+      </td>
       <td className="px-3 py-2 text-center">
         {hasOrphans ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="inline-flex items-center gap-1">
-                <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] font-semibold px-2">{fieldCount}</Badge>
+                <Badge className="bg-amber-100 text-amber-700 border-0 text-[10px] font-semibold px-2">
+                  {fieldCount}
+                </Badge>
                 <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
               </div>
             </TooltipTrigger>
-            <TooltipContent><p>Camps no trobats: {orphanCols.join(", ")}</p></TooltipContent>
+            <TooltipContent>
+              <p>Camps no trobats: {orphanCols.join(", ")}</p>
+            </TooltipContent>
           </Tooltip>
-        ) : <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 border-0 text-[10px] font-semibold px-2">{fieldCount}</Badge>}
+        ) : (
+          <Badge className="bg-slate-100 text-slate-500 hover:bg-slate-100 border-0 text-[10px] font-semibold px-2">
+            {fieldCount}
+          </Badge>
+        )}
       </td>
       <td className="px-3 py-2" onClick={(ev) => ev.stopPropagation()}>
         <div className="flex gap-0.5">
-          <Button size="icon" variant="ghost" className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10" onClick={() => onView(e)}><Eye className="h-3.5 w-3.5" /></Button>
-          {canEdit && <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-slate-100" onClick={() => onEdit(e)}><Pencil className="h-3.5 w-3.5" /></Button>}
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-[#0099A8] hover:bg-[#0099A8]/10"
+            onClick={() => onView(e)}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </Button>
+          {canEdit && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 hover:bg-slate-100"
+              onClick={() => onEdit(e)}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {canEdit && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /></Button>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-red-400 hover:text-red-600 hover:bg-red-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Esborrar equip {e.equipName}?</AlertDialogTitle>
-                  <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
+                  <AlertDialogTitle>
+                    Esborrar equip {e.equipName}?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Aquesta acció no es pot desfer.
+                  </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                  <AlertDialogAction onClick={() => onDelete(e)}>Esborra</AlertDialogAction>
+                  <AlertDialogAction onClick={() => onDelete(e)}>
+                    Esborra
+                  </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
@@ -142,8 +275,11 @@ export function EquipmentsTable() {
     addManyEquips: addMany,
     clearEquips: clearAll,
     isEquipCodeTaken,
-    loading, error, retry,
-    fields, fieldMap,
+    loading,
+    error,
+    retry,
+    fields,
+    fieldMap,
     gubimNodes: nodes,
     gubimNodeMap: nodeMap,
   } = useDataStore();
@@ -153,12 +289,17 @@ export function EquipmentsTable() {
   const [q, setQ] = useState("");
 
   // Reset filtre quan el component es desmunta (canvi de secció)
-  useEffect(() => { return () => setQ(""); }, []);
+  useEffect(() => {
+    return () => setQ("");
+  }, []);
 
   // ESC esborra el filtre de cerca
   useEffect(() => {
     const handleKeyDown = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape" && q) { setQ(""); ev.preventDefault(); }
+      if (ev.key === "Escape" && q) {
+        setQ("");
+        ev.preventDefault();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
@@ -176,23 +317,39 @@ export function EquipmentsTable() {
   // veia props canviades → re-renderitzava totes les files (derrota el propòsit de memo).
   // Ara: EquipmentRow rep els setters estables + l'objecte `e`, i crea les closures
   // localment — React.memo compara props per referència i detecta que els setters no canvien.
-  const handleView   = useCallback((e: Equipment) => { setViewing(e); setDetailOpen(true); }, []);
-  const handleEdit   = useCallback((e: Equipment) => { setEditing(e); setFormOpen(true); }, []);
-  const handleDelete = useCallback(async (e: Equipment) => {
-    try {
-      await remove(e.id);
-      toast.success("Equip esborrat");
-      setViewing((prev) => (prev?.id === e.id ? null : prev));
-      setDetailOpen((prev) => (prev && viewing?.id === e.id ? false : prev));
-    }
-    catch { toast.error("Error esborrant equip"); }
-  }, [remove, viewing]);
+  const handleView = useCallback((e: Equipment) => {
+    setViewing(e);
+    setDetailOpen(true);
+  }, []);
+  const handleEdit = useCallback((e: Equipment) => {
+    setEditing(e);
+    setFormOpen(true);
+  }, []);
+  const handleDelete = useCallback(
+    async (e: Equipment) => {
+      try {
+        await remove(e.id);
+        toast.success("Equip esborrat");
+        setViewing((prev) => (prev?.id === e.id ? null : prev));
+        setDetailOpen((prev) => (prev && viewing?.id === e.id ? false : prev));
+      } catch {
+        toast.error("Error esborrant equip");
+      }
+    },
+    [remove, viewing],
+  );
 
   const sorted = useMemo(() => {
     const base = [...items].sort((a, b) => {
-      const gc = a.gubimCode.localeCompare(b.gubimCode, undefined, { numeric: true, sensitivity: "base" });
+      const gc = a.gubimCode.localeCompare(b.gubimCode, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
       if (gc !== 0) return gc;
-      return a.equipCode.localeCompare(b.equipCode, undefined, { numeric: true, sensitivity: "base" });
+      return a.equipCode.localeCompare(b.equipCode, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
     });
 
     const result: { equip: Equipment; depth: number }[] = [];
@@ -204,7 +361,9 @@ export function EquipmentsTable() {
     const childrenByKey = new Map<string, Equipment[]>();
     // Mapa id → equipCode per poder construir la clau inversa
     const idToRef = new Map<string, string>(); // id → equipCode (si en té) o id
-    base.forEach((e) => { idToRef.set(e.id, e.equipCode || e.id); });
+    base.forEach((e) => {
+      idToRef.set(e.id, e.equipCode || e.id);
+    });
 
     base.forEach((e) => {
       if (e.parentEquipCode) {
@@ -222,7 +381,8 @@ export function EquipmentsTable() {
       // La clau de referència és el codi (si en té) o l'id
       const ref = e.equipCode || e.id;
       const key = `${e.gubimCode}::${ref}`;
-      const children = childrenByKey.get(key)?.filter((c) => !added.has(c.id)) ?? [];
+      const children =
+        childrenByKey.get(key)?.filter((c) => !added.has(c.id)) ?? [];
       children.forEach((c) => insertWithChildren(c, depth + 1));
     }
 
@@ -247,9 +407,13 @@ export function EquipmentsTable() {
         // Jerarquia explícita via parentEquipCode (pot ser equipCode o id)
         // Construïm un set de les claus de referència vàlides dins el grup
         const groupRefs = new Set(group.map((e) => e.equipCode || e.id));
-        const roots = group.filter((e) => !e.parentEquipCode || !groupRefs.has(e.parentEquipCode));
+        const roots = group.filter(
+          (e) => !e.parentEquipCode || !groupRefs.has(e.parentEquipCode),
+        );
         roots.forEach((r) => insertWithChildren(r, 0));
-        group.filter((e) => !added.has(e.id)).forEach((e) => insertWithChildren(e, 0));
+        group
+          .filter((e) => !added.has(e.id))
+          .forEach((e) => insertWithChildren(e, 0));
       } else {
         // Sense jerarquia explícita: el primer equip del grup és el "pare" visual (depth 0),
         // la resta són "fills" visuals (depth 1) per reflectir que comparteixen gubimCode
@@ -266,7 +430,7 @@ export function EquipmentsTable() {
   const debouncedQ = useDebounce(q, 200);
 
   // PERF: virtualització de files — evita renderitzar centenars de <tr> al DOM
-  const ROW_H = 45;      // altura aproximada de cada fila en px
+  const ROW_H = 45; // altura aproximada de cada fila en px
   const OVERSCAN = 8;
   const TABLE_MAX_H = "calc(100vh - 300px)";
   const [scrollTop, setScrollTop] = useState(0);
@@ -275,11 +439,12 @@ export function EquipmentsTable() {
   const filtered = useMemo(() => {
     const t = debouncedQ.trim().toLowerCase();
     if (!t) return sorted;
-    return sorted.filter(({ equip: e }) =>
-      e.equipCode.toLowerCase().includes(t) ||
-      e.equipName.toLowerCase().includes(t) ||
-      e.gubimCode.includes(t) ||
-      e.tableName.toLowerCase().includes(t),
+    return sorted.filter(
+      ({ equip: e }) =>
+        e.equipCode.toLowerCase().includes(t) ||
+        e.equipName.toLowerCase().includes(t) ||
+        e.gubimCode.includes(t) ||
+        e.tableName.toLowerCase().includes(t),
     );
   }, [sorted, debouncedQ]);
 
@@ -289,12 +454,15 @@ export function EquipmentsTable() {
   const sharedCodeInfo = useMemo(() => {
     const countByCode = new Map<string, number>();
     filtered.forEach(({ equip: e }) =>
-      countByCode.set(e.gubimCode, (countByCode.get(e.gubimCode) ?? 0) + 1)
+      countByCode.set(e.gubimCode, (countByCode.get(e.gubimCode) ?? 0) + 1),
     );
     const colorIdxByCode = new Map<string, number>();
     let colorIdx = 0;
     filtered.forEach(({ equip: e }) => {
-      if ((countByCode.get(e.gubimCode) ?? 0) > 1 && !colorIdxByCode.has(e.gubimCode)) {
+      if (
+        (countByCode.get(e.gubimCode) ?? 0) > 1 &&
+        !colorIdxByCode.has(e.gubimCode)
+      ) {
         colorIdxByCode.set(e.gubimCode, colorIdx++);
       }
     });
@@ -328,7 +496,7 @@ export function EquipmentsTable() {
     const allCols = Array.from(new Set(items.flatMap((e) => e.fieldCols)));
     const rows = items.map((e) => {
       const base: Record<string, any> = {
-        "GuBIMClass": e.gubimCode,
+        GuBIMClass: e.gubimCode,
         "Codi equip": e.equipCode,
         "Nom equip": e.equipName,
         "Necessita taula": e.needsTable ? "Y" : "N",
@@ -339,7 +507,9 @@ export function EquipmentsTable() {
       };
       allCols.forEach((col) => {
         const f = fieldMap.get(col);
-        base[col + (f?.codi ? ` (${f.codi})` : "")] = e.fieldCols.includes(col) ? "Y" : "";
+        base[col + (f?.codi ? ` (${f.codi})` : "")] = e.fieldCols.includes(col)
+          ? "Y"
+          : "";
       });
       return base;
     });
@@ -355,120 +525,154 @@ export function EquipmentsTable() {
     toast.success("Exportació Rosmiman generada");
   }, [items, fieldMap]);
 
-  const importXlsx = useCallback(async (file: File) => {
-    try {
-      const buf = await file.arrayBuffer();
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(buf);
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any>(ws);
+  const importXlsx = useCallback(
+    async (file: File) => {
+      try {
+        const buf = await file.arrayBuffer();
+        const XLSX = await import("xlsx");
+        const wb = XLSX.read(buf);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<any>(ws);
 
-      // Build a map of equipCode -> equipName from the imported rows (for parent lookup)
-      // Do this BEFORE parsing so the map is complete regardless of row order
-      const importedNameByCode = new Map<string, string>();
-      rows.forEach((r) => {
-        const code = String(r["Codi equip"] ?? "").toUpperCase().trim();
-        const name = String(r["Nom equip"] ?? "").trim();
-        if (code && name) importedNameByCode.set(code, name);
-      });
-      // Also include existing items for cross-reference
-      items.forEach((e) => { if (e.equipCode && e.equipName) importedNameByCode.set(e.equipCode, e.equipName); });
+        // Build a map of equipCode -> equipName from the imported rows (for parent lookup)
+        // Do this BEFORE parsing so the map is complete regardless of row order
+        const importedNameByCode = new Map<string, string>();
+        rows.forEach((r) => {
+          const code = String(r["Codi equip"] ?? "")
+            .toUpperCase()
+            .trim();
+          const name = String(r["Nom equip"] ?? "").trim();
+          if (code && name) importedNameByCode.set(code, name);
+        });
+        // Also include existing items for cross-reference
+        items.forEach((e) => {
+          if (e.equipCode && e.equipName)
+            importedNameByCode.set(e.equipCode, e.equipName);
+        });
 
-      const arr: Equipment[] = rows.map((r) => {
-        const code = String(r["Codi equip"] ?? "").toUpperCase().trim();
-        const name = String(r["Nom equip"] ?? "").trim();
-        const needs = String(r["Necessita taula"] ?? "N") === "Y";
-        const gubimCode = String(r["GuBIMClass"] ?? "").trim();
-        const parentEquipCode = String(r["Equip pare"] ?? "").trim();
-        let fieldCols: string[] = [];
-        if (r["Camps"]) {
-          fieldCols = String(r["Camps"]).split("|").map((s: string) => s.trim()).filter(Boolean);
-        } else {
-          fieldCols = Object.keys(r).filter(k => {
-            const known = ["GuBIMClass","Codi equip","Nom equip","Necessita taula","Codi taula","Nom taula","Equip pare","Categoria Revit"];
-            if (known.includes(k)) return false;
-            return String(r[k]).toUpperCase() === "Y";
-          }).map(k => k.split(" (")[0].trim());
-        }
-        // tableName: "NomMare NomFill" si té pare, sino sol el nom
-        let tableName = "";
-        if (needs) {
-          if (parentEquipCode) {
-            const parentName = importedNameByCode.get(parentEquipCode) ?? parentEquipCode;
-            tableName = `${parentName} ${name}`;
-          } else {
-            tableName = name;
+        const arr: Equipment[] = rows
+          .map((r) => {
+            const code = String(r["Codi equip"] ?? "")
+              .toUpperCase()
+              .trim();
+            const name = String(r["Nom equip"] ?? "").trim();
+            const needs = String(r["Necessita taula"] ?? "N") === "Y";
+            const gubimCode = String(r["GuBIMClass"] ?? "").trim();
+            const parentEquipCode = String(r["Equip pare"] ?? "").trim();
+            let fieldCols: string[] = [];
+            if (r["Camps"]) {
+              fieldCols = String(r["Camps"])
+                .split("|")
+                .map((s: string) => s.trim())
+                .filter(Boolean);
+            } else {
+              fieldCols = Object.keys(r)
+                .filter((k) => {
+                  const known = [
+                    "GuBIMClass",
+                    "Codi equip",
+                    "Nom equip",
+                    "Necessita taula",
+                    "Codi taula",
+                    "Nom taula",
+                    "Equip pare",
+                    "Categoria Revit",
+                  ];
+                  if (known.includes(k)) return false;
+                  return String(r[k]).toUpperCase() === "Y";
+                })
+                .map((k) => k.split(" (")[0].trim());
+            }
+            // tableName: "NomMare NomFill" si té pare, sino sol el nom
+            let tableName = "";
+            if (needs) {
+              if (parentEquipCode) {
+                const parentName =
+                  importedNameByCode.get(parentEquipCode) ?? parentEquipCode;
+                tableName = `${parentName} ${name}`;
+              } else {
+                tableName = name;
+              }
+            }
+            const revitCategoryRaw = String(r["Categoria Revit"] ?? "").trim();
+            // Normalitzem: cerquem la categoria correcta (case-insensitive) per
+            // compatibilitat amb valors antics en minúscules (p.ex. "Mechanical equipment")
+            const revitCategory =
+              REVIT_CATEGORIES_FLAT.find(
+                (c) => c.toLowerCase() === revitCategoryRaw.toLowerCase(),
+              ) ?? revitCategoryRaw;
+            return {
+              id: uid(),
+              gubimCode,
+              equipCode: code,
+              equipName: name,
+              needsTable: needs,
+              tableCode: needs && code ? "T" + code : "",
+              tableName,
+              fieldCols,
+              parentEquipCode,
+              revitCategory,
+              createdAt: Date.now(),
+            };
+          })
+          .filter((e) => e.equipName);
+
+        // Deduplicate by gubimCode + equipCode combination (identity key)
+        // An equipment already exists if same gubimCode AND same equipCode are both present
+        const existingKeys = new Set(
+          items
+            .map((e) => `${e.gubimCode}::${e.equipCode}`)
+            .filter((k) => !k.startsWith("::")),
+        );
+        const skipped: string[] = [];
+        const seenInFile = new Set<string>();
+        arr.forEach((e) => {
+          const key = `${e.gubimCode}::${e.equipCode}`;
+          if (e.equipCode) {
+            if (existingKeys.has(key) || seenInFile.has(key)) {
+              skipped.push(
+                e.equipName + (e.equipCode ? ` (${e.equipCode})` : ""),
+              );
+            }
+            seenInFile.add(key);
           }
-        }
-        const revitCategoryRaw = String(r["Categoria Revit"] ?? "").trim();
-        // Normalitzem: cerquem la categoria correcta (case-insensitive) per
-        // compatibilitat amb valors antics en minúscules (p.ex. "Mechanical equipment")
-        const revitCategory = REVIT_CATEGORIES_FLAT.find(
-          (c) => c.toLowerCase() === revitCategoryRaw.toLowerCase()
-        ) ?? revitCategoryRaw;
-        return {
-          id: uid(),
-          gubimCode,
-          equipCode: code,
-          equipName: name,
-          needsTable: needs,
-          tableCode: needs && code ? "T" + code : "",
-          tableName,
-          fieldCols,
-          parentEquipCode,
-          revitCategory,
-          createdAt: Date.now(),
-        };
-      }).filter((e) => e.equipName);
+        });
 
-      // Deduplicate by gubimCode + equipCode combination (identity key)
-      // An equipment already exists if same gubimCode AND same equipCode are both present
-      const existingKeys = new Set(
-        items.map((e) => `${e.gubimCode}::${e.equipCode}`).filter((k) => !k.startsWith("::"))
-      );
-      const skipped: string[] = [];
-      const seenInFile = new Set<string>();
-      arr.forEach((e) => {
-        const key = `${e.gubimCode}::${e.equipCode}`;
-        if (e.equipCode) {
-          if (existingKeys.has(key) || seenInFile.has(key)) {
-            skipped.push(e.equipName + (e.equipCode ? ` (${e.equipCode})` : ""));
-          }
-          seenInFile.add(key);
-        }
-      });
+        const toImport = arr.filter((e) => {
+          const key = `${e.gubimCode}::${e.equipCode}`;
+          return !existingKeys.has(key);
+        });
+        // Also deduplicate within the file itself (keep first occurrence)
+        const seenKeys = new Set<string>();
+        const deduped = toImport.filter((e) => {
+          const key = `${e.gubimCode}::${e.equipCode}`;
+          if (seenKeys.has(key)) return false;
+          seenKeys.add(key);
+          return true;
+        });
 
-      const toImport = arr.filter((e) => {
-        const key = `${e.gubimCode}::${e.equipCode}`;
-        return !existingKeys.has(key);
-      });
-      // Also deduplicate within the file itself (keep first occurrence)
-      const seenKeys = new Set<string>();
-      const deduped = toImport.filter((e) => {
-        const key = `${e.gubimCode}::${e.equipCode}`;
-        if (seenKeys.has(key)) return false;
-        seenKeys.add(key);
-        return true;
-      });
-
-      addMany(deduped).then(() => {
-        const imported = deduped.length;
-        if (skipped.length > 0) {
-          toast.warning(
-            `${imported} equips importats · ${skipped.length} no importats per codi duplicat: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? ` i ${skipped.length - 5} més` : ""}`
-          );
-        } else {
-          toast.success(`${imported} equips importats correctament`);
-        }
-      }).catch((err: unknown) => {
+        addMany(deduped)
+          .then(() => {
+            const imported = deduped.length;
+            if (skipped.length > 0) {
+              toast.warning(
+                `${imported} equips importats · ${skipped.length} no importats per codi duplicat: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? ` i ${skipped.length - 5} més` : ""}`,
+              );
+            } else {
+              toast.success(`${imported} equips importats correctament`);
+            }
+          })
+          .catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            toast.error(`Error important equips: ${msg.slice(0, 120)}`);
+          });
+      } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        toast.error(`Error important equips: ${msg.slice(0, 120)}`);
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Error processant el fitxer: ${msg.slice(0, 120)}`);
-    }
-  }, [items, addMany]);
+        toast.error(`Error processant el fitxer: ${msg.slice(0, 120)}`);
+      }
+    },
+    [items, addMany],
+  );
 
   return (
     // PERF FIX CRÍTIC: UNA sola instància de TooltipProvider per a TOTA la taula
@@ -481,12 +685,18 @@ export function EquipmentsTable() {
           <div className="relative flex-1 min-w-[220px] max-w-sm">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
             <Input
-              value={q} onChange={(e) => setQ(e.target.value)}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
               placeholder="Cerca per codi, nom o GuBIMClass…"
               className="pl-8 pr-8 h-8 text-[13px] border-slate-200 focus:border-[#0099A8]"
             />
             {q && (
-              <Button variant="ghost" size="icon" className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6" onClick={() => setQ("")}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6"
+                onClick={() => setQ("")}
+              >
                 <X className="h-3 w-3" />
               </Button>
             )}
@@ -496,55 +706,97 @@ export function EquipmentsTable() {
 
           {/* Accions secundàries */}
           <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={exportXlsx} disabled={loading}
-              className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={exportXlsx}
+              disabled={loading}
+              className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800"
+            >
               <Download className="h-3.5 w-3.5" /> Exporta
             </Button>
-            <Button size="sm" variant="outline" onClick={exportRosmimanXlsx} disabled={loading}
-              className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={exportRosmimanXlsx}
+              disabled={loading}
+              className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800"
+            >
               <Download className="h-3.5 w-3.5" /> Rosmiman
             </Button>
             {canEdit && (
-              <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={loading}
-                className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                disabled={loading}
+                className="h-8 text-xs gap-1.5 border-slate-200 text-slate-600 hover:text-slate-800"
+              >
                 <Upload className="h-3.5 w-3.5" /> Importa
               </Button>
             )}
             <input
-              ref={fileRef} type="file" accept=".xlsx,.xls" className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) importXlsx(f); e.currentTarget.value = ""; }}
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.xls"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) importXlsx(f);
+                e.currentTarget.value = "";
+              }}
             />
             {canEdit && (
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button size="sm" variant="outline" disabled={loading}
-                  className="h-8 text-xs gap-1.5 border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600">
-                  <Trash2 className="h-3.5 w-3.5" /> Esborra tot
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Esborrar tots els equips?</AlertDialogTitle>
-                  <AlertDialogDescription>Aquesta acció no es pot desfer.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel·la</AlertDialogCancel>
-                  <AlertDialogAction onClick={async () => {
-                    try { await clearAll(); toast.success("Equips esborrats"); }
-                    catch { toast.error("Error esborrant equips"); }
-                  }}>Esborra</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={loading}
+                    className="h-8 text-xs gap-1.5 border-red-200 text-red-500 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Esborra tot
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>
+                      Esborrar tots els equips?
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Aquesta acció no es pot desfer.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel·la</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={async () => {
+                        try {
+                          await clearAll();
+                          toast.success("Equips esborrats");
+                        } catch {
+                          toast.error("Error esborrant equips");
+                        }
+                      }}
+                    >
+                      Esborra
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             )}
           </div>
 
           {/* Acció principal */}
           {canEdit && (
             <Button
-              size="sm" className="h-8 text-xs gap-1.5 bg-[#0099A8] hover:bg-[#006E7A]"
+              size="sm"
+              className="h-8 text-xs gap-1.5 bg-[#0099A8] hover:bg-[#006E7A]"
               disabled={loading}
-              onClick={() => { setEditing(null); setFormOpen(true); }}
+              onClick={() => {
+                setEditing(null);
+                setFormOpen(true);
+              }}
             >
               <Plus className="h-3.5 w-3.5" /> Nou equip
             </Button>
@@ -556,9 +808,14 @@ export function EquipmentsTable() {
           <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 border border-red-200 text-[13px]">
             <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
             <span className="flex-1 text-red-700">{error}</span>
-            <Button size="sm" variant="outline" onClick={retry}
-              className="shrink-0 h-7 border-red-300 text-red-600 hover:bg-red-50">
-              <RefreshCw className="h-3.5 w-3.5 mr-1" />Reintenta
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={retry}
+              className="shrink-0 h-7 border-red-300 text-red-600 hover:bg-red-50"
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              Reintenta
             </Button>
           </div>
         )}
@@ -570,7 +827,10 @@ export function EquipmentsTable() {
           style={{ maxHeight: TABLE_MAX_H }}
           onScroll={(e) => setScrollTop((e.target as HTMLDivElement).scrollTop)}
         >
-          <table className="w-full text-sm" style={{ minWidth: 960, tableLayout: "fixed" }}>
+          <table
+            className="w-full text-sm"
+            style={{ minWidth: 960, tableLayout: "fixed" }}
+          >
             <colgroup>
               <col style={{ width: 160 }} />
               <col style={{ width: 110 }} />
@@ -583,62 +843,129 @@ export function EquipmentsTable() {
             </colgroup>
             <thead className="sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
               <tr className="text-left">
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">GuBIMClass</th>
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Codi equip</th>
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nom equip</th>
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Taula</th>
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Codi taula</th>
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Nom taula</th>
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">Camps</th>
-                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Accions</th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  GuBIMClass
+                </th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Codi equip
+                </th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Nom equip
+                </th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Taula
+                </th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Codi taula
+                </th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Nom taula
+                </th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">
+                  Camps
+                </th>
+                <th className="px-3 py-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Accions
+                </th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 Array.from({ length: 6 }).map((_, i) => (
                   <tr key={i} className="border-t border-slate-100">
-                    <td className="px-3 py-2"><Skeleton className="h-4 w-28" /></td>
-                    <td className="px-3 py-2"><Skeleton className="h-4 w-16" /></td>
-                    <td className="px-3 py-2"><Skeleton className="h-4 w-40" /></td>
-                    <td className="px-3 py-2"><Skeleton className="h-5 w-10 rounded-full" /></td>
-                    <td className="px-3 py-2"><Skeleton className="h-4 w-14" /></td>
-                    <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
-                    <td className="px-3 py-2 text-center"><Skeleton className="h-5 w-8 mx-auto rounded-full" /></td>
-                    <td className="px-3 py-2"><Skeleton className="h-7 w-20" /></td>
+                    <td className="px-3 py-2">
+                      <Skeleton className="h-4 w-28" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Skeleton className="h-4 w-16" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Skeleton className="h-4 w-40" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Skeleton className="h-5 w-10 rounded-full" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Skeleton className="h-4 w-14" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Skeleton className="h-4 w-24" />
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <Skeleton className="h-5 w-8 mx-auto rounded-full" />
+                    </td>
+                    <td className="px-3 py-2">
+                      <Skeleton className="h-7 w-20" />
+                    </td>
                   </tr>
                 ))
               ) : (
                 <>
                   {(() => {
                     // PERF: virtualització — renderitzem només les files visibles + overscan
-                    const containerH = tableContainerRef.current?.clientHeight ?? 500;
-                    const startIdx = Math.max(0, Math.floor(scrollTop / ROW_H) - OVERSCAN);
-                    const endIdx   = Math.min(filtered.length - 1, Math.ceil((scrollTop + containerH) / ROW_H) + OVERSCAN);
+                    const containerH =
+                      tableContainerRef.current?.clientHeight ?? 500;
+                    const startIdx = Math.max(
+                      0,
+                      Math.floor(scrollTop / ROW_H) - OVERSCAN,
+                    );
+                    const endIdx = Math.min(
+                      filtered.length - 1,
+                      Math.ceil((scrollTop + containerH) / ROW_H) + OVERSCAN,
+                    );
                     const visibleRows = filtered.slice(startIdx, endIdx + 1);
                     const padTop = startIdx * ROW_H;
-                    const padBot = Math.max(0, (filtered.length - endIdx - 1) * ROW_H);
+                    const padBot = Math.max(
+                      0,
+                      (filtered.length - endIdx - 1) * ROW_H,
+                    );
                     return (
                       <>
-                        {padTop > 0 && <tr><td colSpan={8} style={{ height: padTop, padding: 0 }} /></tr>}
+                        {padTop > 0 && (
+                          <tr>
+                            <td
+                              colSpan={8}
+                              style={{ height: padTop, padding: 0 }}
+                            />
+                          </tr>
+                        )}
                         {visibleRows.map(({ equip: e, depth }) => {
                           const node = nodeMap.get(e.gubimCode);
-                          const lvl = (node ? codeLevel(node.code) : 1) as 1|2|3|4;
+                          const lvl = (node ? codeLevel(node.code) : 1) as
+                            | 1
+                            | 2
+                            | 3
+                            | 4;
                           const pc = node ? parentCode(node.code) : null;
                           const parent = pc ? nodeMap.get(pc) : null;
-                          const orphanCols = e.fieldCols.filter((c) => !fieldMap.has(c));
+                          const orphanCols = e.fieldCols.filter(
+                            (c) => !fieldMap.has(c),
+                          );
                           const isChild = !!e.parentEquipCode;
-                          const groupSize = sharedCodeInfo.countByCode.get(e.gubimCode) ?? 1;
+                          const groupSize =
+                            sharedCodeInfo.countByCode.get(e.gubimCode) ?? 1;
                           const isSharedCode = groupSize > 1;
-                          const groupColorIdx = sharedCodeInfo.colorIdxByCode.get(e.gubimCode) ?? 0;
-                          const isFirstInGroup = sharedCodeInfo.firstInGroup.has(e.id);
+                          const groupColorIdx =
+                            sharedCodeInfo.colorIdxByCode.get(e.gubimCode) ?? 0;
+                          const isFirstInGroup =
+                            sharedCodeInfo.firstInGroup.has(e.id);
                           return (
                             <EquipmentRow
-                              key={e.id} e={e}
+                              key={e.id}
+                              e={e}
                               gubimName={node?.name ?? ""}
-                              parentName={parent ? `${parent.code} · ${parent.name}` : ""}
-                              parentEquipName={e.parentEquipCode ? (equipNameMap.get(e.parentEquipCode) ?? "") : ""}
-                              level={lvl} fieldCount={e.fieldCols.length}
-                              orphanCols={orphanCols} isChild={isChild}
+                              parentName={
+                                parent ? `${parent.code} · ${parent.name}` : ""
+                              }
+                              parentEquipName={
+                                e.parentEquipCode
+                                  ? (equipNameMap.get(e.parentEquipCode) ?? "")
+                                  : ""
+                              }
+                              level={lvl}
+                              fieldCount={e.fieldCols.length}
+                              orphanCols={orphanCols}
+                              isChild={isChild}
                               isSharedCode={isSharedCode}
                               groupColorIdx={groupColorIdx}
                               isFirstInGroup={isFirstInGroup}
@@ -651,12 +978,26 @@ export function EquipmentsTable() {
                             />
                           );
                         })}
-                        {padBot > 0 && <tr><td colSpan={8} style={{ height: padBot, padding: 0 }} /></tr>}
+                        {padBot > 0 && (
+                          <tr>
+                            <td
+                              colSpan={8}
+                              style={{ height: padBot, padding: 0 }}
+                            />
+                          </tr>
+                        )}
                       </>
                     );
                   })()}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={8} className="px-3 py-12 text-center text-[13px] text-slate-400">Cap equip trobat</td></tr>
+                    <tr>
+                      <td
+                        colSpan={8}
+                        className="px-3 py-12 text-center text-[13px] text-slate-400"
+                      >
+                        Cap equip trobat
+                      </td>
+                    </tr>
                   )}
                 </>
               )}
@@ -665,9 +1006,15 @@ export function EquipmentsTable() {
         </div>
 
         <EquipmentFormDialog
-          open={formOpen} onOpenChange={setFormOpen} editing={editing}
-          nodes={nodes} nodeMap={nodeMap} fields={fields} fieldMap={fieldMap}
-          isCodeTaken={isEquipCodeTaken} allEquipments={items}
+          open={formOpen}
+          onOpenChange={setFormOpen}
+          editing={editing}
+          nodes={nodes}
+          nodeMap={nodeMap}
+          fields={fields}
+          fieldMap={fieldMap}
+          isCodeTaken={isEquipCodeTaken}
+          allEquipments={items}
           onSubmit={async (e) => {
             try {
               await upsert(e);
@@ -683,13 +1030,19 @@ export function EquipmentsTable() {
         />
 
         <EquipmentDetailDialog
-          open={detailOpen} onOpenChange={setDetailOpen}
-          equipment={viewing} nodeMap={nodeMap} fieldMap={fieldMap} fields={fields}
-          onEdit={() => { setDetailOpen(false); setEditing(viewing); setFormOpen(true); }}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          equipment={viewing}
+          nodeMap={nodeMap}
+          fieldMap={fieldMap}
+          fields={fields}
+          onEdit={() => {
+            setDetailOpen(false);
+            setEditing(viewing);
+            setFormOpen(true);
+          }}
           canEdit={canEdit}
         />
-
-
       </div>
     </TooltipProvider>
   );

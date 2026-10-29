@@ -79,11 +79,16 @@ function rowToInstallacio(row: InstallacioRow): Installacio {
   };
 }
 
-function codiSort(a: string | null | undefined, b: string | null | undefined): number {
+function codiSort(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): number {
   // Extreu la part numèrica del codi per ordenar numèricament: "ED004" < "ED010"
   const parse = (c: string) => {
     const m = c.match(/^([A-Za-z]+)(\d+)$/);
-    return m ? { prefix: m[1].toUpperCase(), num: parseInt(m[2], 10) } : { prefix: c.toUpperCase(), num: 0 };
+    return m
+      ? { prefix: m[1].toUpperCase(), num: parseInt(m[2], 10) }
+      : { prefix: c.toUpperCase(), num: 0 };
   };
   const pa = parse(a ?? "");
   const pb = parse(b ?? "");
@@ -93,7 +98,7 @@ function codiSort(a: string | null | undefined, b: string | null | undefined): n
 
 function buildSistemes(
   sistemeRows: SistemaRow[],
-  installacioRows: InstallacioRow[]
+  installacioRows: InstallacioRow[],
 ): Sistema[] {
   return [...sistemeRows]
     .sort((a, b) => codiSort(a.codi, b.codi))
@@ -113,7 +118,8 @@ function buildSistemes(
 // ─── Hook principal ───────────────────────────────────────────────────────────
 
 export function useVisor3DSistemes() {
-  const { getFreshToken, shouldLoad, loadingRef, setupAuthListeners } = useAuthLoad();
+  const { getFreshToken, shouldLoad, loadingRef, setupAuthListeners } =
+    useAuthLoad();
   const [sistemes, setSistemes] = useState<Sistema[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,8 +154,8 @@ export function useVisor3DSistemes() {
         setSistemes(
           buildSistemes(
             sistemeRows as SistemaRow[],
-            installacioRows as InstallacioRow[]
-          )
+            installacioRows as InstallacioRow[],
+          ),
         );
       });
     } catch (err) {
@@ -167,14 +173,18 @@ export function useVisor3DSistemes() {
   }, [shouldLoad, fetchAll]);
 
   // Auth listeners (TOKEN_REFRESHED, visibilitychange, SIGNED_IN/OUT)
-  useEffect(() => setupAuthListeners({
-    onLoad: fetchAll,
-    onSignOut: () => {
-      startTransition(() => setSistemes([]));
-      setLoading(false);
-      setError(null);
-    },
-  }), [fetchAll, setupAuthListeners]);
+  useEffect(
+    () =>
+      setupAuthListeners({
+        onLoad: fetchAll,
+        onSignOut: () => {
+          startTransition(() => setSistemes([]));
+          setLoading(false);
+          setError(null);
+        },
+      }),
+    [fetchAll, setupAuthListeners],
+  );
 
   // ── CRUD Sistemes ──────────────────────────────────────────────────────────
 
@@ -199,7 +209,7 @@ export function useVisor3DSistemes() {
       setSistemes((prev) => [...prev, nou]);
       return nou;
     },
-    [getToken, sistemes.length]
+    [getToken, sistemes.length],
   );
 
   const updateSistema = useCallback(
@@ -214,26 +224,39 @@ export function useVisor3DSistemes() {
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === id
-            ? { ...s, nom: data.nom.trim(), codi: data.codi.trim() || undefined, color: data.color }
-            : s
-        )
+            ? {
+                ...s,
+                nom: data.nom.trim(),
+                codi: data.codi.trim() || undefined,
+                color: data.color,
+              }
+            : s,
+        ),
       );
     },
-    [getToken]
+    [getToken],
   );
 
-  const deleteSistema = useCallback(async (id: string) => {
-    const token = await getToken();
-    await supa(token, "DELETE", `visor3d_sistemes?id=eq.${id}`);
-    setSistemes((prev) => prev.filter((s) => s.id !== id));
-  }, [getToken]);
+  const deleteSistema = useCallback(
+    async (id: string) => {
+      const token = await getToken();
+      await supa(token, "DELETE", `visor3d_sistemes?id=eq.${id}`);
+      setSistemes((prev) => prev.filter((s) => s.id !== id));
+    },
+    [getToken],
+  );
 
   // ── CRUD Instal·lacions ────────────────────────────────────────────────────
 
   const createInstallacio = useCallback(
     async (
       sistemaId: string,
-      data: { nom: string; codiInstallacio: string; embedUrl: string; urn?: string }
+      data: {
+        nom: string;
+        codiInstallacio: string;
+        embedUrl: string;
+        urn?: string;
+      },
     ) => {
       const token = await getToken();
       const sistema = sistemes.find((s) => s.id === sistemaId);
@@ -251,28 +274,38 @@ export function useVisor3DSistemes() {
         prev.map((s) =>
           s.id === sistemaId
             ? { ...s, installacions: [...s.installacions, nova] }
-            : s
-        )
+            : s,
+        ),
       );
       return nova;
     },
-    [getToken, sistemes]
+    [getToken, sistemes],
   );
 
   const updateInstallacio = useCallback(
     async (
       sistemaId: string,
       installacioId: string,
-      data: { nom: string; codiInstallacio: string; embedUrl: string; urn?: string }
+      data: {
+        nom: string;
+        codiInstallacio: string;
+        embedUrl: string;
+        urn?: string;
+      },
     ) => {
       const token = await getToken();
-      await supa(token, "PATCH", `visor3d_installacions?id=eq.${installacioId}`, {
-        nom: data.nom.trim(),
-        codi_installacio: data.codiInstallacio.trim() || null,
-        embed_url: data.embedUrl.trim() || null,
-        urn: data.urn?.trim() || null,
-        updated_at: new Date().toISOString(),
-      });
+      await supa(
+        token,
+        "PATCH",
+        `visor3d_installacions?id=eq.${installacioId}`,
+        {
+          nom: data.nom.trim(),
+          codi_installacio: data.codiInstallacio.trim() || null,
+          embed_url: data.embedUrl.trim() || null,
+          urn: data.urn?.trim() || null,
+          updated_at: new Date().toISOString(),
+        },
+      );
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === sistemaId
@@ -283,33 +316,43 @@ export function useVisor3DSistemes() {
                     ? {
                         ...i,
                         nom: data.nom.trim(),
-                        codiInstallacio: data.codiInstallacio.trim() || undefined,
+                        codiInstallacio:
+                          data.codiInstallacio.trim() || undefined,
                         embedUrl: data.embedUrl.trim(),
                         urn: data.urn?.trim() || undefined,
                       }
-                    : i
+                    : i,
                 ),
               }
-            : s
-        )
+            : s,
+        ),
       );
     },
-    [getToken]
+    [getToken],
   );
 
   const deleteInstallacio = useCallback(
     async (sistemaId: string, installacioId: string) => {
       const token = await getToken();
-      await supa(token, "DELETE", `visor3d_installacions?id=eq.${installacioId}`);
+      await supa(
+        token,
+        "DELETE",
+        `visor3d_installacions?id=eq.${installacioId}`,
+      );
       setSistemes((prev) =>
         prev.map((s) =>
           s.id === sistemaId
-            ? { ...s, installacions: s.installacions.filter((i) => i.id !== installacioId) }
-            : s
-        )
+            ? {
+                ...s,
+                installacions: s.installacions.filter(
+                  (i) => i.id !== installacioId,
+                ),
+              }
+            : s,
+        ),
       );
     },
-    [getToken]
+    [getToken],
   );
 
   return {
