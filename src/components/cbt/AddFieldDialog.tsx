@@ -171,7 +171,8 @@ export function AddFieldDialog({
           grup_txt: grupTxt.trim() || null,
           instancia_revit: instancia || null,
           disciplina: finalDisciplina || null,
-          // classificador: calculat localment, no s'envia a Supabase
+          // classificador: calculat localment, no s'envia a Supabase (fieldToRow l'ignora)
+          classificador: null,
         };
     setSaving(true);
     try {

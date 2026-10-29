@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { ShieldOff, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
-import { GroqChatWidget } from "./GroqChatWidget";
 import { useAuth } from "@/lib/auth";
 
 // Pàgines pesants carregades lazy — cada una tindrà el seu propi chunk JS
@@ -186,7 +185,6 @@ export function TaulaMasterMain() {
     user,
     isAdmin,
     loading: authLoading,
-    getToken,
   } = useAuth();
 
   const VALID_SECTIONS = [
@@ -394,15 +392,6 @@ export function TaulaMasterMain() {
           </span>
         </footer>
       </div>
-
-      {/* Assistent de suport (botó flotant + xat Groq) */}
-      <GroqChatWidget
-        pageContext={activeSection}
-        pageLabel={sectionTitles[activeSection]?.title}
-        isAdmin={isAdmin}
-        sectionPermisos={profile?.section_permissions ?? undefined}
-        getToken={getToken}
-      />
     </div>
   );
 }

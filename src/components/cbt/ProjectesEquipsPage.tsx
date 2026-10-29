@@ -491,6 +491,8 @@ export function ProjectesEquipsPage({
         codisInstallacio: codisNets,
         codiInstallacio: codisNets[0].codi,
         status: "actiu",
+        projectUsers: null,
+        allowedUsers: null,
       });
       setDialogNouProjecte(false);
       setNouNom("");
