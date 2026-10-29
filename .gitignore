@@ -1,8 +1,17 @@
-node_modules
-node_modules
-dist
+# Dependències i builds
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Variables d'entorn (mai pujar secrets)
 .env
-.env.local
-.env.*.local
-*.log
+.env.*
+!.env.example
+
+# Vercel / editor / sistema
+.vercel/
+.vscode/
+.idea/
 .DS_Store
+Thumbs.db
+*.log
