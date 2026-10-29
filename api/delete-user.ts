@@ -15,18 +15,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const supabaseAdmin = createClient(
     process.env.VITE_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
+    { auth: { autoRefreshToken: false, persistSession: false } },
   );
 
   const supabaseUser = createClient(
     process.env.VITE_SUPABASE_URL!,
     process.env.VITE_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: req.headers.authorization ?? "" } } }
+    { global: { headers: { Authorization: req.headers.authorization ?? "" } } },
   );
 
   // Verificar sessió
-  const { data: { user }, error: userError } = await supabaseUser.auth.getUser();
-  if (userError || !user) return res.status(401).json({ error: "Sessió invàlida" });
+  const {
+    data: { user },
+    error: userError,
+  } = await supabaseUser.auth.getUser();
+  if (userError || !user)
+    return res.status(401).json({ error: "Sessió invàlida" });
 
   // Verificar que és admin
   const { data: profile } = await supabaseAdmin
@@ -36,7 +40,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .single();
 
   if (profile?.role !== "admin") {
-    return res.status(403).json({ error: "Necessites permisos d'administrador" });
+    return res
+      .status(403)
+      .json({ error: "Necessites permisos d'administrador" });
   }
 
   const { user_id } = req.body;
@@ -48,7 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Eliminar l'usuari de auth.users (cascada elimina també user_profiles per FK)
-  const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+  const { error: deleteError } =
+    await supabaseAdmin.auth.admin.deleteUser(user_id);
   if (deleteError) return res.status(400).json({ error: deleteError.message });
 
   return res.status(200).json({ success: true });

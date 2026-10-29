@@ -4,7 +4,14 @@ import { useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Eye, EyeOff, Loader2, CheckCircle2, KeyRound, ShieldCheck } from "lucide-react";
+import {
+  Eye,
+  EyeOff,
+  Loader2,
+  CheckCircle2,
+  KeyRound,
+  ShieldCheck,
+} from "lucide-react";
 
 export function ChangePasswordPage() {
   const { getToken } = useAuth();
@@ -19,8 +26,14 @@ export function ChangePasswordPage() {
     e.preventDefault();
     setError("");
 
-    if (password.length < 8) { setError("La contrasenya ha de tenir almenys 8 caràcters."); return; }
-    if (password !== confirm) { setError("Les contrasenyes no coincideixen."); return; }
+    if (password.length < 8) {
+      setError("La contrasenya ha de tenir almenys 8 caràcters.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Les contrasenyes no coincideixen.");
+      return;
+    }
 
     setLoading(true);
 
@@ -38,15 +51,17 @@ export function ChangePasswordPage() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-          "apikey": (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim(),
+          Authorization: `Bearer ${token}`,
+          apikey: (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim(),
         },
         body: JSON.stringify({ password }),
       });
 
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setError(body?.message ?? `Error ${res.status} actualitzant la contrasenya`);
+        setError(
+          body?.message ?? `Error ${res.status} actualitzant la contrasenya`,
+        );
         setLoading(false);
         return;
       }
@@ -54,7 +69,6 @@ export function ChangePasswordPage() {
       setDone(true);
       setPassword("");
       setConfirm("");
-
     } catch (err: any) {
       setError(err?.message ?? "Error de xarxa. Torna-ho a intentar.");
       setLoading(false);
@@ -82,7 +96,9 @@ export function ChangePasswordPage() {
                 <CheckCircle2 className="h-7 w-7 text-emerald-500" />
               </div>
               <div>
-                <p className="text-base font-semibold text-slate-800">Contrasenya actualitzada!</p>
+                <p className="text-base font-semibold text-slate-800">
+                  Contrasenya actualitzada!
+                </p>
                 <p className="text-sm text-slate-500 mt-1">
                   La teva contrasenya s'ha canviat correctament.
                 </p>
@@ -102,8 +118,12 @@ export function ChangePasswordPage() {
                   <ShieldCheck className="h-4.5 w-4.5 text-[#0099A8]" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-slate-700">Seguretat del compte</p>
-                  <p className="text-xs text-slate-400">Utilitza una contrasenya d'almenys 8 caràcters</p>
+                  <p className="text-sm font-medium text-slate-700">
+                    Seguretat del compte
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Utilitza una contrasenya d'almenys 8 caràcters
+                  </p>
                 </div>
               </div>
 
@@ -128,7 +148,11 @@ export function ChangePasswordPage() {
                       tabIndex={-1}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                     >
-                      {showPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPwd ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -161,7 +185,9 @@ export function ChangePasswordPage() {
                     background: loading
                       ? "rgba(0,153,168,0.5)"
                       : "linear-gradient(135deg, #0099A8 0%, #006E7A 100%)",
-                    boxShadow: loading ? "none" : "0 4px 14px rgba(0,153,168,0.25)",
+                    boxShadow: loading
+                      ? "none"
+                      : "0 4px 14px rgba(0,153,168,0.25)",
                     cursor: loading ? "not-allowed" : "pointer",
                     border: "none",
                   }}

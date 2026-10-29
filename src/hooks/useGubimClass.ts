@@ -14,8 +14,9 @@ export type GubimNode = { id: string; code: string; name: string };
 export const isValidCode = (code: string): boolean =>
   /^(00|[1-9]\d{0,3})(\.(00|[1-9]\d{0,3})){0,3}$/.test(code);
 
-export const codeLevel   = (code: string) => code.split(".").length as 1 | 2 | 3 | 4;
-export const parentCode  = (code: string) => {
+export const codeLevel = (code: string) =>
+  code.split(".").length as 1 | 2 | 3 | 4;
+export const parentCode = (code: string) => {
   const parts = code.split(".");
   if (parts.length <= 1) return null;
   return parts.slice(0, -1).join(".");
@@ -24,17 +25,17 @@ export const parentCode  = (code: string) => {
 export function useGubimClass() {
   const ds = useDataStore();
   return {
-    nodes:       ds.gubimNodes,
-    nodeMap:     ds.gubimNodeMap,
-    loading:     ds.loading,
-    error:       ds.error,
-    retry:       ds.retry,
-    addNode:     ds.addGubimNode,
-    addMany:     ds.addManyGubim,
-    updateNode:  ds.updateGubimNode,
-    removeNode:  ds.removeGubimNode,
-    clearAll:    ds.clearGubim,
-    exists:      ds.gubimExists,
+    nodes: ds.gubimNodes,
+    nodeMap: ds.gubimNodeMap,
+    loading: ds.loading,
+    error: ds.error,
+    retry: ds.retry,
+    addNode: ds.addGubimNode,
+    addMany: ds.addManyGubim,
+    updateNode: ds.updateGubimNode,
+    removeNode: ds.removeGubimNode,
+    clearAll: ds.clearGubim,
+    exists: ds.gubimExists,
     hasChildren: ds.gubimHasChildren,
   };
 }

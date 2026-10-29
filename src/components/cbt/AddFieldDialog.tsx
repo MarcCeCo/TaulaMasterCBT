@@ -1,11 +1,27 @@
 import { useEffect, useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { FieldMeta, AUTO_CLASSIFIERS, autoClassifierForCodi } from "@/lib/fields";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  FieldMeta,
+  AUTO_CLASSIFIERS,
+  autoClassifierForCodi,
+} from "@/lib/fields";
 import { toast } from "sonner";
 
 interface Props {
@@ -28,79 +44,134 @@ const TIPUS_DADA_OPTIONS = [
 const FORMAT_OPTIONS = ["Text", "Integer", "Number", "Boolean", "Date", "List"];
 
 function generateCbt(nom: string): string {
-  return "CBT_" + nom.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9\s_]/g, "").replace(/\s+/g, "_");
+  return (
+    "CBT_" +
+    nom
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9\s_]/g, "")
+      .replace(/\s+/g, "_")
+  );
 }
 
-export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editing, onSubmit, existsCol }: Props) {
-  const [nom,            setNom]            = useState("");
-  const [isCls,          setIsCls]          = useState(false);
+export function AddFieldDialog({
+  open,
+  onOpenChange,
+  groups,
+  disciplines,
+  editing,
+  onSubmit,
+  existsCol,
+}: Props) {
+  const [nom, setNom] = useState("");
+  const [isCls, setIsCls] = useState(false);
   // Revit
-  const [cbt,            setCbt]            = useState("");
-  const [formatParam,    setFormatParam]    = useState("Text");
-  const [agrupRevit,     setAgrupRevit]     = useState("");
+  const [cbt, setCbt] = useState("");
+  const [formatParam, setFormatParam] = useState("Text");
+  const [agrupRevit, setAgrupRevit] = useState("");
   const [agrupRevitCustom, setAgrupRevitCustom] = useState("");
-  const [grupTxt,        setGrupTxt]        = useState("");
-  const [instancia,      setInstancia]      = useState("Y");
-  const [disciplina,     setDisciplina]     = useState("");
+  const [grupTxt, setGrupTxt] = useState("");
+  const [instancia, setInstancia] = useState("Y");
+  const [disciplina, setDisciplina] = useState("");
   const [disciplinaCustom, setDisciplinaCustom] = useState("");
   // Rosmiman
-  const [codi,           setCodi]           = useState("");
-  const [classificador,  setClassificador]  = useState("GENERAL");
-  const [taulaAssoc,     setTaulaAssoc]     = useState("");
-  const [tipusDada,      setTipusDada]      = useState("");
+  const [codi, setCodi] = useState("");
+  const [classificador, setClassificador] = useState("GENERAL");
+  const [taulaAssoc, setTaulaAssoc] = useState("");
+  const [tipusDada, setTipusDada] = useState("");
 
   useEffect(() => {
     if (!open) return;
     if (editing) {
       setNom(editing.col);
-      const cls = !editing.cbt && !editing.format_param && !editing.agrupacio_revit && !editing.disciplina && !editing.codi;
+      const cls =
+        !editing.cbt &&
+        !editing.format_param &&
+        !editing.agrupacio_revit &&
+        !editing.disciplina &&
+        !editing.codi;
       setIsCls(cls);
       setCbt(editing.cbt ?? "");
       setFormatParam(editing.format_param ?? "Text");
-      setAgrupRevit(editing.agrupacio_revit ?? ""); setAgrupRevitCustom("");
+      setAgrupRevit(editing.agrupacio_revit ?? "");
+      setAgrupRevitCustom("");
       setGrupTxt(editing.grup_txt ?? "");
       setInstancia(editing.instancia_revit ?? "Y");
-      setDisciplina(editing.disciplina ?? ""); setDisciplinaCustom("");
+      setDisciplina(editing.disciplina ?? "");
+      setDisciplinaCustom("");
       setCodi(editing.codi ?? "");
-      setClassificador(editing.classificador ?? autoClassifierForCodi(editing.codi));
+      setClassificador(
+        editing.classificador ?? autoClassifierForCodi(editing.codi),
+      );
       setTaulaAssoc(editing.taula_assoc ?? "");
       setTipusDada(editing.tipus_dada ?? "");
     } else {
-      setNom(""); setIsCls(false); setCbt(""); setFormatParam("Text");
-      setAgrupRevit(""); setAgrupRevitCustom(""); setGrupTxt("");
-      setInstancia("Y"); setDisciplina(""); setDisciplinaCustom("");
-      setCodi(""); setTaulaAssoc(""); setTipusDada(""); setClassificador("GENERAL");
+      setNom("");
+      setIsCls(false);
+      setCbt("");
+      setFormatParam("Text");
+      setAgrupRevit("");
+      setAgrupRevitCustom("");
+      setGrupTxt("");
+      setInstancia("Y");
+      setDisciplina("");
+      setDisciplinaCustom("");
+      setCodi("");
+      setTaulaAssoc("");
+      setTipusDada("");
+      setClassificador("GENERAL");
     }
   }, [open, editing]);
 
   const cbtPreview = !isCls && nom ? generateCbt(nom) : "";
-  const finalAgrupRevit  = agrupRevit  === "__new__" ? agrupRevitCustom.trim()  : agrupRevit;
-  const finalDisciplina  = disciplina  === "__new__" ? disciplinaCustom.trim()  : disciplina;
-  const taulaRequired    = tipusDada === "2";
+  const finalAgrupRevit =
+    agrupRevit === "__new__" ? agrupRevitCustom.trim() : agrupRevit;
+  const finalDisciplina =
+    disciplina === "__new__" ? disciplinaCustom.trim() : disciplina;
+  const taulaRequired = tipusDada === "2";
 
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
     const col = nom.trim().toUpperCase();
     if (!col) return toast.error("El nom és obligatori");
-    if (!/^[A-Z0-9_]+$/.test(col)) return toast.error("Nom no vàlid (només lletres, números i _)");
-    if (existsCol(col) && col !== editing?.col.toUpperCase()) return toast.error("Aquest nom ja existeix");
-    if (taulaRequired && !taulaAssoc.trim()) return toast.error("La taula associada és obligatòria quan el tipus dada és 'Taula Associada'");
+    if (!/^[A-Z0-9_]+$/.test(col))
+      return toast.error("Nom no vàlid (només lletres, números i _)");
+    if (existsCol(col) && col !== editing?.col.toUpperCase())
+      return toast.error("Aquest nom ja existeix");
+    if (taulaRequired && !taulaAssoc.trim())
+      return toast.error(
+        "La taula associada és obligatòria quan el tipus dada és 'Taula Associada'",
+      );
 
     const f: FieldMeta = isCls
-      ? { col, codi: null, taula_assoc: null, tipus_dada: null, cbt: null, format_param: null, agrupacio_revit: null, grup_txt: null, instancia_revit: null, disciplina: null, classificador: null }
+      ? {
+          col,
+          codi: null,
+          taula_assoc: null,
+          tipus_dada: null,
+          cbt: null,
+          format_param: null,
+          agrupacio_revit: null,
+          grup_txt: null,
+          instancia_revit: null,
+          disciplina: null,
+          classificador: null,
+        }
       : {
           col,
-          codi:            codi.trim() || null,
-          taula_assoc:     taulaAssoc.trim() || null,
-          tipus_dada:      tipusDada || null,
-          cbt:             cbt.trim() || cbtPreview || null,
-          format_param:    formatParam || null,
+          codi: codi.trim() || null,
+          taula_assoc: taulaAssoc.trim() || null,
+          tipus_dada: tipusDada || null,
+          cbt: cbt.trim() || cbtPreview || null,
+          format_param: formatParam || null,
           agrupacio_revit: finalAgrupRevit || null,
-          grup_txt:        grupTxt.trim() || null,
+          grup_txt: grupTxt.trim() || null,
           instancia_revit: instancia || null,
-          disciplina:      finalDisciplina || null,
-          // classificador: calculat localment, no s'envia a Supabase
+          disciplina: finalDisciplina || null,
+          classificador: null, // calculat localment, no s'envia a Supabase (vegeu fieldToRow)
         };
     setSaving(true);
     try {
@@ -116,14 +187,22 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] xl:max-w-[1300px] w-full max-h-[90vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>{editing ? "Edita camp" : "Nou camp"}</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle>{editing ? "Edita camp" : "Nou camp"}</DialogTitle>
+        </DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-
           <div className="col-span-2 space-y-1.5">
-            <Label>Nom * <span className="text-muted-foreground text-xs">(clau única, majúscules)</span></Label>
+            <Label>
+              Nom *{" "}
+              <span className="text-muted-foreground text-xs">
+                (clau única, majúscules)
+              </span>
+            </Label>
             <Input
               value={nom}
-              onChange={(e) => setNom(e.target.value.toUpperCase().replace(/\s/g, ""))}
+              onChange={(e) =>
+                setNom(e.target.value.toUpperCase().replace(/\s/g, ""))
+              }
               className="font-mono uppercase"
               placeholder="ex. TAG"
             />
@@ -131,7 +210,9 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
 
           <div className="col-span-2 flex items-center gap-3 p-2 rounded-md bg-muted/40">
             <Switch checked={isCls} onCheckedChange={setIsCls} id="iscls" />
-            <Label htmlFor="iscls" className="cursor-pointer">Camp classificador (capçalera de secció)</Label>
+            <Label htmlFor="iscls" className="cursor-pointer">
+              Camp classificador (capçalera de secció)
+            </Label>
           </div>
 
           {!isCls && (
@@ -140,49 +221,104 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
               <div className="col-span-2">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="inline-block w-3 h-3 rounded-full bg-[#0099A8]" />
-                  <span className="text-xs font-semibold text-[#0099A8] uppercase tracking-wide">Configuració Revit</span>
+                  <span className="text-xs font-semibold text-[#0099A8] uppercase tracking-wide">
+                    Configuració Revit
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pl-5 border-l-2 border-[#0099A8]/30">
                   <div className="col-span-2 space-y-1.5">
                     <Label>CBT</Label>
-                    <Input value={cbt || cbtPreview} onChange={(e) => setCbt(e.target.value)} className="font-mono text-xs" placeholder="S'omple automàticament" />
+                    <Input
+                      value={cbt || cbtPreview}
+                      onChange={(e) => setCbt(e.target.value)}
+                      className="font-mono text-xs"
+                      placeholder="S'omple automàticament"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Format paràmetre</Label>
                     <Select value={formatParam} onValueChange={setFormatParam}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{FORMAT_OPTIONS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FORMAT_OPTIONS.map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-1.5">
                     <Label>Disciplina</Label>
                     <Select value={disciplina} onValueChange={setDisciplina}>
-                      <SelectTrigger><SelectValue placeholder="Selecciona disciplina…" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona disciplina…" />
+                      </SelectTrigger>
                       <SelectContent>
-                        {disciplines.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
-                        <SelectItem value="__new__">+ Nova disciplina…</SelectItem>
+                        {disciplines.map((d) => (
+                          <SelectItem key={d} value={d}>
+                            {d}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__new__">
+                          + Nova disciplina…
+                        </SelectItem>
                       </SelectContent>
                     </Select>
-                    {disciplina === "__new__" && <Input placeholder="Nova disciplina" value={disciplinaCustom} onChange={(e) => setDisciplinaCustom(e.target.value)} autoFocus />}
+                    {disciplina === "__new__" && (
+                      <Input
+                        placeholder="Nova disciplina"
+                        value={disciplinaCustom}
+                        onChange={(e) => setDisciplinaCustom(e.target.value)}
+                        autoFocus
+                      />
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Agrupació Revit</Label>
                     <Select value={agrupRevit} onValueChange={setAgrupRevit}>
-                      <SelectTrigger><SelectValue placeholder="Selecciona agrupació…" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona agrupació…" />
+                      </SelectTrigger>
                       <SelectContent>
-                        {groups.map((g) => <SelectItem key={g} value={g}>{g}</SelectItem>)}
-                        <SelectItem value="__new__">+ Nova agrupació…</SelectItem>
+                        {groups.map((g) => (
+                          <SelectItem key={g} value={g}>
+                            {g}
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="__new__">
+                          + Nova agrupació…
+                        </SelectItem>
                       </SelectContent>
                     </Select>
-                    {agrupRevit === "__new__" && <Input placeholder="Nom de la nova agrupació" value={agrupRevitCustom} onChange={(e) => setAgrupRevitCustom(e.target.value)} autoFocus />}
+                    {agrupRevit === "__new__" && (
+                      <Input
+                        placeholder="Nom de la nova agrupació"
+                        value={agrupRevitCustom}
+                        onChange={(e) => setAgrupRevitCustom(e.target.value)}
+                        autoFocus
+                      />
+                    )}
                   </div>
                   <div className="space-y-1.5">
                     <Label>Grup .txt</Label>
-                    <Input value={grupTxt} onChange={(e) => setGrupTxt(e.target.value)} placeholder="ex. GENERICS EQUIPS" />
+                    <Input
+                      value={grupTxt}
+                      onChange={(e) => setGrupTxt(e.target.value)}
+                      placeholder="ex. GENERICS EQUIPS"
+                    />
                   </div>
                   <div className="col-span-2 flex items-center gap-3 p-2 rounded-md bg-[#0099A8]/5">
-                    <Switch checked={instancia === "Y"} onCheckedChange={(v) => setInstancia(v ? "Y" : "N")} id="instancia" />
-                    <Label htmlFor="instancia" className="cursor-pointer">Instància Revit activa (Y / N)</Label>
+                    <Switch
+                      checked={instancia === "Y"}
+                      onCheckedChange={(v) => setInstancia(v ? "Y" : "N")}
+                      id="instancia"
+                    />
+                    <Label htmlFor="instancia" className="cursor-pointer">
+                      Instància Revit activa (Y / N)
+                    </Label>
                   </div>
                 </div>
               </div>
@@ -191,45 +327,80 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
               <div className="col-span-2">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="inline-block w-3 h-3 rounded-full bg-violet-400" />
-                  <span className="text-xs font-semibold text-violet-600 uppercase tracking-wide">Camp Rosmiman</span>
+                  <span className="text-xs font-semibold text-violet-600 uppercase tracking-wide">
+                    Camp Rosmiman
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-3 pl-5 border-l-2 border-violet-200">
                   <div className="space-y-1.5">
                     <Label>Codi</Label>
-                    <Input value={codi} onChange={(e) => { setCodi(e.target.value); setClassificador(autoClassifierForCodi(e.target.value)); }} placeholder="ex. TAG" className="font-mono" />
+                    <Input
+                      value={codi}
+                      onChange={(e) => {
+                        setCodi(e.target.value);
+                        setClassificador(autoClassifierForCodi(e.target.value));
+                      }}
+                      placeholder="ex. TAG"
+                      className="font-mono"
+                    />
                   </div>
                   <div className="space-y-1.5">
                     <Label>Classificador</Label>
-                    <Select value={classificador} onValueChange={setClassificador}>
-                      <SelectTrigger><SelectValue placeholder="Classificador automàtic per codi" /></SelectTrigger>
+                    <Select
+                      value={classificador}
+                      onValueChange={setClassificador}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Classificador automàtic per codi" />
+                      </SelectTrigger>
                       <SelectContent>
                         {AUTO_CLASSIFIERS.map((ac) => (
-                          <SelectItem key={ac.name} value={ac.name}>{ac.name} ({ac.min}–{ac.max})</SelectItem>
+                          <SelectItem key={ac.name} value={ac.name}>
+                            {ac.name} ({ac.min}–{ac.max})
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-[10px] text-muted-foreground">S'assigna automàticament pel codi, però es pot canviar manualment.</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      S'assigna automàticament pel codi, però es pot canviar
+                      manualment.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <Label>Tipus dada</Label>
                     <Select value={tipusDada} onValueChange={setTipusDada}>
-                      <SelectTrigger><SelectValue placeholder="Selecciona tipus…" /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona tipus…" />
+                      </SelectTrigger>
                       <SelectContent>
                         {TIPUS_DADA_OPTIONS.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="col-span-2 space-y-1.5">
                     <Label>
-                      Taula associada{taulaRequired && <span className="text-destructive ml-1">*</span>}
+                      Taula associada
+                      {taulaRequired && (
+                        <span className="text-destructive ml-1">*</span>
+                      )}
                     </Label>
                     <Input
                       value={taulaAssoc}
                       onChange={(e) => setTaulaAssoc(e.target.value)}
-                      placeholder={taulaRequired ? "Obligatori per a Taula Associada" : "(opcional)"}
-                      className={taulaRequired && !taulaAssoc.trim() ? "border-destructive" : ""}
+                      placeholder={
+                        taulaRequired
+                          ? "Obligatori per a Taula Associada"
+                          : "(opcional)"
+                      }
+                      className={
+                        taulaRequired && !taulaAssoc.trim()
+                          ? "border-destructive"
+                          : ""
+                      }
                     />
                   </div>
                 </div>
@@ -238,8 +409,12 @@ export function AddFieldDialog({ open, onOpenChange, groups, disciplines, editin
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel·la</Button>
-          <Button onClick={submit} disabled={saving}>{saving ? "Desant…" : (editing ? "Desa" : "Crea")}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel·la
+          </Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? "Desant…" : editing ? "Desa" : "Crea"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

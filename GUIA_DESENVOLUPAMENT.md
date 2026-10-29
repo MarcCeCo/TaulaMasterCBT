@@ -15,7 +15,7 @@
 | Estils | Tailwind CSS v4 + shadcn/ui | 4.2 |
 | Backend | Supabase (PostgreSQL + Auth) | 2.49 |
 | Hosting | Vercel | — |
-| Runtime dev | Bun | — |
+| Runtime dev | Node.js 20 + npm | — |
 
 ---
 
@@ -42,6 +42,7 @@ src/
 │   ├── auth.ts             # Tipus, rols i helpers d'autenticació
 │   ├── supabase.ts         # Client Supabase (auth i realtime)
 │   ├── supaFetch.ts        # fetch directe a REST API (amb deduplicació GET)
+│   ├── apsToken.ts         # Token APS per al visor 3D (envia la sessió de Supabase al token-service)
 │   ├── exportRosmiman.ts   # Exportació xlsx per a Rosmiman
 │   ├── fields.ts           # Tipus FieldMeta + helpers de classificació
 │   ├── storage.ts          # localStorage debounced + uid()
@@ -53,9 +54,9 @@ src/
 ├── assets/            # Imatges estàtiques (logo, favicon original)
 └── styles.css         # Variables CSS, Tailwind, animacions globals
 
-api/                   # Funcions serverless Vercel/Cloudflare Workers
+api/                   # Funcions serverless Vercel (gestió d'usuaris: create/list/update/delete-user)
 public/                # Assets públics (favicon.png, docs, families Revit)
-agent/                 # Microservei Node.js per APS (Autodesk Platform Services)
+agents-independents/   # Microserveis Node.js a Render: token-service (token APS) i visor3d (sync ACC → Supabase). Vegeu el seu README
 ```
 
 ---

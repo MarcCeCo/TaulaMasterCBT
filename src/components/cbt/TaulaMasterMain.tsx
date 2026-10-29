@@ -2,41 +2,55 @@
 import { lazy, Suspense, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ShieldOff, GitBranch, Settings2 } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { DashboardHome } from "./DashboardHome";
-import { GroqChatWidget } from "./GroqChatWidget";
 import { useAuth } from "@/lib/auth";
 
 // Pàgines pesants carregades lazy — cada una tindrà el seu propi chunk JS
 const EquipmentsTable = lazy(() =>
-  import("./EquipmentsTable").then((m) => ({ default: m.EquipmentsTable }))
+  import("./EquipmentsTable").then((m) => ({ default: m.EquipmentsTable })),
 );
 const RevitBimPage = lazy(() =>
-  import("./RevitBimPage").then((m) => ({ default: m.RevitBimPage }))
+  import("./RevitBimPage").then((m) => ({ default: m.RevitBimPage })),
 );
 const Visualitzador3DPage = lazy(() =>
-  import("./Visualitzador3DPage").then((m) => ({ default: m.Visualitzador3DPage }))
+  import("./Visualitzador3DPage").then((m) => ({
+    default: m.Visualitzador3DPage,
+  })),
 );
 const ProjectesEquipsPage = lazy(() =>
-  import("./ProjectesEquipsPage").then((m) => ({ default: m.ProjectesEquipsPage }))
+  import("./ProjectesEquipsPage").then((m) => ({
+    default: m.ProjectesEquipsPage,
+  })),
 );
 const UserManagerPage = lazy(() =>
-  import("@/components/auth/UserManagerPage").then((m) => ({ default: m.UserManagerPage }))
+  import("@/components/auth/UserManagerPage").then((m) => ({
+    default: m.UserManagerPage,
+  })),
 );
 const ChangePasswordPage = lazy(() =>
-  import("@/components/auth/ChangePasswordPage").then((m) => ({ default: m.ChangePasswordPage }))
+  import("@/components/auth/ChangePasswordPage").then((m) => ({
+    default: m.ChangePasswordPage,
+  })),
 );
 const ControlAgentsPage = lazy(() =>
-  import("./ControlAgentsPage").then((m) => ({ default: m.ControlAgentsPage }))
+  import("./ControlAgentsPage").then((m) => ({ default: m.ControlAgentsPage })),
 );
 const GubimClassManager = lazy(() =>
-  import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager }))
+  import("./GubimClassManager").then((m) => ({ default: m.GubimClassManager })),
 );
 const FieldsDictionaryDialog = lazy(() =>
-  import("./FieldsDictionaryDialog").then((m) => ({ default: m.FieldsDictionaryDialog }))
+  import("./FieldsDictionaryDialog").then((m) => ({
+    default: m.FieldsDictionaryDialog,
+  })),
 );
 
 function PageSkeleton() {
@@ -70,10 +84,13 @@ const AccessDenied = () => (
       <ShieldOff className="h-6 w-6 text-slate-300" />
     </div>
     <div>
-      <p className="font-semibold text-slate-600 text-[14px]">Accés restringit</p>
+      <p className="font-semibold text-slate-600 text-[14px]">
+        Accés restringit
+      </p>
       <p className="text-[12.5px] text-slate-400 mt-1 leading-relaxed">
         No tens permisos per accedir a aquesta secció.
-        <br />Contacta amb l&apos;administrador.
+        <br />
+        Contacta amb l&apos;administrador.
       </p>
     </div>
   </Card>
@@ -92,8 +109,12 @@ function TaulaMasterPage() {
       {/* Capçalera amb botons d'accés ràpid */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Taula Master</h1>
-          <p className="text-sm text-slate-500 mt-1">Llista i gestió de tots els equips tècnics</p>
+          <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
+            Taula Master
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            Llista i gestió de tots els equips tècnics
+          </p>
         </div>
         <div className="flex gap-2 flex-wrap">
           {canSeeView("gubimclass") && (
@@ -158,11 +179,25 @@ function TaulaMasterPage() {
 }
 
 export function TaulaMasterMain() {
-  const { canSeeView, profile, user, isAdmin, loading: authLoading, getToken } = useAuth();
+  const {
+    canSeeView,
+    profile,
+    user,
+    isAdmin,
+    loading: authLoading,
+    getToken,
+  } = useAuth();
 
   const VALID_SECTIONS = [
-    "dashboard","equips","revit-bim","visualitzador-3d",
-    "projectes-equips","rosmiman","usuaris","control-agents","canviapwd",
+    "dashboard",
+    "equips",
+    "revit-bim",
+    "visualitzador-3d",
+    "projectes-equips",
+    "rosmiman",
+    "usuaris",
+    "control-agents",
+    "canviapwd",
   ];
 
   const [activeSection, setActiveSectionState] = useState<string>(() => {
@@ -175,7 +210,9 @@ export function TaulaMasterMain() {
   });
 
   const setActiveSection = (section: string) => {
-    try { sessionStorage.setItem("cbt_active_section", section); } catch {}
+    try {
+      sessionStorage.setItem("cbt_active_section", section);
+    } catch {}
     setActiveSectionState(section);
   };
 
@@ -183,7 +220,10 @@ export function TaulaMasterMain() {
   // sense renderitzar cap contingut — evita el flash del dashboard
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--sand-100, #F3F4F2)" }}>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: "var(--sand-100, #F3F4F2)" }}
+      >
         <PageSkeleton />
       </div>
     );
@@ -192,24 +232,52 @@ export function TaulaMasterMain() {
   const profileLoaded = !!profile || !user;
   const noAccessAtAll =
     profileLoaded &&
-    !canSeeView("equips") && !canSeeView("gubimclass") &&
-    !canSeeView("fields") && !canSeeView("revit") &&
-    !canSeeView("projectes") && !canSeeView("rosmiman") &&
+    !canSeeView("equips") &&
+    !canSeeView("gubimclass") &&
+    !canSeeView("fields") &&
+    !canSeeView("revit") &&
+    !canSeeView("projectes") &&
+    !canSeeView("rosmiman") &&
     !canSeeView("visor3d");
 
   const sectionTitles: Record<string, { title: string; sub: string }> = {
-    dashboard:          { title: "Resum general",        sub: "Visió global de l'estat de la Taula Master" },
-    equips:             { title: "Taula Master",          sub: "Llista i gestió de tots els equips tècnics" },
-    "revit-bim":        { title: "Documentació BIM",      sub: "Portal de recursos i famílies Revit" },
-    "visualitzador-3d": { title: "Visualitzador 3D",       sub: "Models BIM de les instal·lacions" },
-    "projectes-equips": { title: "Llistat de projectes", sub: "Equips assignats per projecte" },
-    rosmiman:           { title: "TAGs Rosmiman",         sub: "Integració amb el sistema Rosmiman" },
-    usuaris:            { title: "Gestió d'usuaris",      sub: "Administració de comptes i permisos" },
-    "control-agents":   { title: "Control d'agents",      sub: "Estat i gestió de la sincronització amb Autodesk" },
-    canviapwd:          { title: "Canvia contrasenya",    sub: "Actualitza les teves credencials d'accés" },
+    dashboard: {
+      title: "Resum general",
+      sub: "Visió global de l'estat de la Taula Master",
+    },
+    equips: {
+      title: "Taula Master",
+      sub: "Llista i gestió de tots els equips tècnics",
+    },
+    "revit-bim": {
+      title: "Documentació BIM",
+      sub: "Portal de recursos i famílies Revit",
+    },
+    "visualitzador-3d": {
+      title: "Visualitzador 3D",
+      sub: "Models BIM de les instal·lacions",
+    },
+    "projectes-equips": {
+      title: "Llistat de projectes",
+      sub: "Equips assignats per projecte",
+    },
+    rosmiman: {
+      title: "TAGs Rosmiman",
+      sub: "Integració amb el sistema Rosmiman",
+    },
+    usuaris: {
+      title: "Gestió d'usuaris",
+      sub: "Administració de comptes i permisos",
+    },
+    "control-agents": {
+      title: "Control d'agents",
+      sub: "Estat i gestió de la sincronització amb Autodesk",
+    },
+    canviapwd: {
+      title: "Canvia contrasenya",
+      sub: "Actualitza les teves credencials d'accés",
+    },
   };
-
-
 
   const renderContent = () => {
     if (noAccessAtAll) {
@@ -219,10 +287,13 @@ export function TaulaMasterMain() {
             <ShieldOff className="h-6 w-6 text-slate-300" />
           </div>
           <div>
-            <p className="font-semibold text-slate-600 text-[14px]">Sense accés assignat</p>
+            <p className="font-semibold text-slate-600 text-[14px]">
+              Sense accés assignat
+            </p>
             <p className="text-[12.5px] text-slate-400 mt-1 leading-relaxed">
               No tens permisos per veure cap secció d&apos;aquesta aplicació.
-              <br />Contacta amb l&apos;administrador.
+              <br />
+              Contacta amb l&apos;administrador.
             </p>
           </div>
         </Card>
@@ -230,7 +301,8 @@ export function TaulaMasterMain() {
     }
 
     switch (activeSection) {
-      case "dashboard": return <DashboardHome />;
+      case "dashboard":
+        return <DashboardHome />;
 
       case "equips":
         return <TaulaMasterPage />;
@@ -244,11 +316,16 @@ export function TaulaMasterMain() {
         return <Visualitzador3DPage />;
 
       case "projectes-equips":
-        if (!canSeeView("projectes") && !canSeeView("rosmiman")) return <AccessDenied />;
+        if (!canSeeView("projectes") && !canSeeView("rosmiman"))
+          return <AccessDenied />;
         return (
           <ProjectesEquipsPage
             initialTab="projectes"
-            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
+            onTabChange={(tab) =>
+              setActiveSection(
+                tab === "rosmiman" ? "rosmiman" : "projectes-equips",
+              )
+            }
           />
         );
 
@@ -257,7 +334,11 @@ export function TaulaMasterMain() {
         return (
           <ProjectesEquipsPage
             initialTab="rosmiman"
-            onTabChange={(tab) => setActiveSection(tab === "rosmiman" ? "rosmiman" : "projectes-equips")}
+            onTabChange={(tab) =>
+              setActiveSection(
+                tab === "rosmiman" ? "rosmiman" : "projectes-equips",
+              )
+            }
           />
         );
 
@@ -272,16 +353,22 @@ export function TaulaMasterMain() {
       case "canviapwd":
         return <ChangePasswordPage />;
 
-      default: return <DashboardHome />;
+      default:
+        return <DashboardHome />;
     }
   };
 
   return (
-    <div className="min-h-screen flex" style={{ background: "var(--sand-100, #F3F4F2)" }}>
-      <AppSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
+    <div
+      className="min-h-screen flex"
+      style={{ background: "var(--sand-100, #F3F4F2)" }}
+    >
+      <AppSidebar
+        activeSection={activeSection}
+        onSectionChange={setActiveSection}
+      />
 
       <div className="flex-1 min-w-0 flex flex-col">
-
         {/* Contingut */}
         <main className="flex-1 px-4 lg:px-8 py-6 max-w-[1440px] w-full mx-auto">
           <Suspense fallback={<PageSkeleton />}>{renderContent()}</Suspense>
@@ -290,25 +377,22 @@ export function TaulaMasterMain() {
         {/* Footer */}
         <footer
           className="px-6 py-2 flex items-center justify-between"
-          style={{ borderTop: "1px solid rgba(0,90,99,0.08)", background: "rgba(255,255,255,0.7)" }}
+          style={{
+            borderTop: "1px solid rgba(0,90,99,0.08)",
+            background: "rgba(255,255,255,0.7)",
+          }}
         >
           <span className="text-[10.5px] text-slate-400">
             Consorci Besòs · Tordera · TaulaMaster
           </span>
-          <span className="hidden sm:block text-[10.5px]" style={{ color: "var(--cbt-400)" }}>
+          <span
+            className="hidden sm:block text-[10.5px]"
+            style={{ color: "var(--cbt-400)" }}
+          >
             CBT © {new Date().getFullYear()}
           </span>
         </footer>
       </div>
-
-      {/* Assistent de suport (botó flotant + xat Groq) */}
-      <GroqChatWidget
-        pageContext={activeSection}
-        pageLabel={sectionTitles[activeSection]?.title}
-        isAdmin={isAdmin}
-        sectionPermisos={profile?.section_permissions ?? undefined}
-        getToken={getToken}
-      />
     </div>
   );
 }

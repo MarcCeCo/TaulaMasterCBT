@@ -37,8 +37,8 @@ export interface ProjectUserAccess {
 
 export interface RosmimanEquip {
   id: string;
-  tag: string;           // TAG complet (col A de l'Excel)
-  descripcio: string;    // Descripció (col B de l'Excel)
+  tag: string; // TAG complet (col A de l'Excel)
+  descripcio: string; // Descripció (col B de l'Excel)
   codiInstallacio: string; // primers 5 caràcters del TAG
   createdAt: number;
 }
@@ -54,14 +54,14 @@ export interface ProjectTag {
   tagComplet: string;
   status: TagStatus;
   comentari: string;
-  descripcioEquip: string;  // descripció lliure de l'equip al projecte
+  descripcioEquip: string; // descripció lliure de l'equip al projecte
   fieldValues: Record<string, string>;
   createdAt: number;
 }
 
 export interface InstallacioItem {
-  codi: string;  // 5 car. alfanumèrics, majúscules
-  nom?: string;  // opcional, text lliure
+  codi: string; // 5 car. alfanumèrics, majúscules
+  nom?: string; // opcional, text lliure
 }
 
 export interface Projecte {
@@ -90,35 +90,35 @@ export interface Projecte {
 // ─── Conversors row ↔ objecte ─────────────────────────────────────────────────
 
 const toTag = (row: any): ProjectTag => ({
-  id:              row.id,
-  projecteId:      row.projecte_id,
-  equipId:         row.equip_id,
+  id: row.id,
+  projecteId: row.projecte_id,
+  equipId: row.equip_id,
   codiInstallacio: row.codi_installacio ?? "",
-  ccm:             row.ccm             ?? "",
-  funcio:          row.funcio           ?? "",
-  duplicitat:      row.duplicitat       ?? "A",
-  tagComplet:      row.tag_complet      ?? "",
-  status:          row.status           ?? "pendent",
-  comentari:       row.comentari        ?? "",
-  descripcioEquip: row.descripcio_equip  ?? "",
-  fieldValues:     row.field_values     ?? {},
-  createdAt:       row.created_at       ?? Date.now(),
+  ccm: row.ccm ?? "",
+  funcio: row.funcio ?? "",
+  duplicitat: row.duplicitat ?? "A",
+  tagComplet: row.tag_complet ?? "",
+  status: row.status ?? "pendent",
+  comentari: row.comentari ?? "",
+  descripcioEquip: row.descripcio_equip ?? "",
+  fieldValues: row.field_values ?? {},
+  createdAt: row.created_at ?? Date.now(),
 });
 
 const tagToRow = (t: ProjectTag) => ({
-  id:               t.id,
-  projecte_id:      t.projecteId,
-  equip_id:         t.equipId,
+  id: t.id,
+  projecte_id: t.projecteId,
+  equip_id: t.equipId,
   codi_installacio: t.codiInstallacio,
-  ccm:              t.ccm,
-  funcio:           t.funcio,
-  duplicitat:       t.duplicitat,
-  tag_complet:      t.tagComplet,
-  status:           t.status,
-  comentari:        t.comentari,
+  ccm: t.ccm,
+  funcio: t.funcio,
+  duplicitat: t.duplicitat,
+  tag_complet: t.tagComplet,
+  status: t.status,
+  comentari: t.comentari,
   descripcio_equip: t.descripcioEquip,
-  field_values:     t.fieldValues,
-  created_at:       t.createdAt,
+  field_values: t.fieldValues,
+  created_at: t.createdAt,
 });
 
 /**
@@ -128,7 +128,10 @@ const tagToRow = (t: ProjectTag) => ({
  *  - array de strings (format antic) → migra a ProjectUserAccess[] amb role "editor_global"
  *  - array d'objectes {userId, role} (format nou)
  */
-function parseAllowedUsers(raw: any): { projectUsers: ProjectUserAccess[] | null; allowedUsers: string[] | null } {
+function parseAllowedUsers(raw: any): {
+  projectUsers: ProjectUserAccess[] | null;
+  allowedUsers: string[] | null;
+} {
   // null/undefined explícit = accés obert a tothom
   if (raw === null || raw === undefined) {
     return { projectUsers: null, allowedUsers: null };
@@ -141,13 +144,17 @@ function parseAllowedUsers(raw: any): { projectUsers: ProjectUserAccess[] | null
   if (raw.length === 0) {
     return { projectUsers: [], allowedUsers: [] };
   }
-  const VALID_ROLES: ProjectRole[] = ["viewer", "editor_global", "editor_caracteristiques"];
+  const VALID_ROLES: ProjectRole[] = [
+    "viewer",
+    "editor_global",
+    "editor_caracteristiques",
+  ];
   const projectUsers: ProjectUserAccess[] = raw
     .map((item: any) => {
       // Format nou: {userId, role}
       if (typeof item === "object" && item !== null && item.userId) {
         const role: ProjectRole = VALID_ROLES.includes(item.role)
-          ? item.role as ProjectRole
+          ? (item.role as ProjectRole)
           : "editor_global";
         return { userId: item.userId, role };
       }
@@ -160,88 +167,110 @@ function parseAllowedUsers(raw: any): { projectUsers: ProjectUserAccess[] | null
     .filter((u): u is ProjectUserAccess => u !== null);
   return {
     projectUsers,
-    allowedUsers: projectUsers.map(u => u.userId),
+    allowedUsers: projectUsers.map((u) => u.userId),
   };
 }
 
 const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
   // Suporta tant array (nou format) com string (format antic)
   const rawCodis = row.codis_installacio;
-  const rawCodi  = row.codi_installacio ?? "";
+  const rawCodi = row.codi_installacio ?? "";
   let codisInstallacio: InstallacioItem[];
   if (Array.isArray(rawCodis) && rawCodis.length > 0) {
-    codisInstallacio = rawCodis.map((c: any) => {
-      if (typeof c === "object" && c !== null && c.codi) {
-        return { codi: String(c.codi).toUpperCase().trim(), nom: c.nom ?? "" };
-      }
-      // format antic: string simple
-      return { codi: String(c).toUpperCase().trim(), nom: "" };
-    }).filter(c => c.codi);
+    codisInstallacio = rawCodis
+      .map((c: any) => {
+        if (typeof c === "object" && c !== null && c.codi) {
+          return {
+            codi: String(c.codi).toUpperCase().trim(),
+            nom: c.nom ?? "",
+          };
+        }
+        // format antic: string simple
+        return { codi: String(c).toUpperCase().trim(), nom: "" };
+      })
+      .filter((c) => c.codi);
   } else if (rawCodi) {
     codisInstallacio = [{ codi: rawCodi.toUpperCase().trim(), nom: "" }];
   } else {
     codisInstallacio = [];
   }
   return {
-    id:               row.id,
-    nom:              row.nom,
-    descripcio:       row.descripcio       ?? "",
-    codiProjecte:     row.codi_projecte    ?? "",
+    id: row.id,
+    nom: row.nom,
+    descripcio: row.descripcio ?? "",
+    codiProjecte: row.codi_projecte ?? "",
     codisInstallacio,
-    codiInstallacio:  codisInstallacio[0]?.codi  ?? "",
-    status:           row.status           ?? "actiu",
-    tags:             tags.filter(t => t.projecteId === row.id),
-    createdAt:        row.created_at       ?? Date.now(),
+    codiInstallacio: codisInstallacio[0]?.codi ?? "",
+    status: row.status ?? "actiu",
+    tags: tags.filter((t) => t.projecteId === row.id),
+    createdAt: row.created_at ?? Date.now(),
     ...parseAllowedUsers(row.allowed_users),
   };
 };
 
 const projecteToRow = (p: Projecte) => ({
-  id:               p.id,
-  nom:              p.nom,
-  descripcio:       p.descripcio,
-  codi_projecte:    p.codiProjecte,
+  id: p.id,
+  nom: p.nom,
+  descripcio: p.descripcio,
+  codi_projecte: p.codiProjecte,
   codi_installacio: p.codisInstallacio[0]?.codi ?? p.codiInstallacio,
   codis_installacio: p.codisInstallacio,
-  status:           p.status,
-  created_at:       p.createdAt,
-  allowed_users:    p.projectUsers ?? null,
+  status: p.status,
+  created_at: p.createdAt,
+  allowed_users: p.projectUsers ?? null,
 });
 
 const toRosmimanEquip = (row: any): RosmimanEquip => ({
-  id:              row.id,
-  tag:             row.tag             ?? "",
-  descripcio:      row.descripcio      ?? "",
+  id: row.id,
+  tag: row.tag ?? "",
+  descripcio: row.descripcio ?? "",
   codiInstallacio: row.codi_installacio ?? "",
-  createdAt:       row.created_at      ?? Date.now(),
+  createdAt: row.created_at ?? Date.now(),
 });
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 export interface ProjectesValue {
-  loading:  boolean;
-  error:    string | null;
-  retry:    () => void;
+  loading: boolean;
+  error: string | null;
+  retry: () => void;
 
   projectes: Projecte[];
 
   // Projectes CRUD
-  createProjecte: (data: Omit<Projecte, "id" | "tags" | "createdAt">) => Promise<void>;
-  updateProjecte: (id: string, patch: Partial<Omit<Projecte, "id" | "tags">>) => Promise<void>;
-  updateProjecteUsers: (id: string, projectUsers: ProjectUserAccess[] | null) => Promise<void>;
+  createProjecte: (
+    data: Omit<Projecte, "id" | "tags" | "createdAt">,
+  ) => Promise<void>;
+  updateProjecte: (
+    id: string,
+    patch: Partial<Omit<Projecte, "id" | "tags">>,
+  ) => Promise<void>;
+  updateProjecteUsers: (
+    id: string,
+    projectUsers: ProjectUserAccess[] | null,
+  ) => Promise<void>;
   deleteProjecte: (id: string) => Promise<void>;
-  toggleArxivar:  (id: string) => Promise<void>;
+  toggleArxivar: (id: string) => Promise<void>;
 
   // Equips Rosmiman
-  rosmimanEquips:       RosmimanEquip[];
-  loadingRosmiman:      boolean;
-  importRosmimanEquips: (equips: Omit<RosmimanEquip, "id" | "createdAt">[]) => Promise<{ inserted: number; skipped: number }>;
-  deleteRosmimanEquip:  (id: string) => Promise<void>;
-  clearRosmimanEquips:  () => Promise<void>;
+  rosmimanEquips: RosmimanEquip[];
+  loadingRosmiman: boolean;
+  importRosmimanEquips: (
+    equips: Omit<RosmimanEquip, "id" | "createdAt">[],
+  ) => Promise<{ inserted: number; skipped: number }>;
+  deleteRosmimanEquip: (id: string) => Promise<void>;
+  clearRosmimanEquips: () => Promise<void>;
 
   // Tags CRUD
-  addTag:    (projecteId: string, tag: Omit<ProjectTag, "id" | "projecteId" | "createdAt">) => Promise<void>;
-  updateTag: (projecteId: string, tagId: string, patch: Partial<ProjectTag>) => Promise<void>;
+  addTag: (
+    projecteId: string,
+    tag: Omit<ProjectTag, "id" | "projecteId" | "createdAt">,
+  ) => Promise<void>;
+  updateTag: (
+    projecteId: string,
+    tagId: string,
+    patch: Partial<ProjectTag>,
+  ) => Promise<void>;
   deleteTag: (projecteId: string, tagId: string) => Promise<void>;
 }
 
@@ -257,12 +286,12 @@ export const useProjectes = (): ProjectesValue => {
 
 export function ProjectesProvider({ children }: { children: ReactNode }) {
   const { getToken, loading: authLoading, user } = useAuth();
-  const [projectes, setProjectes]           = useState<Projecte[]>([]);
+  const [projectes, setProjectes] = useState<Projecte[]>([]);
   const [rosmimanEquips, setRosmimanEquips] = useState<RosmimanEquip[]>([]);
   const [loadingRosmiman, setLoadingRosmiman] = useState(false);
-  const [loading, setLoading]     = useState(true);
-  const [error,   setError]       = useState<string | null>(null);
-  const loadingRef     = useRef(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const loadingRef = useRef(false);
   const needsReloadRef = useRef(false);
 
   // ── Càrrega ───────────────────────────────────────────────────────────────
@@ -274,13 +303,17 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
 
     let token = getToken();
     if (!token) {
-      const { data: { session } } = await supabase.auth.getSession();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
       token = session?.access_token ?? "";
     }
     if (!token) {
       for (let i = 0; i < 6; i++) {
         await new Promise((r) => setTimeout(r, 500));
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         token = session?.access_token ?? "";
         if (token) break;
       }
@@ -297,13 +330,17 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
       const [projectesData, tagsData, rosmimanData] = await Promise.all([
         supa(token, "GET", "projectes?select=*&order=created_at.desc"),
         supa(token, "GET", "projecte_tags?select=*&order=created_at.asc"),
-        supa(token, "GET", "rosmiman_equips?select=*&order=codi_installacio.asc,tag.asc"),
+        supa(
+          token,
+          "GET",
+          "rosmiman_equips?select=*&order=codi_installacio.asc,tag.asc",
+        ),
       ]);
 
       const tags = tagsData.map(toTag);
 
       startTransition(() => {
-        setProjectes(projectesData.map(row => toProjecte(row, tags)));
+        setProjectes(projectesData.map((row) => toProjecte(row, tags)));
         setRosmimanEquips(rosmimanData.map(toRosmimanEquip));
       });
     } catch (e: any) {
@@ -319,9 +356,19 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
   }, [authLoading, user, load]);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN")      setTimeout(() => load(), 50);
-      if (event === "SIGNED_OUT")     { startTransition(() => { setProjectes([]); setRosmimanEquips([]); }); setLoading(false); setError(null); loadingRef.current = false; }
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN") setTimeout(() => load(), 50);
+      if (event === "SIGNED_OUT") {
+        startTransition(() => {
+          setProjectes([]);
+          setRosmimanEquips([]);
+        });
+        setLoading(false);
+        setError(null);
+        loadingRef.current = false;
+      }
       if (event === "TOKEN_REFRESHED") {
         if (document.hidden) needsReloadRef.current = true;
         else load();
@@ -336,196 +383,296 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     };
 
     document.addEventListener("visibilitychange", handleVisibility);
-    return () => { subscription.unsubscribe(); document.removeEventListener("visibilitychange", handleVisibility); };
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [load]);
 
   // ── Mutacions projectes ───────────────────────────────────────────────────
 
-  const createProjecte = useCallback(async (data: Omit<Projecte, "id" | "tags" | "createdAt">) => {
-    const token = getToken();
-    const nou: Projecte = { ...data, id: uid(), tags: [], createdAt: Date.now() };
-    if (!("projectUsers" in nou)) (nou as any).projectUsers = null;
-    if (!("allowedUsers" in nou)) (nou as any).allowedUsers = null;
-    await supa(token, "POST", "projectes", projecteToRow(nou), { "Prefer": "return=minimal" });
-    setProjectes(prev => [nou, ...prev]);
-  }, [getToken]);
-
-  const updateProjecte = useCallback(async (id: string, patch: Partial<Omit<Projecte, "id" | "tags">>) => {
-    const token = getToken();
-    // Convertim el patch a noms de columna SQL
-    const rowPatch: Record<string, any> = {};
-    if (patch.nom                !== undefined) rowPatch.nom               = patch.nom;
-    if (patch.descripcio         !== undefined) rowPatch.descripcio        = patch.descripcio;
-    if (patch.codiProjecte       !== undefined) rowPatch.codi_projecte     = patch.codiProjecte;
-    if (patch.codiInstallacio    !== undefined) rowPatch.codi_installacio  = patch.codiInstallacio;
-    if (patch.codisInstallacio   !== undefined) {
-      rowPatch.codis_installacio = patch.codisInstallacio;
-      // Mantenim codi_installacio sincronitzat amb el primer element (compatibilitat)
-      rowPatch.codi_installacio  = patch.codisInstallacio[0]?.codi ?? "";
-    }
-    if (patch.status             !== undefined) rowPatch.status            = patch.status;
-
-    await supa(token, "PATCH", `projectes?id=eq.${id}`, rowPatch, { "Prefer": "return=minimal" });
-    setProjectes(prev => prev.map(p => {
-      if (p.id !== id) return p;
-      const updated = { ...p, ...patch };
-      // Mantenim codiInstallacio sincronitzat
-      if (patch.codisInstallacio !== undefined) {
-        updated.codiInstallacio = patch.codisInstallacio[0]?.codi ?? p.codiInstallacio;
-      }
-      return updated;
-    }));
-  }, [getToken]);
-
-  const deleteProjecte = useCallback(async (id: string) => {
-    const token = getToken();
-    // ON DELETE CASCADE s'encarrega d'esborrar els tags associats
-    await supa(token, "DELETE", `projectes?id=eq.${id}`);
-    setProjectes(prev => prev.filter(p => p.id !== id));
-  }, [getToken]);
-
-  const toggleArxivar = useCallback(async (id: string) => {
-    const p = projectes.find(p => p.id === id);
-    if (!p) return;
-    const nouStatus: ProjectStatus = p.status === "arxivat" ? "actiu" : "arxivat";
-    await updateProjecte(id, { status: nouStatus });
-  }, [projectes, updateProjecte]);
-
-  const updateProjecteUsers = useCallback(async (id: string, projectUsers: ProjectUserAccess[] | null) => {
-    const token = getToken();
-    // Deduplicem per userId abans d'enviar (evita duplicats si es crida 2 vegades)
-    const deduped = projectUsers
-      ? [...new Map(projectUsers.map(u => [u.userId, u])).values()]
-      : null;
-    await supa(token, "PATCH", `projectes?id=eq.${id}`,
-      { allowed_users: deduped },
-      { "Prefer": "return=minimal" }
-    );
-    setProjectes(prev => prev.map(p => {
-      if (p.id !== id) return p;
-      return {
-        ...p,
-        projectUsers: deduped,
-        allowedUsers: deduped ? deduped.map(u => u.userId) : null,
+  const createProjecte = useCallback(
+    async (data: Omit<Projecte, "id" | "tags" | "createdAt">) => {
+      const token = getToken();
+      const nou: Projecte = {
+        ...data,
+        id: uid(),
+        tags: [],
+        createdAt: Date.now(),
       };
-    }));
-  }, [getToken]);
+      if (!("projectUsers" in nou)) (nou as any).projectUsers = null;
+      if (!("allowedUsers" in nou)) (nou as any).allowedUsers = null;
+      await supa(token, "POST", "projectes", projecteToRow(nou), {
+        Prefer: "return=minimal",
+      });
+      setProjectes((prev) => [nou, ...prev]);
+    },
+    [getToken],
+  );
+
+  const updateProjecte = useCallback(
+    async (id: string, patch: Partial<Omit<Projecte, "id" | "tags">>) => {
+      const token = getToken();
+      // Convertim el patch a noms de columna SQL
+      const rowPatch: Record<string, any> = {};
+      if (patch.nom !== undefined) rowPatch.nom = patch.nom;
+      if (patch.descripcio !== undefined)
+        rowPatch.descripcio = patch.descripcio;
+      if (patch.codiProjecte !== undefined)
+        rowPatch.codi_projecte = patch.codiProjecte;
+      if (patch.codiInstallacio !== undefined)
+        rowPatch.codi_installacio = patch.codiInstallacio;
+      if (patch.codisInstallacio !== undefined) {
+        rowPatch.codis_installacio = patch.codisInstallacio;
+        // Mantenim codi_installacio sincronitzat amb el primer element (compatibilitat)
+        rowPatch.codi_installacio = patch.codisInstallacio[0]?.codi ?? "";
+      }
+      if (patch.status !== undefined) rowPatch.status = patch.status;
+
+      await supa(token, "PATCH", `projectes?id=eq.${id}`, rowPatch, {
+        Prefer: "return=minimal",
+      });
+      setProjectes((prev) =>
+        prev.map((p) => {
+          if (p.id !== id) return p;
+          const updated = { ...p, ...patch };
+          // Mantenim codiInstallacio sincronitzat
+          if (patch.codisInstallacio !== undefined) {
+            updated.codiInstallacio =
+              patch.codisInstallacio[0]?.codi ?? p.codiInstallacio;
+          }
+          return updated;
+        }),
+      );
+    },
+    [getToken],
+  );
+
+  const deleteProjecte = useCallback(
+    async (id: string) => {
+      const token = getToken();
+      // ON DELETE CASCADE s'encarrega d'esborrar els tags associats
+      await supa(token, "DELETE", `projectes?id=eq.${id}`);
+      setProjectes((prev) => prev.filter((p) => p.id !== id));
+    },
+    [getToken],
+  );
+
+  const toggleArxivar = useCallback(
+    async (id: string) => {
+      const p = projectes.find((p) => p.id === id);
+      if (!p) return;
+      const nouStatus: ProjectStatus =
+        p.status === "arxivat" ? "actiu" : "arxivat";
+      await updateProjecte(id, { status: nouStatus });
+    },
+    [projectes, updateProjecte],
+  );
+
+  const updateProjecteUsers = useCallback(
+    async (id: string, projectUsers: ProjectUserAccess[] | null) => {
+      const token = getToken();
+      // Deduplicem per userId abans d'enviar (evita duplicats si es crida 2 vegades)
+      const deduped = projectUsers
+        ? [...new Map(projectUsers.map((u) => [u.userId, u])).values()]
+        : null;
+      await supa(
+        token,
+        "PATCH",
+        `projectes?id=eq.${id}`,
+        { allowed_users: deduped },
+        { Prefer: "return=minimal" },
+      );
+      setProjectes((prev) =>
+        prev.map((p) => {
+          if (p.id !== id) return p;
+          return {
+            ...p,
+            projectUsers: deduped,
+            allowedUsers: deduped ? deduped.map((u) => u.userId) : null,
+          };
+        }),
+      );
+    },
+    [getToken],
+  );
 
   // ── Mutacions tags ────────────────────────────────────────────────────────
 
-  const addTag = useCallback(async (
-    projecteId: string,
-    tagData: Omit<ProjectTag, "id" | "projecteId" | "createdAt">
-  ) => {
-    const token = getToken();
-    const tag: ProjectTag = { ...tagData, id: uid(), projecteId, createdAt: Date.now() };
-    await supa(token, "POST", "projecte_tags", tagToRow(tag), { "Prefer": "return=minimal" });
-    setProjectes(prev => prev.map(p =>
-      p.id === projecteId ? { ...p, tags: [...p.tags, tag] } : p
-    ));
-  }, [getToken]);
+  const addTag = useCallback(
+    async (
+      projecteId: string,
+      tagData: Omit<ProjectTag, "id" | "projecteId" | "createdAt">,
+    ) => {
+      const token = getToken();
+      const tag: ProjectTag = {
+        ...tagData,
+        id: uid(),
+        projecteId,
+        createdAt: Date.now(),
+      };
+      await supa(token, "POST", "projecte_tags", tagToRow(tag), {
+        Prefer: "return=minimal",
+      });
+      setProjectes((prev) =>
+        prev.map((p) =>
+          p.id === projecteId ? { ...p, tags: [...p.tags, tag] } : p,
+        ),
+      );
+    },
+    [getToken],
+  );
 
-  const updateTag = useCallback(async (
-    projecteId: string,
-    tagId: string,
-    patch: Partial<ProjectTag>
-  ) => {
-    const token = getToken();
-    const rowPatch: Record<string, any> = {};
-    if (patch.status      !== undefined) rowPatch.status       = patch.status;
-    if (patch.comentari   !== undefined) rowPatch.comentari    = patch.comentari;
-    if (patch.fieldValues !== undefined) rowPatch.field_values = patch.fieldValues;
-    if (patch.ccm         !== undefined) rowPatch.ccm          = patch.ccm;
-    if (patch.funcio      !== undefined) rowPatch.funcio        = patch.funcio;
-    if (patch.duplicitat  !== undefined) rowPatch.duplicitat   = patch.duplicitat;
-    if (patch.tagComplet  !== undefined) rowPatch.tag_complet  = patch.tagComplet;
-    if (patch.codiInstallacio  !== undefined) rowPatch.codi_installacio  = patch.codiInstallacio;
-    if (patch.descripcioEquip  !== undefined) rowPatch.descripcio_equip = patch.descripcioEquip;
-    if (patch.equipId     !== undefined) rowPatch.equip_id     = patch.equipId;
+  const updateTag = useCallback(
+    async (projecteId: string, tagId: string, patch: Partial<ProjectTag>) => {
+      const token = getToken();
+      const rowPatch: Record<string, any> = {};
+      if (patch.status !== undefined) rowPatch.status = patch.status;
+      if (patch.comentari !== undefined) rowPatch.comentari = patch.comentari;
+      if (patch.fieldValues !== undefined)
+        rowPatch.field_values = patch.fieldValues;
+      if (patch.ccm !== undefined) rowPatch.ccm = patch.ccm;
+      if (patch.funcio !== undefined) rowPatch.funcio = patch.funcio;
+      if (patch.duplicitat !== undefined)
+        rowPatch.duplicitat = patch.duplicitat;
+      if (patch.tagComplet !== undefined)
+        rowPatch.tag_complet = patch.tagComplet;
+      if (patch.codiInstallacio !== undefined)
+        rowPatch.codi_installacio = patch.codiInstallacio;
+      if (patch.descripcioEquip !== undefined)
+        rowPatch.descripcio_equip = patch.descripcioEquip;
+      if (patch.equipId !== undefined) rowPatch.equip_id = patch.equipId;
 
-    await supa(token, "PATCH", `projecte_tags?id=eq.${tagId}`, rowPatch, { "Prefer": "return=minimal" });
-    setProjectes(prev => prev.map(p =>
-      p.id === projecteId
-        ? { ...p, tags: p.tags.map(t => t.id === tagId ? { ...t, ...patch } : t) }
-        : p
-    ));
-  }, [getToken]);
+      await supa(token, "PATCH", `projecte_tags?id=eq.${tagId}`, rowPatch, {
+        Prefer: "return=minimal",
+      });
+      setProjectes((prev) =>
+        prev.map((p) =>
+          p.id === projecteId
+            ? {
+                ...p,
+                tags: p.tags.map((t) =>
+                  t.id === tagId ? { ...t, ...patch } : t,
+                ),
+              }
+            : p,
+        ),
+      );
+    },
+    [getToken],
+  );
 
-  const deleteTag = useCallback(async (projecteId: string, tagId: string) => {
-    const token = getToken();
-    await supa(token, "DELETE", `projecte_tags?id=eq.${tagId}`);
-    setProjectes(prev => prev.map(p =>
-      p.id === projecteId
-        ? { ...p, tags: p.tags.filter(t => t.id !== tagId) }
-        : p
-    ));
-  }, [getToken]);
+  const deleteTag = useCallback(
+    async (projecteId: string, tagId: string) => {
+      const token = getToken();
+      await supa(token, "DELETE", `projecte_tags?id=eq.${tagId}`);
+      setProjectes((prev) =>
+        prev.map((p) =>
+          p.id === projecteId
+            ? { ...p, tags: p.tags.filter((t) => t.id !== tagId) }
+            : p,
+        ),
+      );
+    },
+    [getToken],
+  );
 
   // ── Mutacions Rosmiman ───────────────────────────────────────────────────
 
-  const importRosmimanEquips = useCallback(async (
-    equips: Omit<RosmimanEquip, "id" | "createdAt">[]
-  ): Promise<{ inserted: number; skipped: number }> => {
-    const token = getToken();
-    setLoadingRosmiman(true);
-    try {
-      // Sempre consultem la BD per tenir els tags actuals, evitant falsos positius
-      // si l'estat local estava desactualitzat
-      const freshRows = await supa(token, "GET", "rosmiman_equips?select=tag");
-      const existingTags = new Set(freshRows.map((r: any) => r.tag as string));
-      const toInsert = equips.filter(e => !existingTags.has(e.tag));
-      const skipped = equips.length - toInsert.length;
+  const importRosmimanEquips = useCallback(
+    async (
+      equips: Omit<RosmimanEquip, "id" | "createdAt">[],
+    ): Promise<{ inserted: number; skipped: number }> => {
+      const token = getToken();
+      setLoadingRosmiman(true);
+      try {
+        // Sempre consultem la BD per tenir els tags actuals, evitant falsos positius
+        // si l'estat local estava desactualitzat
+        const freshRows = await supa(
+          token,
+          "GET",
+          "rosmiman_equips?select=tag",
+        );
+        const existingTags = new Set(
+          freshRows.map((r: any) => r.tag as string),
+        );
+        const toInsert = equips.filter((e) => !existingTags.has(e.tag));
+        const skipped = equips.length - toInsert.length;
 
-      if (toInsert.length > 0) {
-        const rows = toInsert.map(e => ({
-          id:               uid(),
-          tag:              e.tag,
-          descripcio:       e.descripcio,
-          codi_installacio: e.codiInstallacio,
-          created_at:       Date.now(),
-        }));
-        const BATCH = 100;
-        let actualInserted = 0;
-        for (let i = 0; i < rows.length; i += BATCH) {
-          try {
-            // Upsert real: on_conflict=tag ignora duplicats per la columna TAG
-            await supa(token, "POST", "rosmiman_equips?on_conflict=tag", rows.slice(i, i + BATCH), {
-              "Prefer": "resolution=ignore-duplicates,return=minimal",
-            });
-            actualInserted += rows.slice(i, i + BATCH).length;
-          } catch (err: any) {
-            // Si el batch falla per duplicat (409), intentem fila per fila
-            if (err?.message?.includes("409") || err?.message?.includes("23505")) {
-              for (const row of rows.slice(i, i + BATCH)) {
-                try {
-                  await supa(token, "POST", "rosmiman_equips?on_conflict=tag", [row], {
-                    "Prefer": "resolution=ignore-duplicates,return=minimal",
-                  });
-                  actualInserted++;
-                } catch {
-                  // Duplicat individual: skip silenciós
+        if (toInsert.length > 0) {
+          const rows = toInsert.map((e) => ({
+            id: uid(),
+            tag: e.tag,
+            descripcio: e.descripcio,
+            codi_installacio: e.codiInstallacio,
+            created_at: Date.now(),
+          }));
+          const BATCH = 100;
+          let actualInserted = 0;
+          for (let i = 0; i < rows.length; i += BATCH) {
+            try {
+              // Upsert real: on_conflict=tag ignora duplicats per la columna TAG
+              await supa(
+                token,
+                "POST",
+                "rosmiman_equips?on_conflict=tag",
+                rows.slice(i, i + BATCH),
+                {
+                  Prefer: "resolution=ignore-duplicates,return=minimal",
+                },
+              );
+              actualInserted += rows.slice(i, i + BATCH).length;
+            } catch (err: any) {
+              // Si el batch falla per duplicat (409), intentem fila per fila
+              if (
+                err?.message?.includes("409") ||
+                err?.message?.includes("23505")
+              ) {
+                for (const row of rows.slice(i, i + BATCH)) {
+                  try {
+                    await supa(
+                      token,
+                      "POST",
+                      "rosmiman_equips?on_conflict=tag",
+                      [row],
+                      {
+                        Prefer: "resolution=ignore-duplicates,return=minimal",
+                      },
+                    );
+                    actualInserted++;
+                  } catch {
+                    // Duplicat individual: skip silenciós
+                  }
                 }
+              } else {
+                throw err;
               }
-            } else {
-              throw err;
             }
           }
+          setRosmimanEquips((prev) =>
+            [...prev, ...rows.map(toRosmimanEquip)].sort(
+              (a, b) =>
+                a.codiInstallacio.localeCompare(b.codiInstallacio) ||
+                a.tag.localeCompare(b.tag),
+            ),
+          );
         }
-        setRosmimanEquips(prev => [...prev, ...rows.map(toRosmimanEquip)]
-          .sort((a, b) => a.codiInstallacio.localeCompare(b.codiInstallacio) || a.tag.localeCompare(b.tag))
-        );
+        return { inserted: toInsert.length, skipped };
+      } finally {
+        setLoadingRosmiman(false);
       }
-      return { inserted: toInsert.length, skipped };
-    } finally {
-      setLoadingRosmiman(false);
-    }
-  }, [getToken]);
+    },
+    [getToken],
+  );
 
-  const deleteRosmimanEquip = useCallback(async (id: string) => {
-    const token = getToken();
-    await supa(token, "DELETE", `rosmiman_equips?id=eq.${id}`);
-    setRosmimanEquips(prev => prev.filter(e => e.id !== id));
-  }, [getToken]);
+  const deleteRosmimanEquip = useCallback(
+    async (id: string) => {
+      const token = getToken();
+      await supa(token, "DELETE", `rosmiman_equips?id=eq.${id}`);
+      setRosmimanEquips((prev) => prev.filter((e) => e.id !== id));
+    },
+    [getToken],
+  );
 
   const clearRosmimanEquips = useCallback(async () => {
     const token = getToken();
@@ -536,12 +683,23 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
   }, [getToken]);
 
   const value: ProjectesValue = {
-    loading, error, retry: load,
+    loading,
+    error,
+    retry: load,
     projectes,
-    rosmimanEquips, loadingRosmiman,
-    importRosmimanEquips, deleteRosmimanEquip, clearRosmimanEquips,
-    createProjecte, updateProjecte, updateProjecteUsers, deleteProjecte, toggleArxivar,
-    addTag, updateTag, deleteTag,
+    rosmimanEquips,
+    loadingRosmiman,
+    importRosmimanEquips,
+    deleteRosmimanEquip,
+    clearRosmimanEquips,
+    createProjecte,
+    updateProjecte,
+    updateProjecteUsers,
+    deleteProjecte,
+    toggleArxivar,
+    addTag,
+    updateTag,
+    deleteTag,
   };
 
   return (

@@ -35,17 +35,26 @@ interface BimSyncResultat {
 
 // ─── Configuració (des de variables d'entorn) ─────────────────────────────────
 
-const SUFIXOS_COPIA = ["_ENT", "_EST", "_MEP", "_ENT_FM", "_EST_FM", "_MEP_FM", "_COOR", "_STR"];
-const SUFIX_MASTER  = "_MASTER";
+const SUFIXOS_COPIA = [
+  "_ENT",
+  "_EST",
+  "_MEP",
+  "_ENT_FM",
+  "_EST_FM",
+  "_MEP_FM",
+  "_COOR",
+  "_STR",
+];
+const SUFIX_MASTER = "_MASTER";
 
 function getConfig() {
   return {
-    apsClientId:     process.env.APS_CLIENT_ID     ?? "",
+    apsClientId: process.env.APS_CLIENT_ID ?? "",
     apsClientSecret: process.env.APS_CLIENT_SECRET ?? "",
-    supabaseUrl:     process.env.SUPABASE_URL       ?? "",
-    supabaseKey:     process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
+    supabaseUrl: process.env.SUPABASE_URL ?? "",
+    supabaseKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? "",
     // Ruta local al disc USB (si el servidor corre localment)
-    usbPath:         process.env.BIM_USB_PATH       ?? "",
+    usbPath: process.env.BIM_USB_PATH ?? "",
     // Carpeta d'ACC on estan els MASTERs
     accCarpetaMasters: process.env.ACC_CARPETA_MASTERS ?? "Project Files",
   };
@@ -53,61 +62,77 @@ function getConfig() {
 
 // ─── Autenticació APS 2-legged ────────────────────────────────────────────────
 
-async function obtirToken(clientId: string, clientSecret: string): Promise<string> {
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-  const resp = await fetch("https://developer.api.autodesk.com/authentication/v2/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      "Authorization": `Basic ${credentials}`,
+async function obtirToken(
+  clientId: string,
+  clientSecret: string,
+): Promise<string> {
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString(
+    "base64",
+  );
+  const resp = await fetch(
+    "https://developer.api.autodesk.com/authentication/v2/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Authorization: `Basic ${credentials}`,
+      },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        scope: "data:read data:write data:create",
+      }).toString(),
     },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      scope: "data:read data:write data:create",
-    }).toString(),
-  });
+  );
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error(`Error autenticació APS: ${resp.status} ${text}`);
   }
-  const data = await resp.json() as { access_token: string };
+  const data = (await resp.json()) as { access_token: string };
   return data.access_token;
 }
 
 // ─── Helpers ACC ──────────────────────────────────────────────────────────────
 
-async function obteHubIProjecte(token: string): Promise<{ hubId: string; projectId: string; folderId: string } | null> {
+async function obteHubIProjecte(
+  token: string,
+): Promise<{ hubId: string; projectId: string; folderId: string } | null> {
   const cfg = getConfig();
 
   // Hubs
-  const rHubs = await fetch("https://developer.api.autodesk.com/project/v1/hubs", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const rHubs = await fetch(
+    "https://developer.api.autodesk.com/project/v1/hubs",
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
   if (!rHubs.ok) throw new Error(`Error obtenint hubs: ${rHubs.status}`);
-  const hubs = (await rHubs.json() as any).data ?? [];
+  const hubs = ((await rHubs.json()) as any).data ?? [];
   if (!hubs.length) return null;
   const hubId = hubs[0].id;
 
   // Projectes
   const rProj = await fetch(
     `https://developer.api.autodesk.com/project/v1/hubs/${hubId}/projects`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!rProj.ok) throw new Error(`Error obtenint projectes: ${rProj.status}`);
-  const projectes = (await rProj.json() as any).data ?? [];
+  const projectes = ((await rProj.json()) as any).data ?? [];
   if (!projectes.length) return null;
   const projectId = projectes[0].id;
 
   // Carpeta arrel
   const rFolders = await fetch(
     `https://developer.api.autodesk.com/project/v1/hubs/${hubId}/projects/${projectId}/topFolders`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` } },
   );
-  if (!rFolders.ok) throw new Error(`Error obtenint carpetes: ${rFolders.status}`);
-  const folders = (await rFolders.json() as any).data ?? [];
+  if (!rFolders.ok)
+    throw new Error(`Error obtenint carpetes: ${rFolders.status}`);
+  const folders = ((await rFolders.json()) as any).data ?? [];
 
-  const carpeta = folders.find((f: any) =>
-    cfg.accCarpetaMasters.toLowerCase() === (f.attributes?.name ?? "").toLowerCase()
+  const carpeta = folders.find(
+    (f: any) =>
+      cfg.accCarpetaMasters.toLowerCase() ===
+      (f.attributes?.name ?? "").toLowerCase(),
   );
   if (!carpeta) return null;
 
@@ -118,40 +143,51 @@ function normalitzaNom(s: string): string {
   return s.toLowerCase().replace(/-/g, "_").replace(/ /g, "_");
 }
 
-async function obteContingutCarpeta(token: string, projectId: string, folderId: string): Promise<any[]> {
+async function obteContingutCarpeta(
+  token: string,
+  projectId: string,
+  folderId: string,
+): Promise<any[]> {
   const resp = await fetch(
     `https://developer.api.autodesk.com/data/v1/projects/${projectId}/folders/${folderId}/contents`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!resp.ok) throw new Error(`Error llegint carpeta: ${resp.status}`);
-  return (await resp.json() as any).data ?? [];
+  return ((await resp.json()) as any).data ?? [];
 }
 
 async function obteVersionIdPerNom(
-  token: string, projectId: string, folderId: string, nomFitxer: string
+  token: string,
+  projectId: string,
+  folderId: string,
+  nomFitxer: string,
 ): Promise<string | null> {
   const contingut = await obteContingutCarpeta(token, projectId, folderId);
   const item = contingut.find(
     (x: any) =>
       x.type === "items" &&
-      normalitzaNom(x.attributes?.displayName ?? "") === normalitzaNom(nomFitxer)
+      normalitzaNom(x.attributes?.displayName ?? "") ===
+        normalitzaNom(nomFitxer),
   );
   if (!item) return null;
 
   const resp = await fetch(
     `https://developer.api.autodesk.com/data/v1/projects/${projectId}/items/${encodeURIComponent(item.id)}/tip`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!resp.ok) return null;
-  return (await resp.json() as any).data?.id ?? null;
+  return ((await resp.json()) as any).data?.id ?? null;
 }
 
 // ─── Puja fitxer a ACC ────────────────────────────────────────────────────────
 
 async function pujaFitxerACC(
-  token: string, projectId: string, folderId: string, fitxerPath: string
+  token: string,
+  projectId: string,
+  folderId: string,
+  fitxerPath: string,
 ): Promise<{ objectId: string; itemId: string; versionId: string } | null> {
-  const nom  = path.basename(fitxerPath);
+  const nom = path.basename(fitxerPath);
   const mida = fs.statSync(fitxerPath).size;
   console.log(`  ↑  Pujant ${nom} (${(mida / 1024 / 1024).toFixed(1)} MB)...`);
 
@@ -160,30 +196,35 @@ async function pujaFitxerACC(
     `https://developer.api.autodesk.com/data/v1/projects/${projectId}/storage`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/vnd.api+json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/vnd.api+json",
+      },
       body: JSON.stringify({
         jsonapi: { version: "1.0" },
         data: {
           type: "objects",
           attributes: { name: nom },
-          relationships: { target: { data: { type: "folders", id: folderId } } },
+          relationships: {
+            target: { data: { type: "folders", id: folderId } },
+          },
         },
       }),
-    }
+    },
   );
   if (!rStorage.ok) throw new Error(`Error storage: ${rStorage.status}`);
-  const objectId  = (await rStorage.json() as any).data.id as string;
-  const parts     = objectId.replace("urn:adsk.objects:os.object:", "");
-  const bucket    = parts.split("/")[0];
-  const objKey    = parts.split("/").slice(1).join("/");
+  const objectId = ((await rStorage.json()) as any).data.id as string;
+  const parts = objectId.replace("urn:adsk.objects:os.object:", "");
+  const bucket = parts.split("/")[0];
+  const objKey = parts.split("/").slice(1).join("/");
 
   // 2. Signed URL
   const rSign = await fetch(
     `https://developer.api.autodesk.com/oss/v2/buckets/${bucket}/objects/${encodeURIComponent(objKey)}/signeds3upload?minutesExpiration=60`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!rSign.ok) throw new Error(`Error signed URL: ${rSign.status}`);
-  const signData  = await rSign.json() as any;
+  const signData = (await rSign.json()) as any;
   const uploadUrl = signData.urls[0];
   const uploadKey = signData.uploadKey ?? "";
 
@@ -197,85 +238,128 @@ async function pujaFitxerACC(
     `https://developer.api.autodesk.com/oss/v2/buckets/${bucket}/objects/${encodeURIComponent(objKey)}/signeds3upload`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ uploadKey }),
-    }
+    },
   );
   if (!rFin.ok) throw new Error(`Error finalitzant: ${rFin.status}`);
 
   // 5. Crear o actualitzar item
-  const contingut    = await obteContingutCarpeta(token, projectId, folderId);
-  const itemExistent = contingut.find(
-    (x: any) => x.attributes?.displayName === nom && x.type === "items"
-  )?.id ?? null;
+  const contingut = await obteContingutCarpeta(token, projectId, folderId);
+  const itemExistent =
+    contingut.find(
+      (x: any) => x.attributes?.displayName === nom && x.type === "items",
+    )?.id ?? null;
 
   if (itemExistent) {
     const rVer = await fetch(
       `https://developer.api.autodesk.com/data/v1/projects/${projectId}/versions`,
       {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/vnd.api+json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/vnd.api+json",
+        },
         body: JSON.stringify({
           jsonapi: { version: "1.0" },
           data: {
             type: "versions",
-            attributes: { name: nom, extension: { type: "versions:autodesk.bim360:File", version: "1.0" } },
+            attributes: {
+              name: nom,
+              extension: {
+                type: "versions:autodesk.bim360:File",
+                version: "1.0",
+              },
+            },
             relationships: {
-              item:    { data: { type: "items",   id: itemExistent } },
+              item: { data: { type: "items", id: itemExistent } },
               storage: { data: { type: "objects", id: objectId } },
             },
           },
         }),
-      }
+      },
     );
     if (!rVer.ok) throw new Error(`Error versió: ${rVer.status}`);
-    const d = await rVer.json() as any;
+    const d = (await rVer.json()) as any;
     return { objectId, itemId: itemExistent, versionId: d.data.id };
   } else {
     const rItem = await fetch(
       `https://developer.api.autodesk.com/data/v1/projects/${projectId}/items`,
       {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/vnd.api+json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/vnd.api+json",
+        },
         body: JSON.stringify({
           jsonapi: { version: "1.0" },
           data: {
             type: "items",
-            attributes: { displayName: nom, extension: { type: "items:autodesk.bim360:File", version: "1.0" } },
+            attributes: {
+              displayName: nom,
+              extension: { type: "items:autodesk.bim360:File", version: "1.0" },
+            },
             relationships: {
-              tip:    { data: { type: "versions", id: "1" } },
-              parent: { data: { type: "folders",  id: folderId } },
+              tip: { data: { type: "versions", id: "1" } },
+              parent: { data: { type: "folders", id: folderId } },
             },
           },
-          included: [{
-            type: "versions", id: "1",
-            attributes: { name: nom, extension: { type: "versions:autodesk.bim360:File", version: "1.0" } },
-            relationships: { storage: { data: { type: "objects", id: objectId } } },
-          }],
+          included: [
+            {
+              type: "versions",
+              id: "1",
+              attributes: {
+                name: nom,
+                extension: {
+                  type: "versions:autodesk.bim360:File",
+                  version: "1.0",
+                },
+              },
+              relationships: {
+                storage: { data: { type: "objects", id: objectId } },
+              },
+            },
+          ],
         }),
-      }
+      },
     );
     if (!rItem.ok) throw new Error(`Error item: ${rItem.status}`);
-    const d = await rItem.json() as any;
-    return { objectId, itemId: d.data.id, versionId: d.included?.[0]?.id ?? "" };
+    const d = (await rItem.json()) as any;
+    return {
+      objectId,
+      itemId: d.data.id,
+      versionId: d.included?.[0]?.id ?? "",
+    };
   }
 }
 
 // ─── Registra xRefs ───────────────────────────────────────────────────────────
 
 async function registraXRefs(
-  token: string, projectId: string, folderId: string,
-  masterVersionId: string, nomsDisciplines: string[]
+  token: string,
+  projectId: string,
+  folderId: string,
+  masterVersionId: string,
+  nomsDisciplines: string[],
 ): Promise<string | null> {
   const refsData: any[] = [];
   for (const nom of nomsDisciplines) {
     const verId = await obteVersionIdPerNom(token, projectId, folderId, nom);
     if (verId) {
       refsData.push({
-        type: "versions", id: verId,
+        type: "versions",
+        id: verId,
         meta: {
-          refType: "xrefs", direction: "from",
-          extension: { type: "xrefs:autodesk.core:Xref", version: "1.1", data: { nestedType: "overlay" } },
+          refType: "xrefs",
+          direction: "from",
+          extension: {
+            type: "xrefs:autodesk.core:Xref",
+            version: "1.1",
+            data: { nestedType: "overlay" },
+          },
         },
       });
     }
@@ -286,15 +370,18 @@ async function registraXRefs(
     `https://developer.api.autodesk.com/data/v1/projects/${projectId}/versions?copyFrom=${encodeURIComponent(masterVersionId)}`,
     {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/vnd.api+json" },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/vnd.api+json",
+      },
       body: JSON.stringify({
         jsonapi: { version: "1.0" },
         data: { type: "versions", relationships: { refs: { data: refsData } } },
       }),
-    }
+    },
   );
   if (!resp.ok) return null;
-  return (await resp.json() as any).data?.id ?? null;
+  return ((await resp.json()) as any).data?.id ?? null;
 }
 
 // ─── Cerca fitxers al USB ─────────────────────────────────────────────────────
@@ -308,7 +395,10 @@ function trobaFitxersBim(carpeta: string, sufixos: string[]): string[] {
         navega(fullPath);
       } else if (entry.name.toLowerCase().endsWith(".rvt")) {
         const nomUpper = entry.name.toUpperCase();
-        if (sufixos.some(s => nomUpper.includes(s)) && !nomUpper.includes("_MASTER")) {
+        if (
+          sufixos.some((s) => nomUpper.includes(s)) &&
+          !nomUpper.includes("_MASTER")
+        ) {
           resultats.push(fullPath);
         }
       }
@@ -327,34 +417,36 @@ async function desaLogSupabase(resultat: BimSyncResultat) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
   await supabase.from("bim_sync_log").insert({
-    executat_a:           resultat.executat_a,
-    opcio:                resultat.opcio,
-    fitxers_processats:   resultat.fitxersProcessats,
-    fitxers_pujats:       resultat.fitxersPujats,
-    xrefs_registrats:     resultat.xRefsRegistrats,
-    errors:               resultat.errors.length,
-    durada_ms:            resultat.durada_ms,
+    executat_a: resultat.executat_a,
+    opcio: resultat.opcio,
+    fitxers_processats: resultat.fitxersProcessats,
+    fitxers_pujats: resultat.fitxersPujats,
+    xrefs_registrats: resultat.xRefsRegistrats,
+    errors: resultat.errors.length,
+    durada_ms: resultat.durada_ms,
     detalls: {
-      fitxersAmbError:    resultat.fitxersAmbError,
-      errors:             resultat.errors,
+      fitxersAmbError: resultat.fitxersAmbError,
+      errors: resultat.errors,
     },
   });
 }
 
 // ─── Execució principal ───────────────────────────────────────────────────────
 
-export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResultat> {
+export async function executaBimSync(
+  opcio: BimSyncOpcio,
+): Promise<BimSyncResultat> {
   const inici = Date.now();
-  const cfg   = getConfig();
+  const cfg = getConfig();
   const resultat: BimSyncResultat = {
     opcio,
     fitxersProcessats: 0,
-    fitxersPujats:     0,
-    fitxersAmbError:   [],
-    xRefsRegistrats:   0,
-    errors:            [],
-    executat_a:        new Date().toISOString(),
-    durada_ms:         0,
+    fitxersPujats: 0,
+    fitxersAmbError: [],
+    xRefsRegistrats: 0,
+    errors: [],
+    executat_a: new Date().toISOString(),
+    durada_ms: 0,
   };
 
   console.log(`\n🔄 Agent BIM Sync iniciat — opcio: ${opcio}`);
@@ -370,13 +462,17 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
       const ctx = await obteHubIProjecte(token);
       if (!ctx) throw new Error("No s'ha pogut obtenir el hub/projecte d'ACC");
 
-      const contingut = await obteContingutCarpeta(token, ctx.projectId, ctx.folderId);
+      const contingut = await obteContingutCarpeta(
+        token,
+        ctx.projectId,
+        ctx.folderId,
+      );
       const disciplines = contingut.filter((item: any) => {
         const nom = (item.attributes?.displayName ?? "").toUpperCase();
         return (
           item.type === "items" &&
           nom.endsWith(".RVT") &&
-          SUFIXOS_COPIA.some(s => nom.includes(s)) &&
+          SUFIXOS_COPIA.some((s) => nom.includes(s)) &&
           !nom.includes("_MASTER")
         );
       });
@@ -393,19 +489,21 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
       if (!cfg.usbPath) {
         throw new Error(
           "La variable d'entorn BIM_USB_PATH no està configurada a l'agent. " +
-          "Obre el panell de l'agent (Render / servidor local) i afegeix " +
-          "BIM_USB_PATH apuntant a la carpeta BIM_WORK del USB, " +
-          "per exemple: D:\\BIM_WORK o /mnt/usb/BIM_WORK"
+            "Obre el panell de l'agent (Render / servidor local) i afegeix " +
+            "BIM_USB_PATH apuntant a la carpeta BIM_WORK del USB, " +
+            "per exemple: D:\\BIM_WORK o /mnt/usb/BIM_WORK",
         );
       }
       // Normalitza la ruta (suporta tant Windows \ com Unix /)
-      const usbPathNorm = cfg.usbPath.replace(/\\/g, path.sep).replace(/\//g, path.sep);
+      const usbPathNorm = cfg.usbPath
+        .replace(/\\/g, path.sep)
+        .replace(/\//g, path.sep);
       if (!fs.existsSync(usbPathNorm)) {
         throw new Error(
           `El directori USB no existeix o no és accessible: ${usbPathNorm} | ` +
-          `Comprova: 1) el USB està connectat, ` +
-          `2) BIM_USB_PATH és correcta (actual: ${cfg.usbPath}), ` +
-          `3) l'agent corre en mode LOCAL (no cloud/Render).`
+            `Comprova: 1) el USB està connectat, ` +
+            `2) BIM_USB_PATH és correcta (actual: ${cfg.usbPath}), ` +
+            `3) l'agent corre en mode LOCAL (no cloud/Render).`,
         );
       }
 
@@ -418,8 +516,10 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
           const fullPath = path.join(dir, entry.name);
           if (entry.isDirectory()) cercaMasters(fullPath);
-          else if (entry.name.toLowerCase().endsWith(".rvt") &&
-                   entry.name.toUpperCase().includes("_MASTER")) {
+          else if (
+            entry.name.toLowerCase().endsWith(".rvt") &&
+            entry.name.toUpperCase().includes("_MASTER")
+          ) {
             masters.push(fullPath);
           }
         }
@@ -434,24 +534,28 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
       resultat.fitxersProcessats = masters.length;
 
       for (const masterPath of masters) {
-        const nomMaster    = path.basename(masterPath);
+        const nomMaster = path.basename(masterPath);
         const carpetaMaster = path.dirname(masterPath);
         console.log(`\n  🏗️  Processant: ${nomMaster}`);
 
         // Disciplines de la mateixa carpeta
-        const nomsDisciplines = fs.readdirSync(carpetaMaster)
-          .filter(f => {
-            const nomU = f.toUpperCase();
-            return (
-              nomU.endsWith(".RVT") &&
-              SUFIXOS_COPIA.some(s => nomU.includes(s)) &&
-              !nomU.includes("_MASTER")
-            );
-          });
+        const nomsDisciplines = fs.readdirSync(carpetaMaster).filter((f) => {
+          const nomU = f.toUpperCase();
+          return (
+            nomU.endsWith(".RVT") &&
+            SUFIXOS_COPIA.some((s) => nomU.includes(s)) &&
+            !nomU.includes("_MASTER")
+          );
+        });
 
         // Puja el MASTER
         try {
-          const res = await pujaFitxerACC(token, ctx.projectId, ctx.folderId, masterPath);
+          const res = await pujaFitxerACC(
+            token,
+            ctx.projectId,
+            ctx.folderId,
+            masterPath,
+          );
           if (!res) {
             resultat.fitxersAmbError.push(nomMaster);
             continue;
@@ -461,8 +565,11 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
           // Registra xRefs
           if (nomsDisciplines.length) {
             const novaVersio = await registraXRefs(
-              token, ctx.projectId, ctx.folderId,
-              res.versionId, nomsDisciplines
+              token,
+              ctx.projectId,
+              ctx.folderId,
+              res.versionId,
+              nomsDisciplines,
             );
             if (novaVersio) {
               resultat.xRefsRegistrats++;
@@ -477,7 +584,6 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
         }
       }
     }
-
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     resultat.errors.push(msg);
@@ -486,7 +592,9 @@ export async function executaBimSync(opcio: BimSyncOpcio): Promise<BimSyncResult
 
   resultat.durada_ms = Date.now() - inici;
   console.log(`\n✅ Agent BIM Sync finalitzat en ${resultat.durada_ms}ms`);
-  console.log(`   Fitxers pujats: ${resultat.fitxersPujats} / ${resultat.fitxersProcessats}`);
+  console.log(
+    `   Fitxers pujats: ${resultat.fitxersPujats} / ${resultat.fitxersProcessats}`,
+  );
   console.log(`   xRefs registrats: ${resultat.xRefsRegistrats}`);
   if (resultat.errors.length) {
     console.log(`   Errors: ${resultat.errors.length}`);

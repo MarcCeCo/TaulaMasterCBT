@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { Check, ChevronsUpDown, X, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { GubimNode, codeLevel, parentCode } from "@/hooks/useGubimClass";
@@ -16,21 +20,37 @@ interface Props {
   disabled?: boolean;
 }
 
-export function GubimClassPicker({ nodes, nodeMap, value, onChange, placeholder = "Selecciona GuBIMClass…", disabled }: Props) {
+export function GubimClassPicker({
+  nodes,
+  nodeMap,
+  value,
+  onChange,
+  placeholder = "Selecciona GuBIMClass…",
+  disabled,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return nodes;
-    return nodes.filter((n) => n.code.toLowerCase().includes(t) || n.name.toLowerCase().includes(t));
+    return nodes.filter(
+      (n) =>
+        n.code.toLowerCase().includes(t) || n.name.toLowerCase().includes(t),
+    );
   }, [nodes, q]);
 
   const sel = value ? nodeMap.get(value) : undefined;
 
   return (
     <div className="flex items-center gap-1 w-full">
-      <Popover open={open} onOpenChange={(v) => { setOpen(v); if (!v) setQ(""); }}>
+      <Popover
+        open={open}
+        onOpenChange={(v) => {
+          setOpen(v);
+          if (!v) setQ("");
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -54,7 +74,12 @@ export function GubimClassPicker({ nodes, nodeMap, value, onChange, placeholder 
         <PopoverContent
           className="w-[520px] p-0"
           align="start"
-          onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setOpen(false); } }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              setOpen(false);
+            }
+          }}
         >
           {/* Buscador de codi GuBIMClass */}
           <div className="p-2 border-b flex items-center gap-2">
@@ -67,14 +92,21 @@ export function GubimClassPicker({ nodes, nodeMap, value, onChange, placeholder 
               autoFocus
             />
             {q && (
-              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => setQ("")}>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={() => setQ("")}
+              >
                 <X className="h-3 w-3" />
               </Button>
             )}
           </div>
           <div className="max-h-80 overflow-auto">
             {filtered.length === 0 ? (
-              <div className="p-4 text-sm text-muted-foreground text-center">Cap resultat</div>
+              <div className="p-4 text-sm text-muted-foreground text-center">
+                Cap resultat
+              </div>
             ) : (
               filtered.map((n) => {
                 const lvl = codeLevel(n.code);
@@ -86,18 +118,29 @@ export function GubimClassPicker({ nodes, nodeMap, value, onChange, placeholder 
                   <button
                     key={n.id}
                     type="button"
-                    onClick={() => { onChange(n.code); setOpen(false); setQ(""); }}
+                    onClick={() => {
+                      onChange(n.code);
+                      setOpen(false);
+                      setQ("");
+                    }}
                     className={cn(
                       "w-full flex items-start gap-2 py-2 pr-3 text-left hover:bg-accent text-sm transition-colors",
                       indent,
                       isSel && "bg-accent",
                     )}
                   >
-                    <Check className={cn("h-4 w-4 mt-0.5 shrink-0 text-[#0099A8]", isSel ? "opacity-100" : "opacity-0")} />
+                    <Check
+                      className={cn(
+                        "h-4 w-4 mt-0.5 shrink-0 text-[#0099A8]",
+                        isSel ? "opacity-100" : "opacity-0",
+                      )}
+                    />
                     <LevelBadge level={lvl} />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs shrink-0">{n.code}</span>
+                        <span className="font-mono text-xs shrink-0">
+                          {n.code}
+                        </span>
                         <span className="truncate font-medium">{n.name}</span>
                       </div>
                       {parent && (
@@ -114,7 +157,14 @@ export function GubimClassPicker({ nodes, nodeMap, value, onChange, placeholder 
         </PopoverContent>
       </Popover>
       {value && !disabled && (
-        <Button type="button" variant="ghost" size="icon" className="shrink-0" onClick={() => onChange("")} title="Esborra selecció">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="shrink-0"
+          onClick={() => onChange("")}
+          title="Esborra selecció"
+        >
           <X className="h-4 w-4" />
         </Button>
       )}

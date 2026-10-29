@@ -21,7 +21,7 @@ function useAuthTokenRedirect() {
 
     if (tokenHash && (type === "invite" || type === "recovery")) {
       window.location.replace(
-        `/auth/callback?token_hash=${tokenHash}&type=${type}`
+        `/auth/callback?token_hash=${tokenHash}&type=${type}`,
       );
     }
   }, []);
@@ -62,8 +62,12 @@ function NotFoundComponent() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Pàgina no trobada</h2>
-        <p className="mt-2 text-sm text-muted-foreground">La pàgina que busques no existeix.</p>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">
+          Pàgina no trobada
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          La pàgina que busques no existeix.
+        </p>
         <div className="mt-6">
           <a
             href="/"

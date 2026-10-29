@@ -62,7 +62,10 @@ function buildCaracteristiques(
     // Agafem els camps de l'equip i els ordenem per codi numèric (com fa el full Excel original)
     const fieldsOfEquip = equip.fieldCols
       .map((col) => ({ col, meta: fieldMap.get(col) ?? null }))
-      .filter(({ meta }) => meta !== null && !!meta.codi) as { col: string; meta: FieldMeta }[];
+      .filter(({ meta }) => meta !== null && !!meta.codi) as {
+      col: string;
+      meta: FieldMeta;
+    }[];
 
     // Ordenació: camps sense codi primer, després per codi numèric ascending
     const sorted = [...fieldsOfEquip].sort((a, b) => {
@@ -76,12 +79,12 @@ function buildCaracteristiques(
 
     sorted.forEach(({ col, meta }, idx) => {
       rows.push({
-        "codi taula":            equip.tableCode,
-        "RID LINIA":             meta.codi ?? null,
+        "codi taula": equip.tableCode,
+        "RID LINIA": meta.codi ?? null,
         "CARACTERISTICA TÈCNICA": col,
-        "TIPUS DADA":            tipusDadaNum(meta.tipus_dada),
-        "ORDRE LINIA":           idx + 1,
-        "TAULA ASSOCIADA":       meta.taula_assoc ?? null,
+        "TIPUS DADA": tipusDadaNum(meta.tipus_dada),
+        "ORDRE LINIA": idx + 1,
+        "TAULA ASSOCIADA": meta.taula_assoc ?? null,
       });
     });
   }
@@ -98,7 +101,7 @@ function buildCaracteristiques(
 //   Nom taula  → equipment.tableName
 
 interface RowLlistat {
-  "NÚM": number;
+  NÚM: number;
   "codi taula": string;
   "Nom taula": string;
 }
@@ -115,9 +118,9 @@ function buildLlistat(equipments: Equipment[]): RowLlistat[] {
     seen.add(equip.tableCode);
 
     rows.push({
-      "NÚM":        num++,
+      NÚM: num++,
       "codi taula": equip.tableCode,
-      "Nom taula":  equip.tableName ?? "",
+      "Nom taula": equip.tableName ?? "",
     });
   }
 
@@ -126,10 +129,14 @@ function buildLlistat(equipments: Equipment[]): RowLlistat[] {
 
 // ─── Estil de capçalera ───────────────────────────────────────────────────────
 // Aplica fons gris fosc + lletra blanca + negreta a la fila de capçaleres
-function styleHeader(XLSX: typeof XLSXType, ws: XLSXType.WorkSheet, numCols: number) {
+function styleHeader(
+  XLSX: typeof XLSXType,
+  ws: XLSXType.WorkSheet,
+  numCols: number,
+) {
   const headerStyle = {
-    font:      { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
-    fill:      { fgColor: { rgb: "375A7F" }, patternType: "solid" },
+    font: { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
+    fill: { fgColor: { rgb: "375A7F" }, patternType: "solid" },
     alignment: { horizontal: "center", vertical: "center", wrapText: true },
     border: {
       bottom: { style: "thin", color: { rgb: "CCCCCC" } },
@@ -155,7 +162,7 @@ export async function exportRosmiman(
   filename = "rosmiman_export.xlsx",
 ): Promise<void> {
   const XLSX = await getXLSX();
-  const rowsCaract  = buildCaracteristiques(equipments, fieldMap);
+  const rowsCaract = buildCaracteristiques(equipments, fieldMap);
   const rowsLlistat = buildLlistat(equipments);
 
   const wb = XLSX.utils.book_new();
