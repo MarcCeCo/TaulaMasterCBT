@@ -91,7 +91,6 @@ interface AgentConfig {
   syncEndpoint: string | null;
   tokenTable?: string;
   agentUrlEnv: string;
-  agentSecretEnv: string;
 }
 
 const AGENTS_CONFIG: AgentConfig[] = [
@@ -106,7 +105,6 @@ const AGENTS_CONFIG: AgentConfig[] = [
     syncEndpoint: "/sync",
     tokenTable: "aps_tokens",
     agentUrlEnv: "VITE_VISOR3D_URL",
-    agentSecretEnv: "VITE_AGENT_SECRET",
   },
   {
     id: "bimLocal",
@@ -118,7 +116,6 @@ const AGENTS_CONFIG: AgentConfig[] = [
     logTable: "bim_sync_log",
     syncEndpoint: null,
     agentUrlEnv: "",
-    agentSecretEnv: "",
   },
   {
     id: "crearFamilies",
@@ -130,7 +127,6 @@ const AGENTS_CONFIG: AgentConfig[] = [
     logTable: null,
     syncEndpoint: null,
     agentUrlEnv: "",
-    agentSecretEnv: "",
   },
 ];
 
@@ -2074,6 +2070,7 @@ export function ControlAgentsPage() {
 
   const loadingRef = useRef(false);
   const needsReloadRef = useRef(false);
+  const lastSignedInUserRef = useRef<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollAgentIdRef = useRef<string>("");
@@ -2237,13 +2234,21 @@ export function ControlAgentsPage() {
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN") setTimeout(() => fetchAll(), 50);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN") {
+        // supabase-js re-emet SIGNED_IN cada cop que la pestanya torna a ser visible.
+        // Si és el mateix usuari que ja tenim carregat, no cal tornar a carregar res.
+        const uid = session?.user?.id ?? null;
+        if (uid && uid === lastSignedInUserRef.current) return;
+        lastSignedInUserRef.current = uid;
+        setTimeout(() => fetchAll(), 50);
+      }
       if (event === "TOKEN_REFRESHED") {
         if (document.hidden) needsReloadRef.current = true;
         else fetchAll();
       }
       if (event === "SIGNED_OUT") {
+        lastSignedInUserRef.current = null;
         setLogsPerAgent({});
         setTokenPerAgent({});
         logsRef.current = {};
@@ -2273,9 +2278,6 @@ export function ControlAgentsPage() {
     const agentUrl = (import.meta.env as any)[agent.agentUrlEnv] as
       | string
       | undefined;
-    const agentSecret = (import.meta.env as any)[agent.agentSecretEnv] as
-      | string
-      | undefined;
 
     if (!agentUrl) {
       setTriggerMsg({
@@ -2287,15 +2289,36 @@ export function ControlAgentsPage() {
     setTriggering("sync");
     setTriggerMsg(null);
     try {
+      // Autenticació amb la sessió de Supabase (cap secret al navegador)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        setTriggerMsg({
+          ok: false,
+          text: "Sessió caducada. Torna a iniciar sessió.",
+        });
+        return;
+      }
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
       };
-      if (agentSecret) headers["Authorization"] = `Bearer ${agentSecret}`;
       const res = await fetch(`${agentUrl}${agent.syncEndpoint}`, {
         method: "POST",
         headers,
         body: JSON.stringify({}),
       });
+      if (res.status === 401 || res.status === 403) {
+        setTriggerMsg({
+          ok: false,
+          text:
+            res.status === 403
+              ? "Només els administradors poden executar l'agent."
+              : "Sessió no vàlida o caducada. Torna a iniciar sessió.",
+        });
+        return;
+      }
       if (res.ok) {
         setTriggerMsg({
           ok: true,

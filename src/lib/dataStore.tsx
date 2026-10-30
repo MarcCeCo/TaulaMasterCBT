@@ -168,6 +168,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const needsReloadRef = useRef(false);
+  const lastSignedInUserRef = useRef<string | null>(null);
 
   // ── Càrrega ───────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -285,12 +286,18 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_IN") {
+        // supabase-js re-emet SIGNED_IN cada cop que la pestanya torna a ser visible.
+        // Si és el mateix usuari que ja tenim carregat, no cal tornar a carregar res.
+        const uid = session?.user?.id ?? null;
+        if (uid && uid === lastSignedInUserRef.current) return;
+        lastSignedInUserRef.current = uid;
         // Donem un tick perquè AuthProvider actualitzi el tokenRef primer
         setTimeout(() => load(), 50);
       }
       if (event === "SIGNED_OUT") {
+        lastSignedInUserRef.current = null;
         // Netejar totes les dades quan l'usuari tanca sessió
         startTransition(() => {
           setEquipments([]);

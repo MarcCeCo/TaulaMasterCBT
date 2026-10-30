@@ -104,6 +104,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // (token refrescat mentre estava en segon pla).
   const needsProfileRefreshRef = useRef(false);
 
+  // Id de l'usuari ja carregat. Serveix per ignorar els SIGNED_IN repetits que
+  // supabase-js emet en tornar a la pestanya (no són un login nou).
+  const lastUserIdRef = useRef<string | null>(null);
+
   const getToken = useCallback(() => tokenRef.current, []);
 
   // ── Helper: carrega el perfil lligat a una generació de sessió ───────────────
@@ -131,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const u = session?.user ?? null;
         tokenRef.current = session?.access_token ?? "";
         setUser(u);
+        lastUserIdRef.current = u?.id ?? null;
 
         if (u) {
           const gen = sessionGenRef.current;
@@ -178,6 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             sessionGenRef.current += 1;
           }
           needsProfileRefreshRef.current = false;
+          lastUserIdRef.current = null;
           tokenRef.current = "";
           oblidaApsToken(); // no reutilitzar el token APS amb un altre usuari
           if (mounted) {
@@ -192,6 +198,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // (incrementada per signOut() o per SIGNED_OUT extern).
         if (event === "SIGNED_IN") {
           const u2 = session?.user ?? null;
+          // supabase-js re-emet SIGNED_IN cada cop que la pestanya torna a ser visible.
+          // Si és el mateix usuari que ja tenim carregat, no cal tornar a carregar res.
+          if (u2 && u2.id === lastUserIdRef.current) return;
+          lastUserIdRef.current = u2?.id ?? null;
           if (mounted) setUser(u2);
           if (u2) {
             const gen = sessionGenRef.current;

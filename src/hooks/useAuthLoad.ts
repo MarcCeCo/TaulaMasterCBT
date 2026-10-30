@@ -36,6 +36,7 @@ export function useAuthLoad() {
   const { getToken, loading: authLoading, user } = useAuth();
   const loadingRef = useRef(false);
   const needsReloadRef = useRef(false);
+  const lastSignedInUserRef = useRef<string | null>(null);
 
   /**
    * Retorna un token vàlid o "" si no és possible obtenir-ne un.
@@ -80,11 +81,17 @@ export function useAuthLoad() {
     ({ onLoad, onSignOut }: { onLoad: () => void; onSignOut: () => void }) => {
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange((event) => {
+      } = supabase.auth.onAuthStateChange((event, session) => {
         if (event === "SIGNED_IN") {
+          // supabase-js re-emet SIGNED_IN cada cop que la pestanya torna a ser visible.
+          // Si és el mateix usuari que ja tenim carregat, no cal tornar a carregar res.
+          const uid = session?.user?.id ?? null;
+          if (uid && uid === lastSignedInUserRef.current) return;
+          lastSignedInUserRef.current = uid;
           setTimeout(() => onLoad(), 50);
         }
         if (event === "SIGNED_OUT") {
+          lastSignedInUserRef.current = null;
           onSignOut();
           loadingRef.current = false;
         }
