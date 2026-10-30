@@ -293,6 +293,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const needsReloadRef = useRef(false);
+  const lastSignedInUserRef = useRef<string | null>(null);
 
   // ── Càrrega ───────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -358,9 +359,17 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_IN") setTimeout(() => load(), 50);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN") {
+        // supabase-js re-emet SIGNED_IN cada cop que la pestanya torna a ser visible.
+        // Si és el mateix usuari que ja tenim carregat, no cal tornar a carregar res.
+        const uid = session?.user?.id ?? null;
+        if (uid && uid === lastSignedInUserRef.current) return;
+        lastSignedInUserRef.current = uid;
+        setTimeout(() => load(), 50);
+      }
       if (event === "SIGNED_OUT") {
+        lastSignedInUserRef.current = null;
         startTransition(() => {
           setProjectes([]);
           setRosmimanEquips([]);
