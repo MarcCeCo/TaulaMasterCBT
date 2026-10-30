@@ -353,7 +353,7 @@ const DocumentacioCards = memo(function DocumentacioCards() {
                 Protocol, estàndards i requisits de lliurament
               </p>
             </div>
-            <a href="/docs/CBT_MANUAL BIM.pdf" download>
+            <a href="/docs/CBT_MANUAL-BIM.pdf" download>
               <Button size="sm" variant="outline" className="gap-1.5 text-xs">
                 <Download className="h-3.5 w-3.5" /> PDF
               </Button>
