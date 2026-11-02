@@ -1494,7 +1494,7 @@ COM INSTAL·LAR:
 Compatible amb Revit 2020-2030.`;
 
 function CrearFamiliesPanel() {
-  const { equipments } = useDataStore();
+  const { equipments, fieldMap } = useDataStore();
   const [subtab, setSubtab] = useState<FamiliesSubtabId>("flux");
   const [copiedFull, setCopiedFull] = useState(false);
   const [copiedTest, setCopiedTest] = useState(false);
@@ -1550,6 +1550,32 @@ function CrearFamiliesPanel() {
           const nomComplet = parentName
             ? `${parentName} ${eq.equipName}`
             : eq.equipName;
+          // Paràmetres compartits que s'han d'afegir a la família.
+          // name  → nom al fitxer CBT_PARAMETRES-COMPARTITS.txt (prefix CBT_)
+          // codi  → codi del camp al diccionari (si en té → grup "Data")
+          // instance → true = paràmetre d'instància, false = de tipus
+          const seen = new Set<string>();
+          const params: {
+            name: string;
+            codi: string | null;
+            instance: boolean;
+          }[] = [];
+          for (const col of eq.fieldCols ?? []) {
+            const clean = String(col).trim().replace(/\s+/g, "");
+            if (!clean) continue;
+            const name = clean.toUpperCase().startsWith("CBT_")
+              ? clean
+              : `CBT_${clean}`;
+            if (seen.has(name.toUpperCase())) continue;
+            seen.add(name.toUpperCase());
+            const f = fieldMap.get(col);
+            const inst = (f?.instancia_revit ?? "Y").trim().toUpperCase();
+            params.push({
+              name,
+              codi: f?.codi ? String(f.codi) : null,
+              instance: !(inst === "N" || inst === "NO"),
+            });
+          }
           return {
             nom: nomComplet.toUpperCase().replace(/\s+/g, "-"),
             cat,
@@ -1557,6 +1583,7 @@ function CrearFamiliesPanel() {
               CATEGORY_CONFIG[cat]?.template ?? "Metric Generic Model.rft",
             equip_code: eq.equipCode ?? "",
             table_code: eq.tableCode ?? "",
+            params,
           };
         });
 
