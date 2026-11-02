@@ -11,6 +11,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,8 +59,6 @@ import {
   Eye,
   EyeOff,
   Shield,
-  ChevronDown,
-  ChevronUp,
   Building2,
   Search,
   Lock,
@@ -283,7 +289,9 @@ export function UserManagerPage() {
   const { profile: myProfile, getToken } = useAuth();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  // Pop-up d'usuari: quin usuari està obert i si és en mode edició
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
   const [search, setSearch] = useState("");
 
   // Formulari nou usuari
@@ -298,7 +306,6 @@ export function UserManagerPage() {
   const [showInviteForm, setShowInviteForm] = useState(false);
 
   // Edició usuari existent
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [editLevel, setEditLevel] = useState<UserPermissionLevel>("user");
   const [editPerms, setEditPerms] = useState<SectionPermissions>({
     ...DEFAULT_SECTION_PERMISSIONS,
@@ -423,12 +430,22 @@ export function UserManagerPage() {
   // ── Editar ────────────────────────────────────────────────────────────────
 
   const startEditing = (u: UserProfile) => {
-    setEditingId(u.id);
+    setSelectedId(u.id);
+    setEditMode(true);
     setEditLevel(u.role);
     setEditPerms(u.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
     setEditOrg(u.organisation ?? "");
     setEditFullName(u.full_name ?? "");
-    setExpanded(u.id);
+  };
+
+  const openUser = (u: UserProfile) => {
+    setSelectedId(u.id);
+    setEditMode(false);
+  };
+
+  const closeDialog = () => {
+    setSelectedId(null);
+    setEditMode(false);
   };
 
   const handleUpdateUser = async (userId: string) => {
@@ -451,8 +468,7 @@ export function UserManagerPage() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error actualitzant usuari");
       toast.success("Usuari actualitzat");
-      setEditingId(null);
-      setExpanded(null);
+      closeDialog();
       await fetchUsers();
     } catch (err: any) {
       toast.error(err.message ?? "Error actualitzant usuari");
@@ -509,6 +525,9 @@ export function UserManagerPage() {
     });
     return entries;
   }, [filteredUsers]);
+
+  const selectedUser = users.find((u) => u.id === selectedId) ?? null;
+  const selectedIsMe = !!selectedUser && selectedUser.id === myProfile?.id;
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -752,8 +771,7 @@ export function UserManagerPage() {
                 {/* Files d'usuaris */}
                 {orgUsers.map((u) => {
                   const isMe = u.id === myProfile?.id;
-                  const isEditing = editingId === u.id;
-                  const isOpen = expanded === u.id;
+                  const isSelected = selectedId === u.id;
 
                   return (
                     <div
@@ -761,12 +779,24 @@ export function UserManagerPage() {
                       className={cn(
                         "border-b border-slate-100 last:border-b-0 transition-colors",
                         isMe && "bg-[#0099A8]/3",
-                        isEditing && "bg-blue-50/30",
-                        !isMe && !isEditing && "hover:bg-slate-50/70",
+                        isSelected && "bg-blue-50/30",
+                        !isMe && !isSelected && "hover:bg-slate-50/70",
                       )}
                     >
-                      {/* Fila principal */}
-                      <div className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-0 items-center px-4 py-3">
+                      {/* Fila principal: clic per obrir el pop-up */}
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        title="Veure detalls i permisos"
+                        onClick={() => openUser(u)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openUser(u);
+                          }
+                        }}
+                        className="grid grid-cols-[2fr_2fr_1.5fr_1fr_auto] gap-0 items-center px-4 py-3 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0099A8]/40"
+                      >
                         {/* Columna: Nom */}
                         <div className="flex items-center gap-2.5 min-w-0 pr-3">
                           <div className="h-8 w-8 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center shrink-0 text-xs font-bold text-slate-600 border border-slate-200">
@@ -827,25 +857,20 @@ export function UserManagerPage() {
                         </div>
 
                         {/* Columna: Accions */}
-                        <div className="flex items-center gap-0.5 justify-end shrink-0">
+                        <div
+                          className="flex items-center gap-0.5 justify-end shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => e.stopPropagation()}
+                        >
                           {/* Editar: disponible per a tots els usuaris, inclòs un mateix */}
                           <Button
                             size="icon"
                             variant="ghost"
                             className="h-7 w-7 text-slate-400 hover:text-slate-700"
-                            onClick={() => {
-                              if (isEditing) {
-                                setEditingId(null);
-                                setExpanded(null);
-                              } else startEditing(u);
-                            }}
-                            title={isEditing ? "Cancel·la edició" : "Edita"}
+                            onClick={() => startEditing(u)}
+                            title="Edita"
                           >
-                            {isEditing ? (
-                              <X className="h-3.5 w-3.5" />
-                            ) : (
-                              <Pencil className="h-3.5 w-3.5" />
-                            )}
+                            <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           {/* Eliminar: no disponible per a un mateix — placeholder per mantenir alineació */}
                           {isMe ? (
@@ -886,138 +911,8 @@ export function UserManagerPage() {
                               </AlertDialogContent>
                             </AlertDialog>
                           )}
-                          <button
-                            className="h-7 flex items-center gap-1 px-2 text-slate-400 hover:text-[#0099A8] hover:bg-[#0099A8]/8 rounded transition-colors text-[11px] font-medium"
-                            onClick={() =>
-                              setExpanded(isOpen && !isEditing ? null : u.id)
-                            }
-                            title={isOpen ? "Amaga detalls" : "Veure permisos"}
-                          >
-                            {isOpen ? (
-                              <ChevronUp className="h-3.5 w-3.5" />
-                            ) : (
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            )}
-                            <span className="hidden sm:inline">
-                              {isOpen ? "Amaga" : "Permisos"}
-                            </span>
-                          </button>
                         </div>
                       </div>
-
-                      {/* Panell expandible */}
-                      {isOpen && (
-                        <div className="px-4 pb-5 pt-2 border-t border-slate-100 bg-slate-50/50">
-                          {isEditing ? (
-                            <div className="space-y-4 max-w-2xl">
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="space-y-1">
-                                  <label className="text-xs font-medium text-slate-600">
-                                    Nom complet
-                                  </label>
-                                  <Input
-                                    value={editFullName}
-                                    onChange={(e) =>
-                                      setEditFullName(e.target.value)
-                                    }
-                                    placeholder="Nom i cognoms"
-                                    className="h-8 text-xs"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
-                                    <Building2 className="h-3 w-3" />{" "}
-                                    Organització
-                                  </label>
-                                  <Input
-                                    value={editOrg}
-                                    onChange={(e) => setEditOrg(e.target.value)}
-                                    placeholder="Empresa o departament"
-                                    className="h-8 text-xs"
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <label className="text-xs font-medium text-slate-600">
-                                    Tipus d'accés
-                                  </label>
-                                  {isMe ? (
-                                    <div className="h-8 flex items-center px-2 rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-500 gap-1.5">
-                                      <Lock className="h-3 w-3 shrink-0" />
-                                      {editLevel === "admin"
-                                        ? "Administrador (accés complet)"
-                                        : "Usuari (permisos per finestra)"}
-                                    </div>
-                                  ) : (
-                                    <Select
-                                      value={editLevel}
-                                      onValueChange={(v) =>
-                                        setEditLevel(v as UserPermissionLevel)
-                                      }
-                                    >
-                                      <SelectTrigger className="h-8 text-xs">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        <SelectItem value="user">
-                                          Usuari (permisos per finestra)
-                                        </SelectItem>
-                                        <SelectItem value="admin">
-                                          Administrador (accés complet)
-                                        </SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  )}
-                                </div>
-                              </div>
-
-                              <PermissionsMatrix
-                                permissions={editPerms}
-                                isAdmin={editLevel === "admin"}
-                                onChange={setEditPerms}
-                              />
-
-                              <div className="flex gap-2 pt-1">
-                                <Button
-                                  size="sm"
-                                  className="bg-[#0099A8] hover:bg-[#006E7A] gap-1"
-                                  onClick={() => handleUpdateUser(u.id)}
-                                >
-                                  <Check className="h-3.5 w-3.5" /> Desa canvis
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="gap-1"
-                                  onClick={() => {
-                                    setEditingId(null);
-                                    setExpanded(null);
-                                  }}
-                                >
-                                  <X className="h-3.5 w-3.5" /> Cancel·la
-                                </Button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="pt-1 max-w-2xl">
-                              <PermissionsMatrix
-                                permissions={
-                                  u.section_permissions ?? {
-                                    equips: "editor",
-                                    gubimclass: "editor",
-                                    fields: "editor",
-                                    revit: "editor",
-                                    projectes: "editor",
-                                    rosmiman: "editor",
-                                    visor3d: "editor",
-                                  }
-                                }
-                                isAdmin={u.role === "admin"}
-                                onChange={() => {}}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -1025,6 +920,184 @@ export function UserManagerPage() {
             );
           })}
       </div>
+
+      {/* ── Pop-up d'usuari ─────────────────────────────────────────── */}
+      <Dialog
+        open={!!selectedUser}
+        onOpenChange={(open) => {
+          if (!open) closeDialog();
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {selectedUser && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-3 pr-6">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center shrink-0 text-sm font-bold text-slate-600 border border-slate-200">
+                    {(selectedUser.full_name ||
+                      selectedUser.email ||
+                      "?")[0].toUpperCase()}
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <DialogTitle className="flex items-center gap-2 truncate">
+                      {selectedUser.full_name || (
+                        <span className="text-slate-400 italic font-normal">
+                          Sense nom
+                        </span>
+                      )}
+                      {selectedIsMe && (
+                        <Badge className="text-[9px] px-1 py-0 bg-[#0099A8] text-white border-0 h-4">
+                          Jo
+                        </Badge>
+                      )}
+                    </DialogTitle>
+                    <DialogDescription className="font-mono text-xs truncate">
+                      {selectedUser.email}
+                    </DialogDescription>
+                  </div>
+                </div>
+              </DialogHeader>
+
+              {editMode ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        Nom complet
+                      </label>
+                      <Input
+                        value={editFullName}
+                        onChange={(e) => setEditFullName(e.target.value)}
+                        placeholder="Nom i cognoms"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600 flex items-center gap-1">
+                        <Building2 className="h-3 w-3" /> Organització
+                      </label>
+                      <Input
+                        value={editOrg}
+                        onChange={(e) => setEditOrg(e.target.value)}
+                        placeholder="Empresa o departament"
+                        className="h-8 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-slate-600">
+                        Tipus d'accés
+                      </label>
+                      {selectedIsMe ? (
+                        <div className="h-8 flex items-center px-2 rounded-md border border-slate-200 bg-slate-50 text-xs text-slate-500 gap-1.5">
+                          <Lock className="h-3 w-3 shrink-0" />
+                          {editLevel === "admin"
+                            ? "Administrador (accés complet)"
+                            : "Usuari (permisos per finestra)"}
+                        </div>
+                      ) : (
+                        <Select
+                          value={editLevel}
+                          onValueChange={(v) =>
+                            setEditLevel(v as UserPermissionLevel)
+                          }
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="user">
+                              Usuari (permisos per finestra)
+                            </SelectItem>
+                            <SelectItem value="admin">
+                              Administrador (accés complet)
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </div>
+                  </div>
+
+                  <PermissionsMatrix
+                    permissions={editPerms}
+                    isAdmin={editLevel === "admin"}
+                    onChange={setEditPerms}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selectedUser.organisation ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-[#006E7A] bg-[#0099A8]/8 border border-[#0099A8]/15 px-2 py-0.5 rounded-full">
+                        <Building2 className="h-2.5 w-2.5 shrink-0" />
+                        {selectedUser.organisation}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">
+                        Sense organització
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border",
+                        LEVEL_COLORS[selectedUser.role],
+                      )}
+                    >
+                      {selectedUser.role === "admin" && (
+                        <Shield className="h-2.5 w-2.5" />
+                      )}
+                      {LEVEL_LABELS[selectedUser.role]}
+                    </span>
+                  </div>
+
+                  <PermissionsMatrix
+                    permissions={
+                      selectedUser.section_permissions ??
+                      FULL_SECTION_PERMISSIONS
+                    }
+                    isAdmin={selectedUser.role === "admin"}
+                    onChange={() => {}}
+                  />
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 sm:gap-2">
+                {editMode ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1"
+                      onClick={() => setEditMode(false)}
+                    >
+                      <X className="h-3.5 w-3.5" /> Cancel·la
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#0099A8] hover:bg-[#006E7A] gap-1"
+                      onClick={() => handleUpdateUser(selectedUser.id)}
+                    >
+                      <Check className="h-3.5 w-3.5" /> Desa canvis
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button size="sm" variant="outline" onClick={closeDialog}>
+                      Tanca
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#0099A8] hover:bg-[#006E7A] gap-1"
+                      onClick={() => startEditing(selectedUser)}
+                    >
+                      <Pencil className="h-3.5 w-3.5" /> Edita
+                    </Button>
+                  </>
+                )}
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* SQL migration hint */}
       <p className="text-[10px] text-slate-300 text-center">
