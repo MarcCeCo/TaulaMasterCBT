@@ -2,6 +2,8 @@
 // Funcions compartides per tots els agents: CORS, auth, body, HTML
 
 import http from "http";
+import crypto from "crypto";
+import { createClient } from "@supabase/supabase-js";
 
 export const APS_AUTH_BASE =
   "https://developer.api.autodesk.com/authentication/v2";
@@ -70,6 +72,73 @@ export function verificaAuth(
   if (!secret) return true;
   const authHeader = req.headers["authorization"] ?? "";
   return authHeader.replace("Bearer ", "") === secret;
+}
+
+// ─── Autorització de l'execució manual (POST /sync) ───────────────────────────
+//
+// Accepta, per ordre:
+//   1. El secret de servei (AGENT_SECRET): l'usa GitHub Actions (sync-monthly.yml).
+//   2. Un access_token de sessió de Supabase d'un usuari amb role = "admin"
+//      (botó "Executar" de Control d'Agents). El secret mai surt del servidor.
+// Si no es compleix cap de les dues, es denega (mai s'obre per defecte).
+
+export type AutoritzacioSync =
+  | { ok: true; origen: "secret" | "admin" }
+  | { ok: false; status: 401 | 403; error: string };
+
+function segurIgual(a: string, b: string): boolean {
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+export async function autoritzaSync(
+  req: http.IncomingMessage,
+  secret: string,
+): Promise<AutoritzacioSync> {
+  const m = /^Bearer\s+(.+)$/i.exec(String(req.headers["authorization"] ?? ""));
+  if (!m)
+    return {
+      ok: false,
+      status: 401,
+      error: "No autoritzat. Cal iniciar sessió.",
+    };
+  const bearer = m[1].trim();
+
+  if (secret && segurIgual(bearer, secret))
+    return { ok: true, origen: "secret" };
+
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return { ok: false, status: 401, error: "No autoritzat." };
+
+  const supabase = createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // Valida el JWT contra Supabase Auth (signatura + caducitat)
+  const { data, error } = await supabase.auth.getUser(bearer);
+  if (error || !data?.user) {
+    return {
+      ok: false,
+      status: 401,
+      error: "La sessió no és vàlida o ha caducat. Torna a iniciar sessió.",
+    };
+  }
+
+  const { data: perfil, error: perfilError } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", data.user.id)
+    .maybeSingle();
+  if (perfilError || perfil?.role !== "admin") {
+    return {
+      ok: false,
+      status: 403,
+      error: "Només els administradors poden executar l'agent.",
+    };
+  }
+  return { ok: true, origen: "admin" };
 }
 
 // ─── Lectura de body JSON ─────────────────────────────────────────────────────

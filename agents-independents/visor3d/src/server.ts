@@ -4,7 +4,8 @@
 // Endpoints:
 //   GET  /health   → estat del servei (usat pel keep-alive de GitHub Actions)
 //   GET  /wake     → keep-alive explícit
-//   POST /sync     → inicia sincronització ACC → Supabase  [requereix Bearer]
+//   POST /sync     → inicia sincronització ACC → Supabase
+//                    [Bearer: secret de servei (GitHub Actions) o sessió Supabase d'un admin]
 //
 // Arquitectura de scheduling:
 //   El servidor NO conté cap scheduler intern. L'execució periòdica (dia 1 de
@@ -16,7 +17,7 @@
 import http from "http";
 import WebSocket from "ws";
 import { executaAgent } from "../../shared/agent";
-import { setCors, verificaAuth } from "../../shared/helpers";
+import { setCors, autoritzaSync } from "../../shared/helpers";
 
 (globalThis as any).WebSocket = WebSocket;
 
@@ -64,11 +65,13 @@ const server = http.createServer(async (req, res) => {
 
   // ── POST /sync ────────────────────────────────────────────────────────────
   if (url.pathname === "/sync" && req.method === "POST") {
-    if (!verificaAuth(req, AGENT_SECRET)) {
-      res.writeHead(401, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "No autoritzat" }));
+    const auth = await autoritzaSync(req, AGENT_SECRET);
+    if (!auth.ok) {
+      res.writeHead(auth.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: auth.error }));
       return;
     }
+    console.log(`▶️  /sync autoritzat (${auth.origen})`);
     if (agentEnExecucio) {
       res.writeHead(409, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "L'agent ja s'està executant" }));
@@ -103,7 +106,7 @@ server.listen(PORT, () => {
   console.log(`   GET  /health   → estat del servei`);
   console.log(`   GET  /wake     → keep-alive`);
   console.log(
-    `   POST /sync     → sincronitza ACC → Supabase  [Bearer requerit]`,
+    `   POST /sync     → sincronitza ACC → Supabase  [secret de servei o admin]`,
   );
   console.log(
     `\n⏰ Scheduling: GitHub Actions sync-monthly.yml (dia 1 · 06:00 UTC)\n`,
