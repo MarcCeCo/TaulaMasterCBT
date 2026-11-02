@@ -187,13 +187,27 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
         for defn in grp.Definitions:
             param_index[defn.Name] = defn
 
+    # Índex tolerant: ignora majúscules/minúscules i espais (el .txt té noms
+    # com "CBT_Pms_x_V" o "CBT_POTENCIA_ INVERSOR" que l'app guarda normalitzats)
+    def _norm(n):
+        return n.replace(" ", "").replace(u"\u00a0", "").upper()
+
+    param_norm = {}
+    for _k, _v in param_index.items():
+        param_norm.setdefault(_norm(_k), _v)
+
+    def _resolve_param(n):
+        if n in param_index:
+            return param_index[n]
+        return param_norm.get(_norm(n))
+
     created = 0
     errors  = []
 
     for i, equip in enumerate(equips):
         nom        = equip["nom"]
         cat        = equip["cat"]
-        params     = equip["params"]
+        params     = equip.get("params") or []
         template   = equip.get("template") or CATEGORY_TEMPLATES.get(cat, "Metric Generic Model.rft")
         table_code = equip.get("table_code", "")
         equip_code = equip.get("equip_code", "")
@@ -241,7 +255,8 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
                     has_codi    = False
                     is_instance = True
 
-                if not pname or pname not in param_index:
+                pdef = _resolve_param(pname) if pname else None
+                if pdef is None:
                     if pname:
                         output.print_md("  ⚠️ Paràmetre no trobat al fitxer compartit: " + pname)
                     continue
@@ -253,7 +268,7 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
                     grp = _PARAM_GROUP_GENERAL
 
                 try:
-                    fam_mgr.AddParameter(param_index[pname], grp, is_instance)
+                    fam_mgr.AddParameter(pdef, grp, is_instance)
                 except Exception:
                     pass
 
