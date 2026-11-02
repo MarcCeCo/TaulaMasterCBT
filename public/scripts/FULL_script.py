@@ -30,13 +30,24 @@ import json
 import io
 import clr
 clr.AddReference('RevitAPI')
-from Autodesk.Revit.DB import Transaction, SaveAsOptions
+from Autodesk.Revit.DB import Transaction, SaveAsOptions, BuiltInCategory, Category
 from pyrevit import forms, script
 
 # ── CONFIGURACIÓ ──────────────────────────────────────────────
 JSON_FILENAME       = "CBT_Revit_Config.json"
 SHARED_PARAMS_FILE  = "CBT_PARAMETRES-COMPARTITS.txt"
 DEFAULT_OUTPUT_NAME = "Families_Output"
+
+# Si és True, TOTES les famílies es creen amb la plantilla "Metric Generic Model"
+# de la versió de Revit que té oberta l'usuari (en comptes de la plantilla de
+# cada categoria). Posa-ho a False per tornar al comportament anterior.
+FORCE_GENERIC_TEMPLATE = True
+GENERIC_TEMPLATE_NAMES = [u"Metric Generic Model.rft", u"Modelo gen\u00e9rico m\u00e9trico.rft"]
+GENERIC_TEMPLATE_PATH  = None   # s'omple en temps d'execució
+
+# Si és True i s'usa la plantilla Generic Model, un cop oberta la plantilla es
+# canvia la categoria de la família a la que indica el camp "cat" del JSON.
+SET_FAMILY_CATEGORY = True
 # ──────────────────────────────────────────────────────────────
 
 
@@ -155,6 +166,44 @@ def find_revit_templates():
     return None
 
 
+def find_generic_template(app):
+    """
+    Troba la plantilla "Metric Generic Model.rft" de la versió de Revit que
+    està oberta (app.VersionNumber). Ordre de cerca:
+      1) C:\\ProgramData\\Autodesk\\RVT <versió>\\Family Templates\\<idioma>
+      2) La ruta de plantilles de família configurada a Revit (Options > File Locations)
+      3) Cerca recursiva dins C:\\ProgramData\\Autodesk\\RVT <versió>
+    Retorna (ruta, versió) o (None, versió).
+    """
+    ver = str(app.VersionNumber)
+    program_data = os.environ.get("PROGRAMDATA", r"C:\ProgramData")
+    base = os.path.join(program_data, "Autodesk", "RVT {}".format(ver), "Family Templates")
+
+    roots = [os.path.join(base, lang)
+             for lang in ["English", "Spanish", "Metric Library", "English-Imperial"]]
+    try:
+        ftp = app.FamilyTemplatePath
+        if ftp:
+            roots.append(ftp)
+    except Exception:
+        pass
+
+    for root in roots:
+        for name in GENERIC_TEMPLATE_NAMES:
+            cand = os.path.join(root, name)
+            if os.path.isfile(cand):
+                return cand, ver
+
+    # Cerca recursiva dins la instal·lació d'aquesta versió
+    rvt_root = os.path.join(program_data, "Autodesk", "RVT {}".format(ver))
+    for name in GENERIC_TEMPLATE_NAMES:
+        for dirpath, _dirs, files in os.walk(rvt_root):
+            if name in files:
+                return os.path.join(dirpath, name), ver
+
+    return None, ver
+
+
 def resolve_output_folder(raw_path, fallback_docs):
     """Expandeix variables d'entorn (%USERPROFILE%, etc.) del path del JSON."""
     expanded = os.path.expandvars(raw_path)
@@ -162,6 +211,66 @@ def resolve_output_folder(raw_path, fallback_docs):
         # Si no té variables ni és absolut, posa'l a Documents
         return os.path.join(fallback_docs, expanded)
     return expanded
+
+
+# Categoria de l'app (camp "cat" del JSON) → BuiltInCategory de Revit
+CATEGORY_TO_BIC = {
+    "Mechanical Equipment":       "OST_MechanicalEquipment",
+    "Specialty Equipment":        "OST_SpecialityEquipment",
+    "Plumbing Fixtures":          "OST_PlumbingFixtures",
+    "Mechanical Control Devices": "OST_MechanicalControlDevices",
+    "Air Terminals":              "OST_DuctTerminal",
+    "Fire Protection":            "OST_FireProtection",
+    "Sprinklers":                 "OST_Sprinklers",
+    "Pipe Accessories":           "OST_PipeAccessory",
+    "Pipe Fittings":              "OST_PipeFitting",
+    "Pipes":                      "OST_PipeCurves",
+    "Duct Accessories":           "OST_DuctAccessory",
+    "Duct Fittings":              "OST_DuctFitting",
+    "Ducts":                      "OST_DuctCurves",
+    "Electrical Equipment":       "OST_ElectricalEquipment",
+    "Electrical Fixtures":        "OST_ElectricalFixtures",
+    "Lighting Fixtures":          "OST_LightingFixtures",
+    "Lighting Devices":           "OST_LightingDevices",
+    "Communication Devices":      "OST_CommunicationDevices",
+    "Data Devices":               "OST_DataDevices",
+    "Fire Alarm Devices":         "OST_FireAlarmDevices",
+    "Security Devices":           "OST_SecurityDevices",
+    "Cable Trays":                "OST_CableTray",
+    "Conduits":                   "OST_Conduit",
+    "Structural Columns":         "OST_StructuralColumns",
+    "Structural Framing":         "OST_StructuralFraming",
+    "Generic Models":             "OST_GenericModel",
+}
+
+
+def set_family_category(fam_doc, cat_name):
+    """
+    Canvia la categoria de la família oberta (p. ex. de Generic Models a
+    Mechanical Equipment). Retorna (True, "") o (False, "motiu de l'error").
+    """
+    bic_name = CATEGORY_TO_BIC.get(cat_name)
+    if bic_name is None:
+        return False, "Categoria sense equivalent a Revit: " + str(cat_name)
+    bic = getattr(BuiltInCategory, bic_name, None)
+    if bic is None:
+        return False, "{} no existeix a aquesta versió de Revit".format(bic_name)
+    try:
+        category = Category.GetCategory(fam_doc, bic)
+    except Exception as e:
+        return False, "No s'ha pogut obtenir la categoria {}: {}".format(bic_name, e)
+    if category is None:
+        return False, "La categoria {} no és vàlida per a famílies".format(cat_name)
+
+    t = Transaction(fam_doc, "Canvia categoria de la família")
+    t.Start()
+    try:
+        fam_doc.OwnerFamily.FamilyCategory = category
+        t.Commit()
+    except Exception as e:
+        t.RollBack()
+        return False, "No es pot assignar la categoria {} (no admet famílies carregables?): {}".format(cat_name, e)
+    return True, ""
 
 
 def resolve_template(template_filename, templates_folder):
@@ -256,7 +365,11 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
         output.print_md("**[{}/{}]** {} — *{}*".format(i + 1, total, nom, cat))
 
         # Cerca plantilla
-        template_path = resolve_template(template, templates_folder)
+        if FORCE_GENERIC_TEMPLATE and GENERIC_TEMPLATE_PATH:
+            template_path = GENERIC_TEMPLATE_PATH
+            template = os.path.basename(GENERIC_TEMPLATE_PATH)
+        else:
+            template_path = resolve_template(template, templates_folder)
         if template_path is None:
             msg = "Plantilla no trobada: " + template
             errors.append(nom + ": " + msg)
@@ -283,6 +396,17 @@ def run(equips, templates_folder, output_folder, shared_params_path, app, output
             errors.append(nom + ": " + msg)
             output.print_md("  ❌ " + msg)
             continue
+
+        # Canvia la categoria (Generic Models → categoria correcta de l'equip)
+        if FORCE_GENERIC_TEMPLATE and GENERIC_TEMPLATE_PATH and SET_FAMILY_CATEGORY:
+            ok_cat, msg_cat = set_family_category(fam_doc, cat)
+            if not ok_cat:
+                msg = "Error canviant categoria: " + msg_cat
+                errors.append(nom + ": " + msg)
+                output.print_md("  ❌ " + msg)
+                fam_doc.Close(False)
+                continue
+            output.print_md("  🔄 Categoria → " + cat)
 
         # Afegeix paràmetres compartits
         # params és una llista de dicts: {"name": "CBT_X", "codi": "T01"} o {"name": "CBT_X", "codi": null}
@@ -450,6 +574,20 @@ if not templates_folder:
         )
 else:
     templates_folder = os.path.expandvars(templates_folder)
+
+# ── Plantilla Generic Model de la versió de Revit oberta ──
+if FORCE_GENERIC_TEMPLATE:
+    GENERIC_TEMPLATE_PATH, _ver = find_generic_template(app)
+    if GENERIC_TEMPLATE_PATH:
+        output.print_md("  ✅ Plantilla Generic Model (Revit {}): `{}`".format(_ver, GENERIC_TEMPLATE_PATH))
+    else:
+        forms.alert(
+            "No s'ha trobat la plantilla 'Metric Generic Model.rft' per a Revit {}.\n\n"
+            "S'ha cercat a C:\\ProgramData\\Autodesk\\RVT {}\\Family Templates\\ "
+            "i a la ruta de plantilles configurada a Revit.\n\n"
+            "Comprova que les Family Templates estan instal·lades.".format(_ver, _ver),
+            exitscript=True
+        )
 
 # ── Carpeta de sortida ──
 docs_folder = (
