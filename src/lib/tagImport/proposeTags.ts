@@ -59,19 +59,62 @@ export function proposeRows(
   const counters = new Map<string, number>();
   const groups = new Map<string, { funcio: number; count: number }>();
 
-  return rows.map((row): ProposedRow => {
-    const base: ProposedRow = {
-      ...row,
-      kind: "desconegut",
-      codiEquip: "",
-      confianca: null,
-      nota: "",
-      alternatives: [],
-      ccm: opts.ccm,
-      funcio: "",
-      duplicitat: "A",
-      include: false,
-    };
+  // Tags indicats a la plantilla: es reserven perquè la numeració automàtica
+  // no hi col·lisioni.
+  const presetTags = rows
+    .filter((r) => r.presetCodi && r.presetFuncio)
+    .map((r) =>
+      buildTag(
+        opts.codiInstallacio,
+        r.presetCodi!,
+        r.presetCcm ?? opts.ccm,
+        r.presetFuncio!,
+        r.presetDuplicitat ?? "A",
+      ),
+    );
+  const known = [...opts.existingTags, ...presetTags];
+
+  const empty = (row: SourceRow): ProposedRow => ({
+    ...row,
+    kind: "desconegut",
+    codiEquip: "",
+    confianca: null,
+    nota: "",
+    alternatives: [],
+    ccm: row.presetCcm ?? opts.ccm,
+    funcio: "",
+    duplicitat: "A",
+    include: false,
+  });
+
+  const propose = (row: SourceRow): ProposedRow => {
+    const base = empty(row);
+    // Codi indicat explícitament a la plantilla: té prioritat sobre les regles
+    if (row.presetCodi) {
+      const ccm = row.presetCcm ?? opts.ccm;
+      const key = `${row.presetCodi}|${ccm}`;
+      let funcio = row.presetFuncio ?? "";
+      if (!funcio) {
+        const start =
+          counters.get(key) ??
+          nextFreeFunction(known, opts.codiInstallacio, row.presetCodi, ccm);
+        counters.set(key, start + 1);
+        funcio = start <= 99 ? String(start).padStart(2, "0") : "";
+      } else {
+        funcio = funcio.padStart(2, "0");
+      }
+      return {
+        ...base,
+        kind: "equip",
+        codiEquip: row.presetCodi,
+        confianca: "alta",
+        nota: "Codi indicat a la plantilla.",
+        ccm,
+        funcio,
+        duplicitat: row.presetDuplicitat ?? "A",
+        include: true,
+      };
+    }
     const cls = classifyDenominacio(row.denominacio, rules);
     if (cls.kind === "no-tag") {
       return { ...base, kind: "no-tag", nota: cls.motiu };
@@ -80,6 +123,7 @@ export function proposeRows(
       return { ...base, nota: "No s'ha reconegut l'equip: tria el codi." };
     }
     const { rule } = cls;
+    const ccm = row.presetCcm ?? opts.ccm;
     const common: ProposedRow = {
       ...base,
       kind: "equip",
@@ -87,43 +131,61 @@ export function proposeRows(
       confianca: rule.confianca,
       nota: rule.nota ?? "",
       alternatives: rule.alternatives ?? [],
+      ccm,
       include: rule.confianca !== "revisar",
     };
     if (rule.especial === "ccm") {
       return {
         ...common,
         ccm: "0",
-        funcio: ccmNumberFromText(row.denominacio),
-        duplicitat: "A",
+        funcio: row.presetFuncio ?? ccmNumberFromText(row.denominacio),
+        duplicitat: row.presetDuplicitat ?? "A",
       };
     }
-    const key = `${rule.codi}|${groupKey(row.denominacio)}`;
-    if (opts.agrupaBessones && rule.bessones && groups.has(key)) {
-      const g = groups.get(key)!;
+    const gkey = `${rule.codi}|${ccm}|${groupKey(row.denominacio)}`;
+    if (opts.agrupaBessones && rule.bessones && groups.has(gkey)) {
+      const g = groups.get(gkey)!;
       g.count += 1;
       return {
         ...common,
         funcio: String(g.funcio).padStart(2, "0"),
-        duplicitat: String.fromCharCode(64 + Math.min(g.count, 26)),
+        duplicitat:
+          row.presetDuplicitat ??
+          String.fromCharCode(64 + Math.min(g.count, 26)),
       };
     }
+    const ckey = `${rule.codi}|${ccm}`;
     const start =
-      counters.get(rule.codi) ??
-      nextFreeFunction(
-        opts.existingTags,
-        opts.codiInstallacio,
-        rule.codi,
-        opts.ccm,
-      );
-    counters.set(rule.codi, start + 1);
+      row.presetFuncio !== undefined
+        ? parseInt(row.presetFuncio, 10)
+        : (counters.get(ckey) ??
+          nextFreeFunction(known, opts.codiInstallacio, rule.codi, ccm));
+    if (row.presetFuncio === undefined) counters.set(ckey, start + 1);
     if (opts.agrupaBessones && rule.bessones) {
-      groups.set(key, { funcio: start, count: 1 });
+      groups.set(gkey, { funcio: start, count: 1 });
     }
     return {
       ...common,
       funcio: start <= 99 ? String(start).padStart(2, "0") : "",
+      duplicitat: row.presetDuplicitat ?? "A",
     };
-  });
+  };
+
+  // La numeració segueix l'ordre de procés (si n'hi ha); si no, l'ordre del fitxer.
+  const order = rows
+    .map((_, i) => i)
+    .sort((a, b) => {
+      const oa = rows[a].ordre;
+      const ob = rows[b].ordre;
+      if (oa !== undefined && ob !== undefined && oa !== ob) return oa - ob;
+      if (oa !== undefined && ob === undefined) return -1;
+      if (oa === undefined && ob !== undefined) return 1;
+      return a - b;
+    });
+  const result: ProposedRow[] = new Array(rows.length);
+  for (const i of order)
+    result[i] = { ...propose(rows[i]), ordre: rows[i].ordre };
+  return result;
 }
 
 export interface EvaluateContext {

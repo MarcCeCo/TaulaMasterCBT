@@ -36,6 +36,12 @@ import {
   detectHeaderRow,
 } from "@/lib/tagImport/detectColumns";
 import {
+  TEMPLATE_HEADERS,
+  downloadTemplate,
+  isTemplateHeader,
+  readTemplateRows,
+} from "@/lib/tagImport/template";
+import {
   buildTag,
   evaluateRows,
   nextFreeFunction,
@@ -136,6 +142,7 @@ export function ImportTagsDialog({
   const [headerRow, setHeaderRow] = useState(0);
   const [roles, setRoles] = useState<ColumnRole[]>([]);
   const [scores, setScores] = useState<number[]>([]);
+  const [templateMode, setTemplateMode] = useState(false);
 
   const installacions = useMemo(() => {
     const llista = projecte.codisInstallacio?.length
@@ -213,6 +220,7 @@ export function ImportTagsDialog({
     setHeaderRow(h);
     setRoles(layout.columns.map((c) => c.role));
     setScores(layout.columns.map((c) => c.score));
+    setTemplateMode(isTemplateHeader(data.grid[h] ?? []));
   }
 
   async function onFile(file: File) {
@@ -256,7 +264,9 @@ export function ImportTagsDialog({
 
   function compute(nextCcm = ccm, nextInst = inst, nextAgrupa = agrupa) {
     if (!sheet) return;
-    const src = buildSourceRows(sheet.grid, headerRow, roles);
+    const src = templateMode
+      ? readTemplateRows(sheet.grid, headerRow)
+      : buildSourceRows(sheet.grid, headerRow, roles);
     setRows(
       proposeRows(src, {
         codiInstallacio: nextInst,
@@ -268,7 +278,7 @@ export function ImportTagsDialog({
   }
 
   function goReview() {
-    if (!roles.includes("denominacio")) {
+    if (!templateMode && !roles.includes("denominacio")) {
       setError("Indica quina columna conté la denominació de l'equip.");
       return;
     }
@@ -355,15 +365,18 @@ export function ImportTagsDialog({
         CCM: r.ccm,
         Funció: r.funcio,
         Duplicitat: r.duplicitat,
+        "Ordre procés": r.ordre ?? "",
         TAG: ev?.tag ?? "",
         Estat: ev ? STATUS_LABEL[ev.status] : "",
         Confiança: r.confianca ?? "",
         Observacions: [r.nota, ev?.message].filter(Boolean).join(" "),
       };
     });
-    const ws = XLSX.utils.json_to_sheet(data);
+    const ws = XLSX.utils.json_to_sheet(data, {
+      header: [...TEMPLATE_HEADERS],
+    });
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Tags");
+    XLSX.utils.book_append_sheet(wb, ws, "Equips");
     XLSX.writeFile(
       wb,
       `revisio_tags_${projecte.codiProjecte || "projecte"}.xlsx`,
@@ -450,10 +463,19 @@ export function ImportTagsDialog({
         {step === "fitxer" && (
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
-              Puja un Excel (.xlsx, .xls) o CSV amb el llistat d'equips. No cal
-              que tingui unes columnes concretes: la plataforma detectarà quina
-              és la de la denominació i et deixarà corregir-ho.
+              Per importar tags, descarrega la plantilla, omple-la amb el
+              llistat d'equips i puja-la. És la via més fiable: les columnes
+              sempre són les mateixes i pots indicar l'ordre de procés. El
+              fitxer de «Exporta revisió» té el mateix format, així que també el
+              pots tornar a pujar.
             </p>
+            <Button
+              variant="outline"
+              className="gap-2 border-[#0099A8]/40 text-[#006E7A]"
+              onClick={() => void downloadTemplate()}
+            >
+              <Download className="h-4 w-4" /> Descarrega la plantilla
+            </Button>
             <input
               ref={fileRef}
               type="file"
@@ -474,8 +496,12 @@ export function ImportTagsDialog({
               ) : (
                 <Upload className="h-4 w-4" />
               )}
-              Selecciona un fitxer
+              Puja la plantilla omplerta
             </Button>
+            <p className="text-xs text-slate-500">
+              Si puges un altre format, la plataforma intentarà detectar les
+              columnes, però serà menys fiable.
+            </p>
             <p className="text-xs text-slate-500">
               Els tags no es creen fins que els revisis i confirmis al pas 3.
               Atenció: la Preview de Vercel escriu a la base de dades real.
@@ -520,45 +546,61 @@ export function ImportTagsDialog({
                 />
               </div>
             </div>
-            <p className="text-sm text-slate-600">
-              Hem detectat automàticament les columnes. Revisa-ho i corregeix el
-              que calgui.
-            </p>
+            {templateMode ? (
+              <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> Plantilla
+                reconeguda: les columnes s'han assignat automàticament. Només
+                cal indicar el CCM.
+              </div>
+            ) : (
+              <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> Aquest
+                fitxer no és la plantilla. S'han detectat les columnes
+                automàticament (menys fiable): revisa-ho i corregeix el que
+                calgui, o descarrega la plantilla al pas anterior.
+              </div>
+            )}
             <div className="overflow-x-auto rounded-md border border-slate-200">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-slate-50">
-                    {Array.from({ length: width }, (_, c) => (
-                      <th
-                        key={c}
-                        className="min-w-[150px] p-2 text-left align-top"
-                      >
-                        <select
-                          className={cn(
-                            selectClass,
-                            roles[c] === "denominacio" &&
-                              "border-[#0099A8] bg-[#0099A8]/10 font-semibold",
-                          )}
-                          value={roles[c]}
-                          onChange={(e) =>
-                            changeRole(c, e.target.value as ColumnRole)
-                          }
+                    {Array.from({ length: width }, (_, c) =>
+                      templateMode ? (
+                        <th key={c} className="p-2 text-left text-slate-400">
+                          {c + 1}
+                        </th>
+                      ) : (
+                        <th
+                          key={c}
+                          className="min-w-[150px] p-2 text-left align-top"
                         >
-                          {(Object.keys(ROLE_LABEL) as ColumnRole[]).map(
-                            (r) => (
-                              <option key={r} value={r}>
-                                {ROLE_LABEL[r]}
-                              </option>
-                            ),
+                          <select
+                            className={cn(
+                              selectClass,
+                              roles[c] === "denominacio" &&
+                                "border-[#0099A8] bg-[#0099A8]/10 font-semibold",
+                            )}
+                            value={roles[c]}
+                            onChange={(e) =>
+                              changeRole(c, e.target.value as ColumnRole)
+                            }
+                          >
+                            {(Object.keys(ROLE_LABEL) as ColumnRole[]).map(
+                              (r) => (
+                                <option key={r} value={r}>
+                                  {ROLE_LABEL[r]}
+                                </option>
+                              ),
+                            )}
+                          </select>
+                          {roles[c] !== "ignorar" && (
+                            <span className="mt-1 block text-[10px] font-normal text-slate-400">
+                              Seguretat {Math.round((scores[c] ?? 0) * 100)}%
+                            </span>
                           )}
-                        </select>
-                        {roles[c] !== "ignorar" && (
-                          <span className="mt-1 block text-[10px] font-normal text-slate-400">
-                            Seguretat {Math.round((scores[c] ?? 0) * 100)}%
-                          </span>
-                        )}
-                      </th>
-                    ))}
+                        </th>
+                      ),
+                    )}
                   </tr>
                 </thead>
                 <tbody>

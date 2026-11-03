@@ -7,18 +7,29 @@ haver-los d'introduir un a un, i sense exigir unes columnes fixes.
 
 ## Flux (botó «Importa TAGs» al detall d'un projecte actiu)
 
-1. **Fitxer.** L'usuari puja un `.xlsx`, `.xls` o `.csv`.
-2. **Columnes.** La plataforma detecta la fila de capçalera i el rol de cada
-   columna (denominació, línia, potència, tensió). L'usuari ho pot corregir.
-   També indica el dígit CCM (0-9) i si les unitats iguals o de reserva
-   comparteixen funció (lletres A, B, C...).
+1. **Plantilla.** L'usuari descarrega la plantilla, l'omple i la puja. Té les
+   mateixes columnes que l'exportació de la revisió (Línia, Denominació,
+   Tensió, Potència, Codi equip, CCM, Funció, Duplicitat, Ordre procés, TAG,
+   Estat, Confiança, Observacions). Només són obligatòries Línia i
+   Denominació; si s'omplen Codi equip, CCM, Funció o Duplicitat, la
+   plataforma els respecta. Un fitxer revisat i exportat es pot tornar a pujar.
+2. **Columnes.** Si el fitxer és la plantilla, les columnes s'assignen soles.
+   Si és un altre format, es detecten automàticament (menys fiable) i
+   l'usuari ho pot corregir. També indica el dígit CCM (0-9) i si les
+   unitats iguals o de reserva comparteixen funció (lletres A, B, C...).
 3. **Revisió.** Taula amb el codi d'equip, funció, duplicitat i TAG proposats,
    amb estat i confiança (alta / mitjana / revisar). Tot és editable. Es
    comprova contra el projecte, el llistat Rosmiman i la mateixa importació.
 4. **Confirmació.** Es creen només les files marcades i vàlides, com a TAGs
    «pendent». La línia d'origen es desa al comentari («Línia L-5»).
 
-## Detecció de columnes (`src/lib/tagImport/detectColumns.ts`)
+## Ordre de procés
+
+La columna «Ordre procés» (1, 2, 3...) permet indicar el sentit del fluid
+segons el P&ID. La numeració de les funcions segueix aquest ordre; si no
+s'omple, segueix l'ordre del fitxer.
+
+## Detecció de columnes (formats que no són la plantilla) (`src/lib/tagImport/detectColumns.ts`)
 
 - **Fila de capçalera:** la que té més textos curts i més coincidències amb
   sinònims (denominació, descripció, nom, equip...).
@@ -46,8 +57,9 @@ haver-los d'introduir un a un, i sense exigir unes columnes fixes.
 - Unitats iguals o de reserva: mateixa funció, lletres A, B, C...
 - Els instruments (cabalímetres, transmissors...) tenen sempre funció pròpia.
 - CCM: tag `CCM0_00N` (CCM 0 i funció = número del CCM).
-- **Límit:** la numeració segueix l'ordre del fitxer, no el sentit del fluid
-  que demana el manual BIM. Cal revisar-la amb el P&ID.
+- **Límit:** sense la columna «Ordre procés», la numeració segueix l'ordre del
+  fitxer, no el sentit del fluid que demana el manual BIM. Cal revisar-la amb
+  el P&ID.
 
 ## Decisions de disseny
 
@@ -64,3 +76,6 @@ haver-los d'introduir un a un, i sense exigir unes columnes fixes.
 1. Administració de regles i aprenentatge a partir de les correccions.
 2. Memòria del mapatge de columnes per a formats que es repeteixen.
 3. Importació des de PDF (extracció de taules, més fràgil).
+4. Contrast amb el P&ID: llegir el text d'un PDF vectorial i comparar els
+   tags i descripcions que hi apareixen amb el llistat (detectar equips que
+   falten o sobren). L'ordre del fluid continua requerint revisió humana.

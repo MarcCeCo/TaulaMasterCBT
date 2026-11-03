@@ -38,6 +38,13 @@ export interface SourceRow {
   denominacio: string;
   potencia: string;
   tensio: string;
+  /** Valors indicats a la plantilla (opcionals): tenen prioritat sobre les regles */
+  presetCodi?: string;
+  presetCcm?: string;
+  presetFuncio?: string;
+  presetDuplicitat?: string;
+  /** Ordre de procés (sentit del fluid): la numeració segueix aquest ordre */
+  ordre?: number;
 }
 
 export type RowKind = "equip" | "no-tag" | "desconegut";
@@ -51,6 +58,7 @@ export interface ProposedRow extends SourceRow {
   ccm: string;
   funcio: string;
   duplicitat: string;
+  ordre?: number;
   include: boolean;
 }
 
