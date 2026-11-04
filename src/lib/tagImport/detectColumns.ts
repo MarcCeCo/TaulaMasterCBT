@@ -1,6 +1,6 @@
 // src/lib/tagImport/detectColumns.ts
 // Detecció automàtica de la fila de capçalera i del rol de cada columna
-// (denominació, línia, potència, tensió). Combina el nom de la capçalera amb
+// (denominació i línia). Combina el nom de la capçalera amb
 // el perfil del contingut. L'usuari sempre pot corregir el resultat.
 
 import { classifyDenominacio } from "./rules";
@@ -31,8 +31,6 @@ const SYNONYMS: Record<Exclude<ColumnRole, "ignorar">, string[]> = {
     "name",
   ],
   linia: ["linia", "line", "ref", "referencia", "id", "codi linia", "n linia"],
-  potencia: ["potencia", "potencia kw", "kw", "w", "p calcul", "power"],
-  tensio: ["tensio", "tensio de la linia", "voltatge", "v", "tension"],
 };
 
 const MAX_SCAN = 300;
@@ -88,8 +86,6 @@ interface ColumnProfile {
   distinct: number;
   vocab: number;
   shortCode: number;
-  numeric: number;
-  voltage: number;
 }
 
 function profileColumn(grid: Grid, headerRow: number, col: number) {
@@ -111,8 +107,6 @@ function profileColumn(grid: Grid, headerRow: number, col: number) {
     shortCode:
       values.filter((v) => v.length <= 8 && /\d/.test(v) && /[a-z]/i.test(v))
         .length / filled,
-    numeric: values.filter((v) => isNumeric(v)).length / filled,
-    voltage: values.filter((v) => /\d+\s*x\s*\d+\s*v/i.test(v)).length / filled,
   };
   return p;
 }
@@ -135,10 +129,6 @@ function scoreRole(
       );
     case "linia":
       return 0.5 * hm + 0.5 * p.shortCode * (p.avgLen <= 8 ? 1 : 0);
-    case "potencia":
-      return 0.5 * hm + 0.5 * p.numeric;
-    case "tensio":
-      return 0.5 * hm + 0.5 * p.voltage;
   }
 }
 
@@ -155,17 +145,10 @@ export function detectColumns(grid: Grid, headerRow: number): DetectedLayout {
   const roles: ColumnRole[] = Array.from({ length: width }, () => "ignorar");
   const scores: number[] = Array.from({ length: width }, () => 0);
 
-  const order: Exclude<ColumnRole, "ignorar">[] = [
-    "denominacio",
-    "tensio",
-    "linia",
-    "potencia",
-  ];
+  const order: Exclude<ColumnRole, "ignorar">[] = ["denominacio", "linia"];
   const minScore: Record<(typeof order)[number], number> = {
     denominacio: 0.3,
-    tensio: 0.5,
-    linia: 0.5,
-    potencia: 0.5,
+    linia: 0.6,
   };
   for (const role of order) {
     let best = -1;
@@ -204,18 +187,13 @@ export function buildSourceRows(
   const iDen = idx("denominacio");
   if (iDen < 0) return [];
   const iLin = idx("linia");
-  const iPot = idx("potencia");
-  const iTen = idx("tensio");
   const out: SourceRow[] = [];
   for (let r = headerRow + 1; r < grid.length; r++) {
     const row = grid[r];
     const den = (row[iDen] ?? "").trim();
     const linia = iLin >= 0 ? (row[iLin] ?? "").trim() : "";
-    const potencia = iPot >= 0 ? (row[iPot] ?? "").trim() : "";
-    const tensio = iTen >= 0 ? (row[iTen] ?? "").trim() : "";
     if (!den) continue;
-    const isContinuation =
-      out.length > 0 && !linia && !potencia && !tensio && /^\(.*\)$/.test(den);
+    const isContinuation = out.length > 0 && !linia && /^\(.*\)$/.test(den);
     if (isContinuation) {
       out[out.length - 1].denominacio += ` ${den}`;
       continue;
@@ -225,8 +203,6 @@ export function buildSourceRows(
       sourceRow: r + 1,
       linia,
       denominacio: den,
-      potencia,
-      tensio,
     });
   }
   return out;

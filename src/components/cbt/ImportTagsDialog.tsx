@@ -74,8 +74,6 @@ type Filtre = "tots" | "revisar" | "problemes" | "no-tag";
 const ROLE_LABEL: Record<ColumnRole, string> = {
   denominacio: "Denominació de l'equip",
   linia: "Línia",
-  potencia: "Potència",
-  tensio: "Tensió",
   ignorar: "Ignorar",
 };
 
@@ -359,8 +357,6 @@ export function ImportTagsDialog({
       return {
         Línia: r.linia,
         Denominació: r.denominacio,
-        Tensió: r.tensio,
-        Potència: r.potencia,
         "Codi equip": r.codiEquip,
         CCM: r.ccm,
         Funció: r.funcio,

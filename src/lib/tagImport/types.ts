@@ -2,12 +2,7 @@
 
 export type Confianca = "alta" | "mitjana" | "revisar";
 
-export type ColumnRole =
-  | "denominacio"
-  | "linia"
-  | "potencia"
-  | "tensio"
-  | "ignorar";
+export type ColumnRole = "denominacio" | "linia" | "ignorar";
 
 export type Grid = string[][];
 
@@ -36,8 +31,6 @@ export interface SourceRow {
   sourceRow: number;
   linia: string;
   denominacio: string;
-  potencia: string;
-  tensio: string;
   /** Valors indicats a la plantilla (opcionals): tenen prioritat sobre les regles */
   presetCodi?: string;
   presetCcm?: string;

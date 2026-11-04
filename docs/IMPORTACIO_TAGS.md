@@ -9,8 +9,8 @@ haver-los d'introduir un a un, i sense exigir unes columnes fixes.
 
 1. **Plantilla.** L'usuari descarrega la plantilla, l'omple i la puja. Té les
    mateixes columnes que l'exportació de la revisió (Línia, Denominació,
-   Tensió, Potència, Codi equip, CCM, Funció, Duplicitat, Ordre procés, TAG,
-   Estat, Confiança, Observacions). Només són obligatòries Línia i
+   Codi equip, CCM, Funció, Duplicitat, Ordre procés, TAG, Estat, Confiança,
+   Observacions). Només són obligatòries Línia i
    Denominació; si s'omplen Codi equip, CCM, Funció o Duplicitat, la
    plataforma els respecta. Un fitxer revisat i exportat es pot tornar a pujar.
 2. **Columnes.** Si el fitxer és la plantilla, les columnes s'assignen soles.
@@ -35,8 +35,8 @@ s'omple, segueix l'ordre del fitxer.
   sinònims (denominació, descripció, nom, equip...).
 - **Rol de cada columna:** puntuació combinada del nom de la capçalera i del
   contingut (vocabulari d'equips reconegut, longitud mitjana del text,
-  codis curts tipus `L-5`, valors numèrics, formats com `3x400Vac`).
-- Una fila sense línia, potència ni tensió que només porta un text entre
+  codis curts tipus `L-5`).
+- Una fila sense línia que només porta un text entre
   parèntesis s'afegeix a la fila anterior (p. ex. «(H2S, CO2, CH4 i O2)»).
 
 ## Regles denominació → codi (`src/lib/tagImport/rules.ts`)

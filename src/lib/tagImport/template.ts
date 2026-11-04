@@ -8,8 +8,6 @@ import type { Grid, SourceRow } from "./types";
 export const TEMPLATE_HEADERS = [
   "Línia",
   "Denominació",
-  "Tensió",
-  "Potència",
   "Codi equip",
   "CCM",
   "Funció",
@@ -55,8 +53,6 @@ export function readTemplateRows(grid: Grid, headerRow: number): SourceRow[] {
       sourceRow: r + 1,
       linia: get(row, c("Línia")),
       denominacio: den,
-      potencia: get(row, c("Potència")),
-      tensio: get(row, c("Tensió")),
       presetCodi: get(row, c("Codi equip")).toUpperCase() || undefined,
       presetCcm: get(row, c("CCM")) || undefined,
       presetFuncio: get(row, c("Funció")).replace(/\D/g, "") || undefined,
