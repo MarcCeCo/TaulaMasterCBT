@@ -49,6 +49,7 @@ import {
   Lock,
   LockOpen,
   Download,
+  FileSpreadsheet,
 } from "lucide-react";
 import { exportDadesTraspas } from "@/lib/exportDadesTraspas";
 import { cn } from "@/lib/utils";
@@ -65,6 +66,7 @@ import type {
 import { ProjecteEquipDetailDialog } from "./ProjecteEquipDetailDialog";
 import { RosmimanEquipsPage } from "./RosmimanEquipsPage";
 import { EquipmentFormDialog } from "./EquipmentFormDialog";
+import { ImportTagsDialog } from "./ImportTagsDialog";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import type { UserProfile, ProjectRole } from "@/lib/auth";
@@ -274,6 +276,7 @@ export function ProjectesEquipsPage({
   // Diàlegs
   const [dialogNouProjecte, setDialogNouProjecte] = useState(false);
   const [dialogNouTag, setDialogNouTag] = useState(false);
+  const [dialogImportTags, setDialogImportTags] = useState(false);
   const [dialogEditTag, setDialogEditTag] = useState<ProjectTag | null>(null);
   const [dialogValidar, setDialogValidar] = useState<ProjectTag | null>(null);
   const [dialogEliminarProjecte, setDialogEliminarProjecte] = useState<
@@ -1185,6 +1188,16 @@ export function ProjectesEquipsPage({
                 {projecteSeleccionat?.status === "actiu" && (
                   <Button
                     size="sm"
+                    variant="outline"
+                    className="gap-1.5 border-slate-200 text-slate-600 hover:text-[#006E7A] hover:border-[#0099A8]/40"
+                    onClick={() => setDialogImportTags(true)}
+                  >
+                    <FileSpreadsheet className="h-3.5 w-3.5" /> Importa TAGs
+                  </Button>
+                )}
+                {projecteSeleccionat?.status === "actiu" && (
+                  <Button
+                    size="sm"
                     className="gap-1.5 bg-[#0099A8] hover:bg-[#006E7A] text-white"
                     onClick={obrirNouTag}
                   >
@@ -1195,6 +1208,18 @@ export function ProjectesEquipsPage({
             )}
           </div>
         </div>
+
+        {/* Importació de TAGs des d'Excel */}
+        {dialogImportTags && projecteSeleccionat && (
+          <ImportTagsDialog
+            open={dialogImportTags}
+            onOpenChange={setDialogImportTags}
+            projecte={projecteSeleccionat}
+            equipments={equipments}
+            rosmimanTags={rosmimanEquips.map((r) => r.tag)}
+            addTag={addTag}
+          />
+        )}
 
         {/* Pop-up TAGs Rosmiman */}
         <Dialog open={rosmimanOpen} onOpenChange={setRosmimanOpen}>
