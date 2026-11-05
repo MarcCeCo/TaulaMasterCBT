@@ -1,18 +1,24 @@
 // src/lib/tagImport/template.ts
-// Plantilla d'importació. Té les mateixes columnes que l'exportació de la
-// revisió, de manera que un fitxer revisat es pot tornar a importar.
+// Plantilla d'importació (public/docs/Plantilla_importacio_tags.xlsx).
+// Columnes: Ordre procés, Línia, Denominació, Codi equip, CCM, Funció,
+// Duplicitat, TAG, Estat, Confiança, Observacions.
+// Obligatòries: Ordre procés, Denominació i CCM. La resta són opcionals;
+// TAG, Estat, Confiança i Observacions les omple la plataforma.
 
 import { isNumeric, norm } from "./normalize";
 import type { Grid, SourceRow } from "./types";
 
+export const TEMPLATE_URL = "/docs/Plantilla_importacio_tags.xlsx";
+export const TEMPLATE_SHEET = "Equips";
+
 export const TEMPLATE_HEADERS = [
+  "Ordre procés",
   "Línia",
   "Denominació",
   "Codi equip",
   "CCM",
   "Funció",
   "Duplicitat",
-  "Ordre procés",
   "TAG",
   "Estat",
   "Confiança",
@@ -26,12 +32,12 @@ function col(header: string[], name: Header): number {
   return header.findIndex((h) => norm(h) === n);
 }
 
-/** La fila és de plantilla si té les columnes clau de la plantilla. */
+/** La fila és de plantilla si té les columnes obligatòries. */
 export function isTemplateHeader(header: string[]): boolean {
   return (
-    col(header, "Línia") >= 0 &&
+    col(header, "Ordre procés") >= 0 &&
     col(header, "Denominació") >= 0 &&
-    col(header, "Codi equip") >= 0
+    col(header, "CCM") >= 0
   );
 }
 
@@ -59,59 +65,35 @@ export function readTemplateRows(grid: Grid, headerRow: number): SourceRow[] {
       presetDuplicitat:
         get(row, c("Duplicitat")).toUpperCase().slice(0, 1) || undefined,
       ordre,
+      fromTemplate: true,
     });
   }
   return out;
 }
 
-const INSTRUCCIONS: string[][] = [
-  ["Instruccions"],
-  [""],
-  [
-    "1. Omple el full «Equips»: una fila per equip. Només són obligatòries Línia i Denominació.",
-  ],
-  [
-    "2. Línia: la referència del teu llistat (L-5, VF 1.1...). Es desa als comentaris del tag.",
-  ],
-  [
-    "3. Codi equip, CCM, Funció i Duplicitat són opcionals: si els omples, la plataforma els respecta; si els deixes buits, els proposa.",
-  ],
-  [
-    "4. Ordre procés: número (1, 2, 3...) segons el sentit del fluid del P&ID. La numeració de les funcions segueix aquest ordre.",
-  ],
-  [
-    "5. Les columnes TAG, Estat, Confiança i Observacions les omple la plataforma a l'exportar la revisió; a la importació s'ignoren.",
-  ],
-  [
-    "6. No canviïs els noms de les capçaleres ni n'afegeixis de nous entre mig.",
-  ],
-  [""],
-  ["Exemple"],
-  [
-    "Línia",
-    "Denominació",
-    "Codi equip",
-    "CCM",
-    "Funció",
-    "Duplicitat",
-    "Ordre procés",
-  ],
-  ["L-23", "Bomba recirculació de fangs", "BCCS", "6", "", "", "1"],
-  ["L-24", "Bomba recirculació de fangs (reserva)", "BCCS", "6", "", "", "1"],
-  ["L-8", "Cabalímetre sortida digestió", "", "", "", "", "2"],
-];
+/** CCM detectats a la plantilla (dígits únics, ordenats). */
+export function detectCcms(rows: SourceRow[]): string[] {
+  const set = new Set<string>();
+  for (const r of rows)
+    if (r.presetCcm && /^\d$/.test(r.presetCcm)) set.add(r.presetCcm);
+  return [...set].sort();
+}
 
+/** Descarrega la plantilla corporativa (fitxer estàtic de public/docs). */
 export async function downloadTemplate(): Promise<void> {
-  const mod = await import("xlsx");
-  const XLSX = mod.default ?? mod;
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([[...TEMPLATE_HEADERS]]);
-  ws["!cols"] = TEMPLATE_HEADERS.map((h) => ({
-    wch: h === "Denominació" ? 46 : h === "Observacions" ? 40 : 14,
-  }));
-  XLSX.utils.book_append_sheet(wb, ws, "Equips");
-  const wi = XLSX.utils.aoa_to_sheet(INSTRUCCIONS);
-  wi["!cols"] = [{ wch: 110 }];
-  XLSX.utils.book_append_sheet(wb, wi, "Instruccions");
-  XLSX.writeFile(wb, "plantilla_importacio_tags.xlsx");
+  const res = await fetch(TEMPLATE_URL);
+  const type = res.headers.get("content-type") ?? "";
+  // vercel.json redirigeix tot a index.html: si no existeix, arriba HTML
+  if (!res.ok || type.includes("text/html")) {
+    throw new Error("No s'ha trobat la plantilla al servidor.");
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "Plantilla_importacio_tags.xlsx";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }

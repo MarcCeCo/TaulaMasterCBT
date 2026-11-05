@@ -38,6 +38,8 @@ export interface SourceRow {
   presetDuplicitat?: string;
   /** Ordre de procés (sentit del fluid): la numeració segueix aquest ordre */
   ordre?: number;
+  /** Fila llegida de la plantilla: Ordre procés i CCM són obligatoris */
+  fromTemplate?: boolean;
 }
 
 export type RowKind = "equip" | "no-tag" | "desconegut";
@@ -61,6 +63,7 @@ export type RowStatus =
   | "sense-codi"
   | "sense-equip-master"
   | "invalid"
+  | "falta-dades"
   | "existeix-projecte"
   | "existeix-rosmiman"
   | "duplicat-importacio";

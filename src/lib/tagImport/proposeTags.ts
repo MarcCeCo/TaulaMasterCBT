@@ -94,7 +94,9 @@ export function proposeRows(
       const ccm = row.presetCcm ?? opts.ccm;
       const key = `${row.presetCodi}|${ccm}`;
       let funcio = row.presetFuncio ?? "";
-      if (!funcio) {
+      if (!/^\d$/.test(ccm)) {
+        funcio = "";
+      } else if (!funcio) {
         const start =
           counters.get(key) ??
           nextFreeFunction(known, opts.codiInstallacio, row.presetCodi, ccm);
@@ -134,6 +136,9 @@ export function proposeRows(
       ccm,
       include: rule.confianca !== "revisar",
     };
+    if (!/^\d$/.test(ccm)) {
+      return { ...common, funcio: "", include: false };
+    }
     if (rule.especial === "ccm") {
       return {
         ...common,
@@ -229,6 +234,19 @@ export function evaluateRows(
     if (r.kind === "no-tag") {
       out.set(r.id, { tag: "", status: "no-aplica", message: r.nota });
       continue;
+    }
+    if (r.fromTemplate) {
+      const falta: string[] = [];
+      if (r.ordre === undefined) falta.push("Ordre procés");
+      if (!/^\d$/.test(r.ccm)) falta.push("CCM");
+      if (falta.length > 0) {
+        out.set(r.id, {
+          tag: "",
+          status: "falta-dades",
+          message: `Falta ${falta.join(" i ")} (obligatori a la plantilla).`,
+        });
+        continue;
+      }
     }
     if (!r.codiEquip) {
       out.set(r.id, {

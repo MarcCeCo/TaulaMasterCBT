@@ -36,11 +36,16 @@ import {
   detectHeaderRow,
 } from "@/lib/tagImport/detectColumns";
 import {
-  TEMPLATE_HEADERS,
+  TEMPLATE_SHEET,
+  detectCcms,
   downloadTemplate,
   isTemplateHeader,
   readTemplateRows,
 } from "@/lib/tagImport/template";
+import {
+  exportRevisionFile,
+  type RevisionRow,
+} from "@/lib/tagImport/exportRevision";
 import {
   buildTag,
   evaluateRows,
@@ -83,6 +88,7 @@ const STATUS_LABEL: Record<RowStatus, string> = {
   "sense-codi": "Falta codi",
   "sense-equip-master": "Codi fora Taula Master",
   invalid: "Dades invàlides",
+  "falta-dades": "Falta Ordre procés o CCM",
   "existeix-projecte": "Ja és al projecte",
   "existeix-rosmiman": "Ja és a Rosmiman",
   "duplicat-importacio": "Duplicat a la importació",
@@ -198,6 +204,30 @@ export function ImportTagsDialog({
     [rows, inst, projectTags, rosmimanSet, masterCodes],
   );
 
+  // Mode plantilla: el CCM i l'ordre es llegeixen de cada fila
+  const templateRows = useMemo(
+    () =>
+      templateMode && sheet ? readTemplateRows(sheet.grid, headerRow) : [],
+    [templateMode, sheet, headerRow],
+  );
+  const ccmsDetectats = useMemo(() => detectCcms(templateRows), [templateRows]);
+  const faltenCcm = templateRows.filter(
+    (r) => !r.presetCcm || !/^\d$/.test(r.presetCcm),
+  ).length;
+  const faltenOrdre = templateRows.filter((r) => r.ordre === undefined).length;
+
+  async function onDescarregaPlantilla() {
+    try {
+      await downloadTemplate();
+    } catch (e) {
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : "No s'ha pogut descarregar la plantilla.",
+      );
+    }
+  }
+
   function reset() {
     setStep("fitxer");
     setError(null);
@@ -230,10 +260,17 @@ export function ImportTagsDialog({
         setError("El fitxer no conté dades.");
         return;
       }
+      // A la plantilla, el full de dades és «Equips» (el primer és «Instruccions»)
+      const idx = Math.max(
+        0,
+        data.findIndex(
+          (d) => d.name.trim().toLowerCase() === TEMPLATE_SHEET.toLowerCase(),
+        ),
+      );
       setSheets(data);
-      setSheetIdx(0);
+      setSheetIdx(idx);
       setFileName(file.name);
-      applyLayout(data[0]);
+      applyLayout(data[idx]);
       setStep("columnes");
     } catch {
       setError(
@@ -268,7 +305,7 @@ export function ImportTagsDialog({
     setRows(
       proposeRows(src, {
         codiInstallacio: nextInst,
-        ccm: nextCcm,
+        ccm: templateMode ? "" : nextCcm,
         existingTags,
         agrupaBessones: nextAgrupa,
       }),
@@ -280,7 +317,13 @@ export function ImportTagsDialog({
       setError("Indica quina columna conté la denominació de l'equip.");
       return;
     }
-    if (!/^\d$/.test(ccm)) {
+    if (templateMode && templateRows.length === 0) {
+      setError(
+        "No s'ha trobat cap equip: cada fila necessita almenys la Denominació.",
+      );
+      return;
+    }
+    if (!templateMode && !/^\d$/.test(ccm)) {
       setError("Indica el dígit del CCM (0-9) abans de continuar.");
       return;
     }
@@ -350,33 +393,33 @@ export function ImportTagsDialog({
   });
 
   async function exportRevisio() {
-    const mod = await import("xlsx");
-    const XLSX = mod.default ?? mod;
-    const data = rows.map((r) => {
+    const label = { alta: "Alta", mitjana: "Mitjana", revisar: "Revisar" };
+    const data: RevisionRow[] = rows.map((r) => {
       const ev = evaluation.get(r.id);
       return {
-        Línia: r.linia,
-        Denominació: r.denominacio,
-        "Codi equip": r.codiEquip,
-        CCM: r.ccm,
-        Funció: r.funcio,
-        Duplicitat: r.duplicitat,
-        "Ordre procés": r.ordre ?? "",
-        TAG: ev?.tag ?? "",
-        Estat: ev ? STATUS_LABEL[ev.status] : "",
-        Confiança: r.confianca ?? "",
-        Observacions: [r.nota, ev?.message].filter(Boolean).join(" "),
+        ordre: r.ordre,
+        linia: r.linia,
+        denominacio: r.denominacio,
+        codiEquip: r.codiEquip,
+        ccm: r.ccm,
+        funcio: r.funcio,
+        duplicitat: r.duplicitat,
+        tag: ev?.tag ?? "",
+        estat: ev ? STATUS_LABEL[ev.status] : "",
+        confianca: r.confianca ? label[r.confianca] : "",
+        observacions: [r.nota, ev?.message].filter(Boolean).join(" "),
       };
     });
-    const ws = XLSX.utils.json_to_sheet(data, {
-      header: [...TEMPLATE_HEADERS],
-    });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Equips");
-    XLSX.writeFile(
-      wb,
-      `revisio_tags_${projecte.codiProjecte || "projecte"}.xlsx`,
-    );
+    try {
+      await exportRevisionFile(
+        data,
+        `revisio_tags_${projecte.codiProjecte || "projecte"}.xlsx`,
+      );
+    } catch (e) {
+      toast.error(
+        e instanceof Error ? e.message : "No s'ha pogut exportar la revisió.",
+      );
+    }
   }
 
   async function importar() {
@@ -460,15 +503,16 @@ export function ImportTagsDialog({
           <div className="space-y-4">
             <p className="text-sm text-slate-600">
               Per importar tags, descarrega la plantilla, omple-la amb el
-              llistat d'equips i puja-la. És la via més fiable: les columnes
-              sempre són les mateixes i pots indicar l'ordre de procés. El
-              fitxer de «Exporta revisió» té el mateix format, així que també el
-              pots tornar a pujar.
+              llistat d'equips en l'ordre del fluid i puja-la. És obligatori
+              indicar l'Ordre procés, la Denominació i el CCM de cada equip: la
+              plataforma llegeix el CCM de la plantilla. El fitxer de «Exporta
+              revisió» té el mateix format, així que també el pots tornar a
+              pujar.
             </p>
             <Button
               variant="outline"
               className="gap-2 border-[#0099A8]/40 text-[#006E7A]"
-              onClick={() => void downloadTemplate()}
+              onClick={() => void onDescarregaPlantilla()}
             >
               <Download className="h-4 w-4" /> Descarrega la plantilla
             </Button>
@@ -544,9 +588,29 @@ export function ImportTagsDialog({
             </div>
             {templateMode ? (
               <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> Plantilla
-                reconeguda: les columnes s'han assignat automàticament. Només
-                cal indicar el CCM.
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  Plantilla reconeguda: les columnes s'han assignat
+                  automàticament i el CCM es llegeix de cada fila.{" "}
+                  <b>{templateRows.length}</b> equips
+                  {ccmsDetectats.length > 0 && (
+                    <>
+                      {" "}
+                      · CCM detectats: <b>{ccmsDetectats.join(", ")}</b>
+                    </>
+                  )}
+                  .
+                  {(faltenCcm > 0 || faltenOrdre > 0) && (
+                    <span className="mt-1 block text-amber-700">
+                      Atenció:{" "}
+                      {faltenCcm > 0 && `${faltenCcm} files sense CCM vàlid`}
+                      {faltenCcm > 0 && faltenOrdre > 0 && " i "}
+                      {faltenOrdre > 0 &&
+                        `${faltenOrdre} files sense Ordre procés`}
+                      . Es marcaran com a error a la revisió.
+                    </span>
+                  )}
+                </span>
               </div>
             ) : (
               <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
@@ -640,16 +704,18 @@ export function ImportTagsDialog({
                   <Input className="h-8" readOnly value={inst} />
                 )}
               </div>
-              <div>
-                <Label className="text-xs">Dígit CCM (0-9)</Label>
-                <Input
-                  className="h-8"
-                  maxLength={1}
-                  value={ccm}
-                  placeholder="p. ex. 6"
-                  onChange={(e) => setCcm(e.target.value.replace(/\D/g, ""))}
-                />
-              </div>
+              {!templateMode && (
+                <div>
+                  <Label className="text-xs">Dígit CCM (0-9)</Label>
+                  <Input
+                    className="h-8"
+                    maxLength={1}
+                    value={ccm}
+                    placeholder="p. ex. 6"
+                    onChange={(e) => setCcm(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+              )}
               <label className="flex items-end gap-2 pb-1 text-xs text-slate-600">
                 <Checkbox
                   checked={agrupa}
