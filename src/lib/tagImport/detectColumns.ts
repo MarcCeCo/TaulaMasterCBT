@@ -5,6 +5,7 @@
 
 import { classifyDenominacio } from "./rules";
 import { isNumeric, norm } from "./normalize";
+import { isTemplateHeader } from "./template";
 import type {
   ColumnGuess,
   ColumnRole,
@@ -56,6 +57,12 @@ export function detectHeaderRow(grid: Grid): number {
   let best = 0;
   let bestScore = -1;
   const limit = Math.min(grid.length, 30);
+  // Si una fila té les columnes de la plantilla, és la capçalera, encara que
+  // el fitxer no tingui cap equip (plantilla en blanc). Sense això, la
+  // plantilla buida no es reconeixia perquè l'heurística exigeix files de dades.
+  for (let i = 0; i < limit; i++) {
+    if (isTemplateHeader(grid[i])) return i;
+  }
   for (let i = 0; i < limit; i++) {
     const cells = grid[i].map((c) => c.trim()).filter((c) => c !== "");
     if (cells.length < 2) continue;
