@@ -117,7 +117,8 @@ export function FieldPickerDialog({
   const toggle = (col: string) =>
     setSel((prev) => {
       const n = new Set(prev);
-      n.has(col) ? n.delete(col) : n.add(col);
+      if (n.has(col)) n.delete(col);
+      else n.add(col);
       return n;
     });
 

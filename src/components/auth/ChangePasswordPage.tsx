@@ -12,6 +12,7 @@ import {
   KeyRound,
   ShieldCheck,
 } from "lucide-react";
+import { errorMessage } from "@/lib/errors";
 
 export function ChangePasswordPage() {
   const { getToken } = useAuth();
@@ -69,8 +70,8 @@ export function ChangePasswordPage() {
       setDone(true);
       setPassword("");
       setConfirm("");
-    } catch (err: any) {
-      setError(err?.message ?? "Error de xarxa. Torna-ho a intentar.");
+    } catch (err) {
+      setError(errorMessage(err, "Error de xarxa. Torna-ho a intentar."));
       setLoading(false);
     }
   };

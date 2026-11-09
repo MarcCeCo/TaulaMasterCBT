@@ -11,8 +11,10 @@
 import type { Equipment } from "@/hooks/useEquipments";
 import type { FieldMeta } from "@/lib/fields";
 import type { ProjectTag, Projecte } from "@/lib/useProjectes";
+import type { WorkSheet } from "xlsx";
 
-let _XLSX: any = null;
+type XlsxModule = typeof import("xlsx");
+let _XLSX: XlsxModule | null = null;
 async function getXLSX() {
   if (!_XLSX) _XLSX = await import("xlsx");
   return _XLSX;
@@ -76,7 +78,7 @@ function buildRows(
   return rows;
 }
 
-function styleHeader(XLSX: any, ws: any, numCols: number) {
+function styleHeader(XLSX: XlsxModule, ws: WorkSheet, numCols: number) {
   const s = {
     font: { bold: true, color: { rgb: "FFFFFF" }, name: "Arial", sz: 10 },
     fill: { fgColor: { rgb: "375A7F" }, patternType: "solid" },
@@ -123,7 +125,7 @@ export async function exportDadesTraspas(
 
   const filename =
     `${projecte.codiProjecte || projecte.nom}_rosmiman_dades.xlsx`.replace(
-      /[^a-zA-Z0-9_\-\.]/g,
+      /[^a-zA-Z0-9_.-]/g,
       "_",
     );
   XLSX.writeFile(wb, filename);

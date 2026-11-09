@@ -23,6 +23,8 @@ import { useAuth } from "@/lib/auth";
 import type { ProjectRole } from "@/lib/auth";
 import { uid } from "@/lib/storage";
 import { supaFetch as supa } from "@/lib/supaFetch";
+import { errorMessage } from "@/lib/errors";
+import type { DbRow } from "@/lib/dbTypes";
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -89,7 +91,7 @@ export interface Projecte {
 
 // ─── Conversors row ↔ objecte ─────────────────────────────────────────────────
 
-const toTag = (row: any): ProjectTag => ({
+const toTag = (row: DbRow): ProjectTag => ({
   id: row.id,
   projecteId: row.projecte_id,
   equipId: row.equip_id,
@@ -128,7 +130,7 @@ const tagToRow = (t: ProjectTag) => ({
  *  - array de strings (format antic) → migra a ProjectUserAccess[] amb role "editor_global"
  *  - array d'objectes {userId, role} (format nou)
  */
-function parseAllowedUsers(raw: any): {
+function parseAllowedUsers(raw: unknown): {
   projectUsers: ProjectUserAccess[] | null;
   allowedUsers: string[] | null;
 } {
@@ -150,7 +152,7 @@ function parseAllowedUsers(raw: any): {
     "editor_caracteristiques",
   ];
   const projectUsers: ProjectUserAccess[] = raw
-    .map((item: any) => {
+    .map((item: DbRow | string | null) => {
       // Format nou: {userId, role}
       if (typeof item === "object" && item !== null && item.userId) {
         const role: ProjectRole = VALID_ROLES.includes(item.role)
@@ -171,14 +173,14 @@ function parseAllowedUsers(raw: any): {
   };
 }
 
-const toProjecte = (row: any, tags: ProjectTag[]): Projecte => {
+const toProjecte = (row: DbRow, tags: ProjectTag[]): Projecte => {
   // Suporta tant array (nou format) com string (format antic)
   const rawCodis = row.codis_installacio;
   const rawCodi = row.codi_installacio ?? "";
   let codisInstallacio: InstallacioItem[];
   if (Array.isArray(rawCodis) && rawCodis.length > 0) {
     codisInstallacio = rawCodis
-      .map((c: any) => {
+      .map((c: DbRow | string) => {
         if (typeof c === "object" && c !== null && c.codi) {
           return {
             codi: String(c.codi).toUpperCase().trim(),
@@ -220,7 +222,7 @@ const projecteToRow = (p: Projecte) => ({
   allowed_users: p.projectUsers ?? null,
 });
 
-const toRosmimanEquip = (row: any): RosmimanEquip => ({
+const toRosmimanEquip = (row: DbRow): RosmimanEquip => ({
   id: row.id,
   tag: row.tag ?? "",
   descripcio: row.descripcio ?? "",
@@ -344,8 +346,8 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
         setProjectes(projectesData.map((row) => toProjecte(row, tags)));
         setRosmimanEquips(rosmimanData.map(toRosmimanEquip));
       });
-    } catch (e: any) {
-      setError(e?.message ?? "Error de xarxa");
+    } catch (e) {
+      setError(errorMessage(e, "Error de xarxa"));
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -409,8 +411,8 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
         tags: [],
         createdAt: Date.now(),
       };
-      if (!("projectUsers" in nou)) (nou as any).projectUsers = null;
-      if (!("allowedUsers" in nou)) (nou as any).allowedUsers = null;
+      if (!("projectUsers" in nou)) Object.assign(nou, { projectUsers: null });
+      if (!("allowedUsers" in nou)) Object.assign(nou, { allowedUsers: null });
       await supa(token, "POST", "projectes", projecteToRow(nou), {
         Prefer: "return=minimal",
       });
@@ -423,7 +425,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
     async (id: string, patch: Partial<Omit<Projecte, "id" | "tags">>) => {
       const token = getToken();
       // Convertim el patch a noms de columna SQL
-      const rowPatch: Record<string, any> = {};
+      const rowPatch: Record<string, unknown> = {};
       if (patch.nom !== undefined) rowPatch.nom = patch.nom;
       if (patch.descripcio !== undefined)
         rowPatch.descripcio = patch.descripcio;
@@ -535,7 +537,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
   const updateTag = useCallback(
     async (projecteId: string, tagId: string, patch: Partial<ProjectTag>) => {
       const token = getToken();
-      const rowPatch: Record<string, any> = {};
+      const rowPatch: Record<string, unknown> = {};
       if (patch.status !== undefined) rowPatch.status = patch.status;
       if (patch.comentari !== undefined) rowPatch.comentari = patch.comentari;
       if (patch.fieldValues !== undefined)
@@ -603,7 +605,7 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
           "rosmiman_equips?select=tag",
         );
         const existingTags = new Set(
-          freshRows.map((r: any) => r.tag as string),
+          freshRows.map((r: DbRow) => r.tag as string),
         );
         const toInsert = equips.filter((e) => !existingTags.has(e.tag));
         const skipped = equips.length - toInsert.length;
@@ -631,12 +633,10 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
                 },
               );
               actualInserted += rows.slice(i, i + BATCH).length;
-            } catch (err: any) {
+            } catch (err) {
               // Si el batch falla per duplicat (409), intentem fila per fila
-              if (
-                err?.message?.includes("409") ||
-                err?.message?.includes("23505")
-              ) {
+              const msgErr = errorMessage(err, "");
+              if (msgErr.includes("409") || msgErr.includes("23505")) {
                 for (const row of rows.slice(i, i + BATCH)) {
                   try {
                     await supa(

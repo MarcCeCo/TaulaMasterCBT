@@ -13,7 +13,7 @@ import WebSocket from "ws";
 import { executaBimSync, BimSyncOpcio } from "../../shared/bim-sync-agent";
 import { setCors, verificaAuth, llegeixBody } from "../../shared/helpers";
 
-(globalThis as any).WebSocket = WebSocket;
+Object.assign(globalThis, { WebSocket });
 
 const PORT = process.env.PORT || 3003;
 const AGENT_SECRET = process.env.AGENT_SECRET || "";
@@ -21,7 +21,7 @@ const AGENT_SECRET = process.env.AGENT_SECRET || "";
 let agentEnExecucio = false;
 
 const server = http.createServer(async (req, res) => {
-  setCors(res);
+  setCors(req, res);
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();

@@ -4,6 +4,7 @@
 import http from "http";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
+import type { JsonAny } from "./tipus";
 
 export const APS_AUTH_BASE =
   "https://developer.api.autodesk.com/authentication/v2";
@@ -11,11 +12,26 @@ export const APS_SCOPE = "data:read viewables:read account:read";
 
 // ─── HTML per pàgines OAuth ───────────────────────────────────────────────────
 
+function escapaHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[char] ?? char;
+  });
+}
+
 export function htmlPagina(
   titol: string,
   missatge: string,
   ok: boolean,
 ): string {
+  const titolSegur = escapaHtml(titol);
+  const missatgeSegur = escapaHtml(missatge);
   const color = ok ? "#0099A8" : "#EF4444";
   const icon = ok ? "✅" : "❌";
   return `<!DOCTYPE html>
@@ -23,7 +39,7 @@ export function htmlPagina(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${titol} · TaulaMaster CBT</title>
+  <title>${titolSegur} · TaulaMaster CBT</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     body {
@@ -47,8 +63,8 @@ export function htmlPagina(
 <body>
   <div class="card">
     <div class="icon">${icon}</div>
-    <h1>${titol}</h1>
-    <p>${missatge}</p>
+    <h1>${titolSegur}</h1>
+    <p>${missatgeSegur}</p>
     <div class="logo">TaulaMaster CBT · Agent Autodesk</div>
   </div>
 </body>
@@ -57,8 +73,21 @@ export function htmlPagina(
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
-export function setCors(res: http.ServerResponse): void {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+export function setCors(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): void {
+  const origin = req.headers.origin;
+  const configured = (process.env.ALLOWED_ORIGINS ?? process.env.APP_URL ?? "")
+    .split(",")
+    .map((value) => value.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+  // Sense orígens configurats no habilitem CORS. Les crides server-to-server
+  // continuen funcionant; el navegador requereix ALLOWED_ORIGINS explícit.
+  if (origin && configured.includes(origin.replace(/\/$/, ""))) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
+  }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
 }
@@ -69,9 +98,13 @@ export function verificaAuth(
   req: http.IncomingMessage,
   secret: string,
 ): boolean {
-  if (!secret) return true;
-  const authHeader = req.headers["authorization"] ?? "";
-  return authHeader.replace("Bearer ", "") === secret;
+  // Fail closed: un secret absent o buit mai ha d'obrir l'endpoint.
+  if (!secret) return false;
+  const match = /^Bearer\s+(.+)$/i.exec(
+    String(req.headers["authorization"] ?? ""),
+  );
+  if (!match) return false;
+  return segurIgual(match[1].trim(), secret);
 }
 
 // ─── Autorització de l'execució manual (POST /sync) ───────────────────────────
@@ -143,7 +176,7 @@ export async function autoritzaSync(
 
 // ─── Lectura de body JSON ─────────────────────────────────────────────────────
 
-export function llegeixBody(req: http.IncomingMessage): Promise<any> {
+export function llegeixBody(req: http.IncomingMessage): Promise<JsonAny> {
   return new Promise((resolve) => {
     let data = "";
     req.on("data", (chunk) => {

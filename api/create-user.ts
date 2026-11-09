@@ -77,7 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Supabase crea el perfil via trigger de forma asíncrona.
   // Fem fins a 5 intents amb espera progressiva per evitar la race condition.
-  let profileError: any = null;
+  let profileError: { message: string } | null = null;
   for (let attempt = 0; attempt < 5; attempt++) {
     if (attempt > 0) {
       await new Promise((r) => setTimeout(r, 300 * attempt));

@@ -57,6 +57,7 @@ import {
   type Sistema,
   type Installacio,
 } from "@/hooks/useVisor3DSistemes";
+import type { ExternalObject } from "@/lib/dbTypes";
 
 // ─── Helper: codi de sistema derivat de les instal·lacions ───────────────────
 // Llegeix els codiInstallacio del sistema i extreu el codi numèric del primer
@@ -437,7 +438,7 @@ const VIEWER_JS_URL =
 
 declare global {
   interface Window {
-    Autodesk?: any;
+    Autodesk?: ExternalObject;
     _apsViewerScriptsLoaded?: boolean;
   }
 }
@@ -495,8 +496,8 @@ type ViewerEstat =
 // ─── Tipus per a les vistes del model ────────────────────────────────────────
 
 interface VistaModel {
-  node: any; // Autodesk.Viewing.BubbleNode
-  doc: any; // Autodesk.Viewing.Document (necessari en mode federat)
+  node: ExternalObject; // Autodesk.Viewing.BubbleNode
+  doc: ExternalObject; // Autodesk.Viewing.Document (necessari en mode federat)
   nom: string;
   rol: "3d" | "2d";
   disciplina?: string; // "MEP" | "ENT" | "EST" | undefined
@@ -523,8 +524,8 @@ function useApsViewer(
   const [vistaActual, setVistaActual] = useState<number>(0);
   const [canviantVista, setCanviantVista] = useState(false);
 
-  const viewerRef = useRef<any>(null);
-  const docRef = useRef<any>(null);
+  const viewerRef = useRef<ExternalObject>(null);
+  const docRef = useRef<ExternalObject>(null);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -669,20 +670,20 @@ function useApsViewer(
         await new Promise<void>((res, rej) => {
           AV.Document.load(
             `urn:${urnB64}`,
-            (doc: any) => {
+            (doc: ExternalObject) => {
               if (!mountedRef.current) {
                 rej(new Error("_desmontat_"));
                 return;
               }
               docRef.current = doc;
               const root = doc.getRoot();
-              const nodes3d: any[] =
+              const nodes3d: ExternalObject[] =
                 root.search({ type: "geometry", role: "3d" }) ?? [];
-              const nodes2d: any[] =
+              const nodes2d: ExternalObject[] =
                 root.search({ type: "geometry", role: "2d" }) ?? [];
               const toVista =
                 (role: "3d" | "2d") =>
-                (node: any, i: number): VistaModel => ({
+                (node: ExternalObject, i: number): VistaModel => ({
                   node,
                   doc,
                   nom: node.name() || `Vista ${i + 1}`,
@@ -743,11 +744,11 @@ function useApsViewer(
         const documents = await Promise.all(
           urns.map(
             (urn) =>
-              new Promise<any>((res) => {
+              new Promise<ExternalObject>((res) => {
                 const urnB64 = normalitzaUrn(urn);
                 AV.Document.load(
                   `urn:${urnB64}`,
-                  (doc: any) => res({ urnB64, doc }),
+                  (doc: ExternalObject) => res({ urnB64, doc }),
                   (code: number, msg: string) => {
                     console.warn(
                       `[Viewer] Error carregant URN ${urnB64}: ${code} ${msg}`,
@@ -763,7 +764,7 @@ function useApsViewer(
 
         const docsVàlids = documents.filter(Boolean) as {
           urnB64: string;
-          doc: any;
+          doc: ExternalObject;
         }[];
         if (docsVàlids.length === 0)
           throw new Error("Cap dels models ha pogut carregar.");
@@ -774,9 +775,9 @@ function useApsViewer(
 
         for (const { urnB64, doc } of docsVàlids) {
           const root = doc.getRoot();
-          const nodes3d: any[] =
+          const nodes3d: ExternalObject[] =
             root.search({ type: "geometry", role: "3d" }) ?? [];
-          const nodes2d: any[] =
+          const nodes2d: ExternalObject[] =
             root.search({ type: "geometry", role: "2d" }) ?? [];
           const disciplina = disciplineLabels[urnB64] ?? undefined;
 
@@ -1600,7 +1601,8 @@ export function Visualitzador3DPage() {
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
 

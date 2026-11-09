@@ -48,8 +48,10 @@ import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { errorMessage } from "@/lib/errors";
+import type { SheetRow } from "@/lib/dbTypes";
 
-interface Props {}
+type Props = Record<string, never>;
 
 export function GubimClassManager(_props: Props = {}) {
   const {
@@ -160,8 +162,8 @@ export function GubimClassManager(_props: Props = {}) {
         toast.success("Node creat");
       }
       reset();
-    } catch (e: any) {
-      toast.error(e.message ?? "Error desant node");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error desant node"));
     } finally {
       setSaving(false);
     }
@@ -195,7 +197,7 @@ export function GubimClassManager(_props: Props = {}) {
       const XLSX = await getXLSX();
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any>(ws);
+      const rows = XLSX.utils.sheet_to_json<SheetRow>(ws);
       const arr = rows
         .map((r) => ({
           code: String(r["Codi"] ?? "").trim(),
@@ -219,8 +221,8 @@ export function GubimClassManager(_props: Props = {}) {
         toast.warning(
           parts.length > 0 ? parts.join(" · ") : "Cap node per importar",
         );
-    } catch (e: any) {
-      toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
+    } catch (e) {
+      toast.error(`Error en importar: ${errorMessage(e, "error desconegut")}`);
     }
   };
 
