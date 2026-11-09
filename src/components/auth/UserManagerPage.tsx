@@ -42,7 +42,6 @@ import {
   VIEW_ICONS,
   VIEW_GROUPS,
   DEFAULT_SECTION_PERMISSIONS,
-  FULL_SECTION_PERMISSIONS,
   parseSectionPermissions,
   parseUserPermissionLevel,
 } from "@/lib/auth";
@@ -65,6 +64,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/errors";
+import type { DbRow } from "@/lib/dbTypes";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -244,11 +245,7 @@ function PermissionsSummaryPills({ profile }: { profile: UserProfile }) {
       </span>
     );
   }
-  const perms = profile.section_permissions;
-  if (!perms)
-    return (
-      <span className="text-[11px] text-slate-400 italic">Accés complet</span>
-    );
+  const perms = profile.section_permissions ?? DEFAULT_SECTION_PERMISSIONS;
 
   const editors = ALL_VIEWS.filter((v) => perms[v] === "editor");
   const viewers = ALL_VIEWS.filter((v) => perms[v] === "viewer");
@@ -328,7 +325,7 @@ export function UserManagerPage() {
         });
         if (res.ok) {
           const json = await res.json();
-          const raw: UserProfile[] = (json.users ?? []).map((u: any) => ({
+          const raw: UserProfile[] = (json.users ?? []).map((u: DbRow) => ({
             ...u,
             role: parseUserPermissionLevel(u.role),
             section_permissions: parseSectionPermissions(
@@ -342,10 +339,10 @@ export function UserManagerPage() {
           const json = await res.json().catch(() => ({}));
           toast.error(`Error de l'API: ${json.error ?? res.statusText}`);
         }
-      } catch (apiErr: any) {
+      } catch (apiErr) {
         console.warn(
           "API /list-users no disponible, fallback a Supabase directe:",
-          apiErr.message,
+          errorMessage(apiErr),
         );
       }
       if (!usedApi) {
@@ -356,8 +353,8 @@ export function UserManagerPage() {
           .order("email");
         if (!error && data) {
           setUsers(
-            data.map((u: any) => ({
-              ...u,
+            data.map((u: DbRow) => ({
+              ...(u as UserProfile),
               email: u.email ?? "",
               role: parseUserPermissionLevel(u.role),
               section_permissions: parseSectionPermissions(u.allowed_views),
@@ -414,13 +411,14 @@ export function UserManagerPage() {
       setNewPerms({ ...DEFAULT_SECTION_PERMISSIONS });
       setShowInviteForm(false);
       await fetchUsers();
-    } catch (err: any) {
-      if (err.name === "AbortError" || err.name === "TimeoutError") {
+    } catch (err) {
+      const nomErr = err instanceof Error ? err.name : "";
+      if (nomErr === "AbortError" || nomErr === "TimeoutError") {
         toast.error(
           "La invitació ha trigat massa. Comprova la configuració SMTP de Supabase.",
         );
       } else {
-        toast.error(err.message ?? "Error desconegut");
+        toast.error(errorMessage(err, "Error desconegut"));
       }
     } finally {
       setSubmitting(false);
@@ -433,7 +431,7 @@ export function UserManagerPage() {
     setSelectedId(u.id);
     setEditMode(true);
     setEditLevel(u.role);
-    setEditPerms(u.section_permissions ?? { ...FULL_SECTION_PERMISSIONS });
+    setEditPerms(u.section_permissions ?? { ...DEFAULT_SECTION_PERMISSIONS });
     setEditOrg(u.organisation ?? "");
     setEditFullName(u.full_name ?? "");
   };
@@ -470,8 +468,8 @@ export function UserManagerPage() {
       toast.success("Usuari actualitzat");
       closeDialog();
       await fetchUsers();
-    } catch (err: any) {
-      toast.error(err.message ?? "Error actualitzant usuari");
+    } catch (err) {
+      toast.error(errorMessage(err, "Error actualitzant usuari"));
     }
   };
 
@@ -492,8 +490,8 @@ export function UserManagerPage() {
       if (!res.ok) throw new Error(json.error ?? "Error eliminant usuari");
       toast.success(`${userEmail} eliminat correctament`);
       await fetchUsers();
-    } catch (err: any) {
-      toast.error(err.message ?? "Error eliminant usuari");
+    } catch (err) {
+      toast.error(errorMessage(err, "Error eliminant usuari"));
     }
   };
 
@@ -1052,7 +1050,7 @@ export function UserManagerPage() {
                   <PermissionsMatrix
                     permissions={
                       selectedUser.section_permissions ??
-                      FULL_SECTION_PERMISSIONS
+                      DEFAULT_SECTION_PERMISSIONS
                     }
                     isAdmin={selectedUser.role === "admin"}
                     onChange={() => {}}

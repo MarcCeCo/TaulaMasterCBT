@@ -29,7 +29,7 @@ import {
   APS_SCOPE,
 } from "../../shared/helpers";
 
-(globalThis as any).WebSocket = WebSocket;
+Object.assign(globalThis, { WebSocket });
 
 const PORT = process.env.PORT || 3001;
 const TOKEN_SERVICE_SECRET = process.env.TOKEN_SERVICE_SECRET?.trim() || "";
@@ -225,7 +225,7 @@ async function cosHealth() {
 // ─── Servidor ─────────────────────────────────────────────────────────────────
 
 const server = http.createServer(async (req, res) => {
-  setCors(res);
+  setCors(req, res);
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
@@ -279,8 +279,7 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    const state =
-      Math.random().toString(36).substring(2) + Date.now().toString(36);
+    const state = crypto.randomBytes(32).toString("hex");
     pendingStates.set(state, Date.now());
     const ara = Date.now();
     for (const [k, ts] of pendingStates.entries()) {

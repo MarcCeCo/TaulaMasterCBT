@@ -212,7 +212,9 @@ export function TaulaMasterMain() {
   const setActiveSection = (section: string) => {
     try {
       sessionStorage.setItem("cbt_active_section", section);
-    } catch {}
+    } catch {
+      // ignorem: error no crític
+    }
     setActiveSectionState(section);
   };
 

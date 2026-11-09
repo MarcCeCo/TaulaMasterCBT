@@ -107,7 +107,7 @@ export interface UserProfile {
   // "admin" té accés complet; "user" té els permisos definits a section_permissions
   role: UserPermissionLevel;
   // Guardat com a JSON al camp allowed_views de Supabase.
-  // null = accés complet (per compatibilitat amb admins migrats)
+  // null = valor legacy; només els admins tenen accés complet
   section_permissions: SectionPermissions | null;
 }
 
@@ -143,22 +143,26 @@ export const isAdminRole = (role: UserPermissionLevel) => role === "admin";
 
 // Normalitza el camp `role` de Supabase al nou UserPermissionLevel.
 // Els valors legacy "viewer" i "editor" es mapegen a "user".
-export function parseUserPermissionLevel(raw: any): UserPermissionLevel {
+export function parseUserPermissionLevel(raw: unknown): UserPermissionLevel {
   if (raw === "admin") return "admin";
   return "user";
 }
 
 // Converteix el camp allowed_views de Supabase al format SectionPermissions.
 // Suporta el format antic (array AppView[]) i el nou (objecte { view: role }).
-export function parseSectionPermissions(raw: any): SectionPermissions | null {
+export function parseSectionPermissions(
+  raw: unknown,
+): SectionPermissions | null {
   if (raw === null || raw === undefined) return null;
 
   // Nou format: objecte { equips: "editor", ... }
   if (typeof raw === "object" && !Array.isArray(raw)) {
     const perms = { ...DEFAULT_SECTION_PERMISSIONS };
+    const obj = raw as Record<string, unknown>;
     for (const view of ALL_VIEWS) {
-      if (["none", "viewer", "editor"].includes(raw[view])) {
-        perms[view as AppView] = raw[view];
+      const nivell = obj[view];
+      if (nivell === "none" || nivell === "viewer" || nivell === "editor") {
+        perms[view as AppView] = nivell;
       }
     }
     return perms;
@@ -189,7 +193,9 @@ export const getSectionRoleFn =
   (view: AppView): SectionRole | "admin" => {
     if (!profile) return "none";
     if (profile.role === "admin") return "admin";
-    if (profile.section_permissions === null) return "admin";
+    // El rol admin ja s'ha resolt a dalt. Un usuari normal amb permisos
+    // absents ha de quedar bloquejat per defecte, mai obtenir accés complet.
+    if (profile.section_permissions === null) return "none";
     return profile.section_permissions[view] ?? "none";
   };
 
@@ -204,7 +210,7 @@ export const canSeeViewFn =
     if (!profile && user) return false;
     if (!profile) return false;
     if (profile.role === "admin") return true;
-    if (profile.section_permissions === null) return true;
+    if (profile.section_permissions === null) return false;
     return profile.section_permissions[view] !== "none";
   };
 
@@ -213,6 +219,6 @@ export const canEditViewFn =
   (view: AppView): boolean => {
     if (!profile) return false;
     if (profile.role === "admin") return true;
-    if (profile.section_permissions === null) return true;
+    if (profile.section_permissions === null) return false;
     return profile.section_permissions[view] === "editor";
   };

@@ -36,8 +36,10 @@ import { AddFieldDialog } from "./AddFieldDialog";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
+import { errorMessage } from "@/lib/errors";
+import type { SheetRow } from "@/lib/dbTypes";
 
-interface Props {}
+type Props = Record<string, never>;
 
 const ROW_H = 38;
 const OVERSCAN = 8;
@@ -179,7 +181,7 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
       const XLSX = await getXLSX();
       const wb = XLSX.read(buf);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any>(ws);
+      const rows = XLSX.utils.sheet_to_json<SheetRow>(ws);
 
       const toAdd: FieldMeta[] = rows
         .map((r) => {
@@ -233,8 +235,8 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
         parts.push(`${duplicates} duplicats importats amb el sufix (DUPLICAT)`);
       if (inserted > 0 || duplicates > 0) toast.success(parts.join(" · "));
       else toast.warning("Cap camp nou per importar");
-    } catch (e: any) {
-      toast.error(`Error en importar: ${e?.message ?? "error desconegut"}`);
+    } catch (e) {
+      toast.error(`Error en importar: ${errorMessage(e, "error desconegut")}`);
     }
   };
 
@@ -577,8 +579,8 @@ export function FieldsDictionaryDialog(_props: Props = {}) {
               await addField(f);
               toast.success("Camp creat");
             }
-          } catch (e: any) {
-            toast.error(e?.message ?? "Error desant camp");
+          } catch (e) {
+            toast.error(errorMessage(e, "Error desant camp"));
             throw e; // re-llança perquè AddFieldDialog pugui fer setSaving(false)
           }
         }}

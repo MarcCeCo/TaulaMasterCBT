@@ -4,6 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 
 const ALLOWED_ORIGIN = process.env.APP_URL ?? "http://localhost:5173";
 
+interface PerfilRow {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  role: string;
+  allowed_views: unknown;
+  organisation: string | null;
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
   res.setHeader("Access-Control-Allow-Headers", "authorization, content-type");
@@ -58,8 +67,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Si algun perfil no té email (la columna pot ser null si no hi ha trigger),
   // completem amb les dades de auth.users via l'Admin API.
   const missingEmailIds = (profiles ?? [])
-    .filter((p: any) => !p.email)
-    .map((p: any) => p.id);
+    .filter((p: PerfilRow) => !p.email)
+    .map((p: PerfilRow) => p.id);
 
   const authEmailMap: Record<string, string> = {};
 
@@ -79,7 +88,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const users = (profiles ?? []).map((p: any) => ({
+  const users = (profiles ?? []).map((p: PerfilRow) => ({
     id: p.id,
     email: p.email || authEmailMap[p.id] || "",
     full_name: p.full_name ?? null,

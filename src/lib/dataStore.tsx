@@ -34,10 +34,12 @@ import { type GubimNode, isValidCode, parentCode } from "@/hooks/useGubimClass";
 import { type Equipment } from "@/hooks/useEquipments";
 
 import { supaFetch as supa } from "@/lib/supaFetch";
+import { errorMessage } from "@/lib/errors";
+import type { DbRow } from "@/lib/dbTypes";
 
 // ─── Conversors ──────────────────────────────────────────────────────────────
 
-const toEquip = (row: any): Equipment => ({
+const toEquip = (row: DbRow): Equipment => ({
   id: row.id,
   gubimCode: row.gubim_code,
   equipCode: row.equip_code ?? "",
@@ -52,7 +54,7 @@ const toEquip = (row: any): Equipment => ({
 });
 
 const equipToRow = (e: Equipment) => {
-  const row: any = {
+  const row: Record<string, unknown> = {
     id: e.id,
     gubim_code: e.gubimCode,
     // Enviem string buit en lloc de null per evitar conflictes amb
@@ -72,7 +74,7 @@ const equipToRow = (e: Equipment) => {
   return row;
 };
 
-const toMeta = (row: any): FieldMeta => ({
+const toMeta = (row: DbRow): FieldMeta => ({
   col: row.col,
   codi: row.codi ?? null,
   taula_assoc: row.taula_assoc ?? null,
@@ -100,7 +102,7 @@ const fieldToRow = (f: FieldMeta) => ({
   // Nota: classificador es calcula localment (autoClassifierForCodi) i NO s'envia a Supabase
 });
 
-const toNode = (row: any): GubimNode => ({
+const toNode = (row: DbRow): GubimNode => ({
   id: row.id,
   code: row.code,
   name: row.name,
@@ -221,7 +223,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         "GET",
         `gubim_class?select=*&order=code.asc&offset=0&limit=${PAGE}`,
       );
-      let all: any[];
+      let all: DbRow[];
       if (firstPage.length < PAGE) {
         // Cas comú: menys de 1000 nodes → una sola petició
         all = firstPage;
@@ -229,7 +231,7 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         // Més de 1000 nodes: calculem pàgines addicionals i les fem en paral·lel
         // (no sabem el total exacte però sabem que n'hi ha almenys 1000)
         // Fem pàgines addicionals fins que en retorni menys de PAGE
-        const extraPages: any[][] = [];
+        const extraPages: DbRow[][] = [];
         let offset = PAGE;
         let keepFetching = true;
         while (keepFetching) {
@@ -262,8 +264,8 @@ export function DataStoreProvider({ children }: { children: ReactNode }) {
         setRawFields(fieldsData.map(toMeta));
         setGubimRaw(all.map(toNode));
       });
-    } catch (e: any) {
-      setError(e?.message ?? "Error de xarxa");
+    } catch (e) {
+      setError(errorMessage(e, "Error de xarxa"));
     } finally {
       setLoading(false);
       loadingRef.current = false;
