@@ -113,3 +113,18 @@ El `server.ts` original (monolític) **es pot conservar** mentre no hi ha proble
 2. Desplega `visor3d` i elimina el `/sync` de l'agent monolític
 3. Desplega `bim-sync` i `crear-masters` quan convingui
 4. Elimina l'agent monolític quan tots els serveis funcionin
+
+
+## Seguretat i CORS
+
+Els serveis independents no habiliten CORS de manera oberta. Defineix `ALLOWED_ORIGINS`
+a cada servei que rebi crides des del navegador, amb els orígens exactes separats per comes.
+Per exemple:
+
+```env
+ALLOWED_ORIGINS=https://taula-master-cbt.vercel.app,http://localhost:5173
+```
+
+No incloguis una barra final als orígens. Les crides server-to-server no depenen de CORS.
+Els endpoints `POST /bim-sync` i `POST /crear-masters` requereixen sempre `AGENT_SECRET`;
+si el secret no està configurat, les peticions es rebutgen.

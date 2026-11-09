@@ -12,9 +12,10 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
+import { type JsonAny, errorMessage } from "./tipus";
 
 // Node.js < 22 no té WebSocket natiu — el client de Supabase el necessita
-(globalThis as any).WebSocket = WebSocket;
+Object.assign(globalThis, { WebSocket });
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -305,7 +306,10 @@ export async function obteTokenViaServei(): Promise<string> {
       }
       ultimError = new Error(`token-service ${resp.status}: ${detall}`);
     } catch (err) {
-      if (err instanceof ApsReauthError || (err as any)?.noReintentar)
+      if (
+        err instanceof ApsReauthError ||
+        (err as { noReintentar?: boolean })?.noReintentar
+      )
         throw err;
       ultimError = err instanceof Error ? err : new Error(String(err));
     }
@@ -360,14 +364,14 @@ async function obteArrelCarpetes(
   hubId: string,
   projectId: string,
   token: string,
-): Promise<any[]> {
+): Promise<JsonAny[]> {
   const resp = await fetch(
     `${APS_BASE}/project/v1/hubs/${hubId}/projects/${projectId}/topFolders`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!resp.ok)
     throw new Error(`Error obtenint carpetes arrel: ${resp.status}`);
-  const json = (await resp.json()) as { data: any[] };
+  const json = (await resp.json()) as { data: JsonAny[] };
   return json.data ?? [];
 }
 
@@ -375,8 +379,8 @@ async function obteContingutCarpeta(
   projectId: string,
   carpetaId: string,
   token: string,
-): Promise<any[]> {
-  const tots: any[] = [];
+): Promise<JsonAny[]> {
+  const tots: JsonAny[] = [];
   let url: string | null =
     `${APS_BASE}/data/v1/projects/${projectId}/folders/${carpetaId}/contents?page[limit]=200`;
 
@@ -386,7 +390,7 @@ async function obteContingutCarpeta(
     });
     if (!resp.ok) break;
     const json = (await resp.json()) as {
-      data: any[];
+      data: JsonAny[];
       links?: { next?: { href: string } };
     };
     tots.push(...(json.data ?? []));
@@ -401,24 +405,24 @@ async function trobaSubcarpeta(
   carpetaParentId: string,
   nom: string,
   token: string,
-): Promise<any | null> {
+): Promise<JsonAny | null> {
   const contingut = await obteContingutCarpeta(
     projectId,
     carpetaParentId,
     token,
   );
-  const carpetes = contingut.filter((item: any) => item.type === "folders");
+  const carpetes = contingut.filter((item: JsonAny) => item.type === "folders");
 
   const trobada =
     carpetes.find(
-      (item: any) =>
+      (item: JsonAny) =>
         item.attributes?.displayName?.toLowerCase() === nom.toLowerCase(),
     ) ?? null;
 
   if (!trobada && carpetes.length > 0) {
     // Mostra les subcarpetes reals per ajudar a diagnosticar noms incorrectes
     const noms = carpetes.map(
-      (c: any) => `"${c.attributes?.displayName ?? "(buit)"}"`,
+      (c: JsonAny) => `"${c.attributes?.displayName ?? "(buit)"}"`,
     );
     console.warn(
       `     ↳ Subcarpetes trobades (${carpetes.length}): ${noms.join(", ")}`,
@@ -462,7 +466,7 @@ async function extrauSistemes(
   // Busca la carpeta "Archivos de proyecto" o usa la primera carpeta disponible
   const carpetaArxius =
     carpetesArrel.find(
-      (c: any) =>
+      (c: JsonAny) =>
         c.attributes?.displayName?.toLowerCase().includes("archivo") ||
         c.attributes?.displayName?.toLowerCase().includes("project file"),
     ) ?? carpetesArrel[0];
@@ -477,7 +481,7 @@ async function extrauSistemes(
 
   const carpetesSistema = (
     await obteContingutCarpeta(projectId, carpetaArxius.id, token)
-  ).filter((item: any) => item.type === "folders");
+  ).filter((item: JsonAny) => item.type === "folders");
 
   const sistemes: SistemaTrobat[] = [];
 
@@ -494,13 +498,13 @@ async function extrauSistemes(
 
     const carpetesInstallacio = (
       await obteContingutCarpeta(projectId, carpetaSis.id, token)
-    ).filter((item: any) => item.type === "folders");
+    ).filter((item: JsonAny) => item.type === "folders");
 
     // LOG DE DIAGNÒSTIC: llista totes les subcarpetes trobades per a aquest sistema
     console.log(
       `  🔎 Sistema "${nomSistema}" (${nomCarpetaSistema}) → ${carpetesInstallacio.length} subcarpeta(es):`,
     );
-    carpetesInstallacio.forEach((c: any) =>
+    carpetesInstallacio.forEach((c: JsonAny) =>
       console.log(
         `     - "${c.attributes?.displayName ?? "(sense nom)"}" [id: ${c.id}]`,
       ),
@@ -539,7 +543,7 @@ async function extrauSistemes(
         token,
       );
       const fitxersRvt = contingutBim.filter(
-        (item: any) =>
+        (item: JsonAny) =>
           item.type === "items" &&
           item.attributes?.displayName?.toLowerCase().endsWith(".rvt"),
       );
@@ -579,21 +583,21 @@ async function extrauSistemes(
         );
       };
 
-      const fitxersMaster = fitxersRvt.filter((f: any) =>
+      const fitxersMaster = fitxersRvt.filter((f: JsonAny) =>
         conteParaula(f.attributes?.displayName ?? "", "MASTER"),
       );
-      const fitxersMep = fitxersRvt.filter((f: any) =>
+      const fitxersMep = fitxersRvt.filter((f: JsonAny) =>
         conteParaula(f.attributes?.displayName ?? "", "MEP"),
       );
-      const fitxersEnt = fitxersRvt.filter((f: any) =>
+      const fitxersEnt = fitxersRvt.filter((f: JsonAny) =>
         conteParaula(f.attributes?.displayName ?? "", "ENT"),
       );
-      const fitxersEst = fitxersRvt.filter((f: any) =>
+      const fitxersEst = fitxersRvt.filter((f: JsonAny) =>
         conteParaula(f.attributes?.displayName ?? "", "EST"),
       );
 
       // Fitxers que no encaixen en cap disciplina coneguda
-      const fitxersAltres = fitxersRvt.filter((f: any) => {
+      const fitxersAltres = fitxersRvt.filter((f: JsonAny) => {
         const nom = f.attributes?.displayName ?? "";
         return (
           !conteParaula(nom, "MASTER") &&
@@ -614,9 +618,9 @@ async function extrauSistemes(
       }
 
       // Obté URN de tots els fitxers de cada disciplina en paral·lel.
-      const obteUrns = async (fitxers: any[]): Promise<string[]> => {
+      const obteUrns = async (fitxers: JsonAny[]): Promise<string[]> => {
         const urns = await Promise.all(
-          fitxers.map((f: any) => obteUrnFitxer(projectId, f.id, token)),
+          fitxers.map((f: JsonAny) => obteUrnFitxer(projectId, f.id, token)),
         );
         return urns.filter((u): u is string => !!u);
       };
@@ -649,7 +653,7 @@ async function extrauSistemes(
       ];
       const lastModified =
         allFitxers
-          .map((f: any) => f.attributes?.lastModifiedTime ?? "")
+          .map((f: JsonAny) => f.attributes?.lastModifiedTime ?? "")
           .sort()
           .reverse()[0] ?? "";
 
@@ -889,8 +893,8 @@ export async function executaAgent(): Promise<ResultatSync> {
     );
 
     await sincronitzaAmbSupabase(supabase, sistemesTobrats, resultat);
-  } catch (err: any) {
-    const msg = err?.message ?? String(err);
+  } catch (err) {
+    const msg = errorMessage(err);
     console.error(`❌ Error fatal: ${msg}`);
     resultat.errors.push(`[FATAL] ${msg}`);
   }
@@ -922,10 +926,10 @@ export async function executaAgent(): Promise<ResultatSync> {
       },
     });
     console.log("📝 Log escrit a visor3d_sync_log");
-  } catch (logErr: any) {
+  } catch (logErr) {
     console.error(
       "⚠️  No s'ha pogut escriure el log a Supabase:",
-      logErr?.message ?? logErr,
+      errorMessage(logErr),
     );
   }
 

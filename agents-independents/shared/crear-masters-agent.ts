@@ -21,8 +21,9 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFile } from "child_process";
 import WebSocket from "ws";
+import { type JsonAny, errorMessage } from "./tipus";
 
-(globalThis as any).WebSocket = WebSocket;
+Object.assign(globalThis, { WebSocket });
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 

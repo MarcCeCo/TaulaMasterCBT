@@ -15,8 +15,9 @@ import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import * as fs from "fs";
 import * as path from "path";
 import WebSocket from "ws";
+import { type JsonAny, errorMessage } from "./tipus";
 
-(globalThis as any).WebSocket = WebSocket;
+Object.assign(globalThis, { WebSocket });
 
 // ─── Tipus ────────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,7 @@ async function obteHubIProjecte(
     },
   );
   if (!rHubs.ok) throw new Error(`Error obtenint hubs: ${rHubs.status}`);
-  const hubs = ((await rHubs.json()) as any).data ?? [];
+  const hubs = ((await rHubs.json()) as JsonAny).data ?? [];
   if (!hubs.length) return null;
   const hubId = hubs[0].id;
 
@@ -116,7 +117,7 @@ async function obteHubIProjecte(
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!rProj.ok) throw new Error(`Error obtenint projectes: ${rProj.status}`);
-  const projectes = ((await rProj.json()) as any).data ?? [];
+  const projectes = ((await rProj.json()) as JsonAny).data ?? [];
   if (!projectes.length) return null;
   const projectId = projectes[0].id;
 
@@ -127,10 +128,10 @@ async function obteHubIProjecte(
   );
   if (!rFolders.ok)
     throw new Error(`Error obtenint carpetes: ${rFolders.status}`);
-  const folders = ((await rFolders.json()) as any).data ?? [];
+  const folders = ((await rFolders.json()) as JsonAny).data ?? [];
 
   const carpeta = folders.find(
-    (f: any) =>
+    (f: JsonAny) =>
       cfg.accCarpetaMasters.toLowerCase() ===
       (f.attributes?.name ?? "").toLowerCase(),
   );
@@ -147,13 +148,13 @@ async function obteContingutCarpeta(
   token: string,
   projectId: string,
   folderId: string,
-): Promise<any[]> {
+): Promise<JsonAny[]> {
   const resp = await fetch(
     `https://developer.api.autodesk.com/data/v1/projects/${projectId}/folders/${folderId}/contents`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!resp.ok) throw new Error(`Error llegint carpeta: ${resp.status}`);
-  return ((await resp.json()) as any).data ?? [];
+  return ((await resp.json()) as JsonAny).data ?? [];
 }
 
 async function obteVersionIdPerNom(
@@ -164,7 +165,7 @@ async function obteVersionIdPerNom(
 ): Promise<string | null> {
   const contingut = await obteContingutCarpeta(token, projectId, folderId);
   const item = contingut.find(
-    (x: any) =>
+    (x: JsonAny) =>
       x.type === "items" &&
       normalitzaNom(x.attributes?.displayName ?? "") ===
         normalitzaNom(nomFitxer),
@@ -176,7 +177,7 @@ async function obteVersionIdPerNom(
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!resp.ok) return null;
-  return ((await resp.json()) as any).data?.id ?? null;
+  return ((await resp.json()) as JsonAny).data?.id ?? null;
 }
 
 // ─── Puja fitxer a ACC ────────────────────────────────────────────────────────
@@ -213,7 +214,7 @@ async function pujaFitxerACC(
     },
   );
   if (!rStorage.ok) throw new Error(`Error storage: ${rStorage.status}`);
-  const objectId = ((await rStorage.json()) as any).data.id as string;
+  const objectId = ((await rStorage.json()) as JsonAny).data.id as string;
   const parts = objectId.replace("urn:adsk.objects:os.object:", "");
   const bucket = parts.split("/")[0];
   const objKey = parts.split("/").slice(1).join("/");
@@ -224,7 +225,7 @@ async function pujaFitxerACC(
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!rSign.ok) throw new Error(`Error signed URL: ${rSign.status}`);
-  const signData = (await rSign.json()) as any;
+  const signData = (await rSign.json()) as JsonAny;
   const uploadUrl = signData.urls[0];
   const uploadKey = signData.uploadKey ?? "";
 
@@ -251,7 +252,7 @@ async function pujaFitxerACC(
   const contingut = await obteContingutCarpeta(token, projectId, folderId);
   const itemExistent =
     contingut.find(
-      (x: any) => x.attributes?.displayName === nom && x.type === "items",
+      (x: JsonAny) => x.attributes?.displayName === nom && x.type === "items",
     )?.id ?? null;
 
   if (itemExistent) {
@@ -283,7 +284,7 @@ async function pujaFitxerACC(
       },
     );
     if (!rVer.ok) throw new Error(`Error versió: ${rVer.status}`);
-    const d = (await rVer.json()) as any;
+    const d = (await rVer.json()) as JsonAny;
     return { objectId, itemId: itemExistent, versionId: d.data.id };
   } else {
     const rItem = await fetch(
@@ -327,7 +328,7 @@ async function pujaFitxerACC(
       },
     );
     if (!rItem.ok) throw new Error(`Error item: ${rItem.status}`);
-    const d = (await rItem.json()) as any;
+    const d = (await rItem.json()) as JsonAny;
     return {
       objectId,
       itemId: d.data.id,
@@ -345,7 +346,7 @@ async function registraXRefs(
   masterVersionId: string,
   nomsDisciplines: string[],
 ): Promise<string | null> {
-  const refsData: any[] = [];
+  const refsData: JsonAny[] = [];
   for (const nom of nomsDisciplines) {
     const verId = await obteVersionIdPerNom(token, projectId, folderId, nom);
     if (verId) {
@@ -381,7 +382,7 @@ async function registraXRefs(
     },
   );
   if (!resp.ok) return null;
-  return ((await resp.json()) as any).data?.id ?? null;
+  return ((await resp.json()) as JsonAny).data?.id ?? null;
 }
 
 // ─── Cerca fitxers al USB ─────────────────────────────────────────────────────
@@ -467,7 +468,7 @@ export async function executaBimSync(
         ctx.projectId,
         ctx.folderId,
       );
-      const disciplines = contingut.filter((item: any) => {
+      const disciplines = contingut.filter((item: JsonAny) => {
         const nom = (item.attributes?.displayName ?? "").toUpperCase();
         return (
           item.type === "items" &&

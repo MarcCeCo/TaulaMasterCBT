@@ -4,6 +4,7 @@ import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/input";
 import logo from "@/assets/Simbol_Web2.png";
 import { Eye, EyeOff, Loader2, CheckCircle2 } from "lucide-react";
+import { errorMessage } from "@/lib/errors";
 
 interface Props {
   type: "recovery" | "invite";
@@ -100,8 +101,8 @@ export function UpdatePasswordPage({ type }: Props) {
 
       // Reload dur: força AuthProvider a arrencar des de zero sense sessió.
       window.location.replace("/");
-    } catch (err: any) {
-      setError(err?.message ?? "Error de xarxa. Torna-ho a intentar.");
+    } catch (err) {
+      setError(errorMessage(err, "Error de xarxa. Torna-ho a intentar."));
       setLoading(false);
     }
   };

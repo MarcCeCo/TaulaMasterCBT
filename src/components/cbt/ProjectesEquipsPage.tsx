@@ -71,6 +71,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
 import type { UserProfile, ProjectRole } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
+import { errorMessage } from "@/lib/errors";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -506,8 +507,8 @@ export function ProjectesEquipsPage({
       setNouCodisInstallacio([{ codi: "", nom: "" }]);
       setNouProjecteError(null);
       toast.success("Projecte creat");
-    } catch (e: any) {
-      setNouProjecteError(e?.message ?? "Error en crear el projecte.");
+    } catch (e) {
+      setNouProjecteError(errorMessage(e, "Error en crear el projecte."));
     }
   }
 
@@ -637,8 +638,10 @@ export function ProjectesEquipsPage({
           ? "Projecte i tags actualitzats — els tags han tornat a estat pendent"
           : "Projecte actualitzat",
       );
-    } catch (e: any) {
-      setEditProjecteError(e?.message ?? "Error en actualitzar el projecte.");
+    } catch (e) {
+      setEditProjecteError(
+        errorMessage(e, "Error en actualitzar el projecte."),
+      );
     }
   }
 
@@ -694,8 +697,8 @@ export function ProjectesEquipsPage({
     try {
       await toggleArxivar(id);
       toast.success("Estat del projecte actualitzat");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en canviar l'estat.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en canviar l'estat."));
     }
   }
 
@@ -707,8 +710,8 @@ export function ProjectesEquipsPage({
         setVista("llistat");
       }
       toast.success("Projecte eliminat");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en eliminar el projecte.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en eliminar el projecte."));
     }
   }
 
@@ -797,8 +800,8 @@ export function ProjectesEquipsPage({
       setDialogNouTag(false);
       setEquipSearch("");
       toast.success("Tag creat");
-    } catch (e: any) {
-      setTagError(e?.message ?? "Error en crear el tag.");
+    } catch (e) {
+      setTagError(errorMessage(e, "Error en crear el tag."));
     }
   }
 
@@ -878,8 +881,8 @@ export function ProjectesEquipsPage({
       });
       setDialogEditTag(null);
       toast.success("Tag actualitzat");
-    } catch (e: any) {
-      setTagError(e?.message ?? "Error en actualitzar el tag.");
+    } catch (e) {
+      setTagError(errorMessage(e, "Error en actualitzar el tag."));
     }
   }
 
@@ -887,8 +890,8 @@ export function ProjectesEquipsPage({
     try {
       await deleteTag(projecteActiu!, tagId);
       toast.success("Tag eliminat");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en eliminar el tag.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en eliminar el tag."));
     }
   }
 
@@ -947,8 +950,8 @@ export function ProjectesEquipsPage({
       }
 
       toast.success(nouStatus === "validat" ? "Tag validat ✓" : "Tag rebutjat");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en validar el tag.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en validar el tag."));
     }
   }
 
@@ -958,8 +961,8 @@ export function ProjectesEquipsPage({
   ) {
     try {
       await updateTag(projecteActiu!, tagId, { fieldValues: values });
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en guardar els valors.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en guardar els valors."));
     }
   }
 
@@ -983,8 +986,8 @@ export function ProjectesEquipsPage({
       );
       setSelectedTagIds(new Set());
       setDialogMultiEdit(false);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en guardar els valors.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en guardar els valors."));
     }
   }
 

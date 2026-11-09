@@ -149,103 +149,108 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ── 2. Subscripció a canvis d'auth ───────────────────────────────────
       const {
         data: { subscription },
-      } = supabase.auth.onAuthStateChange(async (event, session) => {
-        if (!mounted) return;
-
+      } = supabase.auth.onAuthStateChange((event, session) => {
+        // Supabase executa aquest callback sota un lock intern d'auth. No hi
+        // fem crides asíncrones al client Supabase per evitar deadlocks.
         tokenRef.current = session?.access_token ?? "";
+        window.setTimeout(() => {
+          void (async () => {
+            if (!mounted) return;
 
-        // INITIAL_SESSION — només rellevant a /auth/callback
-        if (event === "INITIAL_SESSION") {
-          if (isAuthCallbackUrl()) {
+            // INITIAL_SESSION — només rellevant a /auth/callback
+            if (event === "INITIAL_SESSION") {
+              if (isAuthCallbackUrl()) {
+                const u2 = session?.user ?? null;
+                setUser(u2);
+                if (u2) {
+                  const gen = sessionGenRef.current;
+                  await loadProfile(u2, gen, (p) => {
+                    if (mounted) setProfile(p);
+                  });
+                }
+                if (mounted) setLoading(false);
+              }
+              return;
+            }
+
+            // SIGNED_OUT — només incrementem la generació si signOut() no ho
+            // ha fet ja. Si ho hem fet nosaltres (signOutHandledRef = true),
+            // simplement resetegem el flag i netegem l'estat sense incrementar.
+            if (event === "SIGNED_OUT") {
+              if (signOutHandledRef.current) {
+                // signOut() ja ha incrementat la generació i netejat l'estat.
+                // Només resetegem el flag perquè el proper signOut funcioni bé.
+                signOutHandledRef.current = false;
+              } else {
+                // Sessió tancada externament (des d'una altra pestanya, expiració, etc.)
+                sessionGenRef.current += 1;
+              }
+              needsProfileRefreshRef.current = false;
+              lastUserIdRef.current = null;
+              tokenRef.current = "";
+              oblidaApsToken(); // no reutilitzar el token APS amb un altre usuari
+              if (mounted) {
+                setUser(null);
+                setProfile(null);
+                setLoading(false);
+              }
+              return;
+            }
+
+            // SIGNED_IN — nou usuari. La generació ja és la correcta
+            // (incrementada per signOut() o per SIGNED_OUT extern).
+            if (event === "SIGNED_IN") {
+              const u2 = session?.user ?? null;
+              // supabase-js re-emet SIGNED_IN cada cop que la pestanya torna a ser visible.
+              // Si és el mateix usuari que ja tenim carregat, no cal tornar a carregar res.
+              if (u2 && u2.id === lastUserIdRef.current) return;
+              lastUserIdRef.current = u2?.id ?? null;
+              if (mounted) setUser(u2);
+              if (u2) {
+                const gen = sessionGenRef.current;
+                await loadProfile(u2, gen, (p) => {
+                  if (mounted) setProfile(p);
+                });
+                // Refresca el token APS en segon pla — silenciós, no bloqueja el login
+                prefetchApsToken(session?.access_token);
+              } else {
+                if (mounted) setProfile(null);
+              }
+              if (mounted) setLoading(false);
+              return;
+            }
+
+            // TOKEN_REFRESHED — Supabase refresca el token automàticament (~50 min).
+            // Si la pàgina és oculta, ho diferim a visibilitychange.
+            if (event === "TOKEN_REFRESHED") {
+              if (document.hidden) {
+                needsProfileRefreshRef.current = true;
+              } else {
+                const u2 = session?.user ?? null;
+                if (u2) {
+                  const gen = sessionGenRef.current;
+                  await loadProfile(u2, gen, (p) => {
+                    if (mounted) setProfile(p);
+                  });
+                }
+              }
+              return;
+            }
+
+            // Qualsevol altre event (USER_UPDATED, PASSWORD_RECOVERY…)
             const u2 = session?.user ?? null;
-            setUser(u2);
+            if (mounted) setUser(u2);
             if (u2) {
               const gen = sessionGenRef.current;
               await loadProfile(u2, gen, (p) => {
                 if (mounted) setProfile(p);
               });
+            } else {
+              if (mounted) setProfile(null);
             }
             if (mounted) setLoading(false);
-          }
-          return;
-        }
-
-        // SIGNED_OUT — només incrementem la generació si signOut() no ho
-        // ha fet ja. Si ho hem fet nosaltres (signOutHandledRef = true),
-        // simplement resetegem el flag i netegem l'estat sense incrementar.
-        if (event === "SIGNED_OUT") {
-          if (signOutHandledRef.current) {
-            // signOut() ja ha incrementat la generació i netejat l'estat.
-            // Només resetegem el flag perquè el proper signOut funcioni bé.
-            signOutHandledRef.current = false;
-          } else {
-            // Sessió tancada externament (des d'una altra pestanya, expiració, etc.)
-            sessionGenRef.current += 1;
-          }
-          needsProfileRefreshRef.current = false;
-          lastUserIdRef.current = null;
-          tokenRef.current = "";
-          oblidaApsToken(); // no reutilitzar el token APS amb un altre usuari
-          if (mounted) {
-            setUser(null);
-            setProfile(null);
-            setLoading(false);
-          }
-          return;
-        }
-
-        // SIGNED_IN — nou usuari. La generació ja és la correcta
-        // (incrementada per signOut() o per SIGNED_OUT extern).
-        if (event === "SIGNED_IN") {
-          const u2 = session?.user ?? null;
-          // supabase-js re-emet SIGNED_IN cada cop que la pestanya torna a ser visible.
-          // Si és el mateix usuari que ja tenim carregat, no cal tornar a carregar res.
-          if (u2 && u2.id === lastUserIdRef.current) return;
-          lastUserIdRef.current = u2?.id ?? null;
-          if (mounted) setUser(u2);
-          if (u2) {
-            const gen = sessionGenRef.current;
-            await loadProfile(u2, gen, (p) => {
-              if (mounted) setProfile(p);
-            });
-            // Refresca el token APS en segon pla — silenciós, no bloqueja el login
-            prefetchApsToken(session?.access_token);
-          } else {
-            if (mounted) setProfile(null);
-          }
-          if (mounted) setLoading(false);
-          return;
-        }
-
-        // TOKEN_REFRESHED — Supabase refresca el token automàticament (~50 min).
-        // Si la pàgina és oculta, ho diferim a visibilitychange.
-        if (event === "TOKEN_REFRESHED") {
-          if (document.hidden) {
-            needsProfileRefreshRef.current = true;
-          } else {
-            const u2 = session?.user ?? null;
-            if (u2) {
-              const gen = sessionGenRef.current;
-              await loadProfile(u2, gen, (p) => {
-                if (mounted) setProfile(p);
-              });
-            }
-          }
-          return;
-        }
-
-        // Qualsevol altre event (USER_UPDATED, PASSWORD_RECOVERY…)
-        const u2 = session?.user ?? null;
-        if (mounted) setUser(u2);
-        if (u2) {
-          const gen = sessionGenRef.current;
-          await loadProfile(u2, gen, (p) => {
-            if (mounted) setProfile(p);
-          });
-        } else {
-          if (mounted) setProfile(null);
-        }
-        if (mounted) setLoading(false);
+          })();
+        }, 0);
       });
 
       // ── 3. visibilitychange ──────────────────────────────────────────────

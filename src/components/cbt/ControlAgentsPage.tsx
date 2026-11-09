@@ -1062,7 +1062,8 @@ function LogsTable({
   const toggleExpandit = (id: string) =>
     setExpandit((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
 
@@ -2302,9 +2303,9 @@ export function ControlAgentsPage() {
 
   async function executaAgentVisor3D() {
     const agent = AGENTS_CONFIG[0];
-    const agentUrl = (import.meta.env as any)[agent.agentUrlEnv] as
-      | string
-      | undefined;
+    const agentUrl = (import.meta.env as Record<string, string | undefined>)[
+      agent.agentUrlEnv
+    ] as string | undefined;
 
     if (!agentUrl) {
       setTriggerMsg({

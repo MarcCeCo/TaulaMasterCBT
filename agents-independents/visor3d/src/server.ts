@@ -19,7 +19,7 @@ import WebSocket from "ws";
 import { executaAgent } from "../../shared/agent";
 import { setCors, autoritzaSync } from "../../shared/helpers";
 
-(globalThis as any).WebSocket = WebSocket;
+Object.assign(globalThis, { WebSocket });
 
 const PORT = process.env.PORT || 3002;
 const AGENT_SECRET = process.env.AGENT_SECRET || "";
@@ -27,7 +27,7 @@ const AGENT_SECRET = process.env.AGENT_SECRET || "";
 let agentEnExecucio = false;
 
 const server = http.createServer(async (req, res) => {
-  setCors(res);
+  setCors(req, res);
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();

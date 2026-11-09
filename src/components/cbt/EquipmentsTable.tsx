@@ -47,6 +47,7 @@ import { exportRosmiman } from "@/lib/exportRosmiman";
 import { useAuth } from "@/lib/auth";
 import { useDebounce } from "@/hooks/useDebounce";
 import { REVIT_CATEGORIES_FLAT } from "./EquipmentFormDialog";
+import type { SheetRow } from "@/lib/dbTypes";
 
 const GROUP_COLORS = [
   "border-l-violet-500 bg-violet-50/60 dark:bg-violet-950/30",
@@ -495,7 +496,7 @@ export function EquipmentsTable() {
     const XLSX = await import("xlsx");
     const allCols = Array.from(new Set(items.flatMap((e) => e.fieldCols)));
     const rows = items.map((e) => {
-      const base: Record<string, any> = {
+      const base: Record<string, unknown> = {
         GuBIMClass: e.gubimCode,
         "Codi equip": e.equipCode,
         "Nom equip": e.equipName,
@@ -532,7 +533,7 @@ export function EquipmentsTable() {
         const XLSX = await import("xlsx");
         const wb = XLSX.read(buf);
         const ws = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<any>(ws);
+        const rows = XLSX.utils.sheet_to_json<SheetRow>(ws);
 
         // Build a map of equipCode -> equipName from the imported rows (for parent lookup)
         // Do this BEFORE parsing so the map is complete regardless of row order

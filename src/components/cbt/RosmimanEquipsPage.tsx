@@ -38,6 +38,7 @@ import { cn } from "@/lib/utils";
 import { useProjectes, type RosmimanEquip } from "@/lib/useProjectes";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
+import { errorMessage } from "@/lib/errors";
 
 // Regex del format de TAG vàlid: XXXXX_YYYYY_NNNL
 // XXXXX = codi instal·lació (5 alfanumèrics)
@@ -146,7 +147,7 @@ export function RosmimanEquipsPage() {
       const XLSX = await getXLSX();
       const wb = XLSX.read(data, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows: any[][] = XLSX.utils.sheet_to_json(ws, {
+      const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, {
         header: 1,
         defval: "",
       });
@@ -189,8 +190,8 @@ export function RosmimanEquipsPage() {
         `Importació completada: ${inserted} nous, ${skipped} ja existien.`,
       );
       setImportPreview(null);
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en la importació.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en la importació."));
     } finally {
       setImportLoading(false);
     }
@@ -200,8 +201,8 @@ export function RosmimanEquipsPage() {
     try {
       await deleteRosmimanEquip(equip.id);
       toast.success("Equip eliminat.");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en eliminar l'equip.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en eliminar l'equip."));
     }
     setDialogEsborrarUn(null);
   }
@@ -210,8 +211,8 @@ export function RosmimanEquipsPage() {
     try {
       await clearRosmimanEquips();
       toast.success("Llistat buidat.");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Error en buidar el llistat.");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error en buidar el llistat."));
     }
     setDialogEsborrarTot(false);
   }

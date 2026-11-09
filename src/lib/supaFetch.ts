@@ -10,13 +10,15 @@
  *  3. Errors descriptius (igual que abans).
  */
 
+import type { DbRow } from "@/lib/dbTypes";
+
 const SUPA_URL = (import.meta.env.VITE_SUPABASE_URL as string).trim();
 const SUPA_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string).trim();
 
 // ─── Deduplicació de GETs en vol ─────────────────────────────────────────────
-// Clau: `${token}|GET|${path}` → Promise<any[]>
+// Clau: `${token}|GET|${path}` → Promise<DbRow[]>
 // S'elimina de la Map quan la Promise es resol o rebutja.
-const _inFlight = new Map<string, Promise<any[]>>();
+const _inFlight = new Map<string, Promise<DbRow[]>>();
 
 export async function supaFetch(
   token: string,
@@ -24,7 +26,7 @@ export async function supaFetch(
   path: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
-): Promise<any[]> {
+): Promise<DbRow[]> {
   // Deduplicació: només per a GETs sense body
   if (method === "GET") {
     const key = `${token}|GET|${path}`;
@@ -49,7 +51,7 @@ async function _doFetch(
   path: string,
   body?: unknown,
   extraHeaders?: Record<string, string>,
-): Promise<any[]> {
+): Promise<DbRow[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
 
@@ -60,10 +62,7 @@ async function _doFetch(
       Authorization: `Bearer ${token}`,
       apikey: SUPA_KEY,
       "Content-Type": "application/json",
-      Prefer: "return=representation",
-      // PERF: sol·licitem compressió HTTP sempre que sigui possible
-      "Accept-Encoding": "gzip, deflate, br",
-      ...extraHeaders,
+      Prefer: extraHeaders?.Prefer ?? "return=representation",
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   }).finally(() => clearTimeout(timeout));
