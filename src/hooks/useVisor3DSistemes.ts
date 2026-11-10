@@ -17,12 +17,8 @@ export interface Installacio {
   nom: string;
   descripcio?: string;
   codiInstallacio?: string;
-  embedUrl: string;
-  urn?: string;
+  /** URN del model MASTER federat (únic model que carrega el visor) */
   urnMaster?: string;
-  urnMep?: string;
-  urnEnt?: string;
-  urnEst?: string;
 }
 
 export interface Sistema {
@@ -52,12 +48,7 @@ interface InstallacioRow {
   nom: string;
   descripcio: string | null;
   codi_installacio: string | null;
-  embed_url: string;
-  urn: string | null;
   urn_master: string | null;
-  urn_mep: string | null;
-  urn_ent: string | null;
-  urn_est: string | null;
   ordre: number;
   updated_at: string;
 }
@@ -70,12 +61,7 @@ function rowToInstallacio(row: InstallacioRow): Installacio {
     nom: row.nom,
     descripcio: row.descripcio ?? undefined,
     codiInstallacio: row.codi_installacio ?? undefined,
-    embedUrl: row.embed_url,
-    urn: row.urn ?? undefined,
     urnMaster: row.urn_master ?? undefined,
-    urnMep: row.urn_mep ?? undefined,
-    urnEnt: row.urn_ent ?? undefined,
-    urnEst: row.urn_est ?? undefined,
   };
 }
 
@@ -254,8 +240,7 @@ export function useVisor3DSistemes() {
       data: {
         nom: string;
         codiInstallacio: string;
-        embedUrl: string;
-        urn?: string;
+        urnMaster?: string;
       },
     ) => {
       const token = await getToken();
@@ -265,8 +250,7 @@ export function useVisor3DSistemes() {
         sistema_id: sistemaId,
         nom: data.nom.trim(),
         codi_installacio: data.codiInstallacio.trim() || null,
-        embed_url: data.embedUrl.trim() || null,
-        urn: data.urn?.trim() || null,
+        urn_master: data.urnMaster?.trim() || null,
         ordre,
       });
       const nova = rowToInstallacio(rows[0] as InstallacioRow);
@@ -289,8 +273,7 @@ export function useVisor3DSistemes() {
       data: {
         nom: string;
         codiInstallacio: string;
-        embedUrl: string;
-        urn?: string;
+        urnMaster?: string;
       },
     ) => {
       const token = await getToken();
@@ -301,8 +284,7 @@ export function useVisor3DSistemes() {
         {
           nom: data.nom.trim(),
           codi_installacio: data.codiInstallacio.trim() || null,
-          embed_url: data.embedUrl.trim() || null,
-          urn: data.urn?.trim() || null,
+          urn_master: data.urnMaster?.trim() || null,
           updated_at: new Date().toISOString(),
         },
       );
@@ -318,8 +300,7 @@ export function useVisor3DSistemes() {
                         nom: data.nom.trim(),
                         codiInstallacio:
                           data.codiInstallacio.trim() || undefined,
-                        embedUrl: data.embedUrl.trim(),
-                        urn: data.urn?.trim() || undefined,
+                        urnMaster: data.urnMaster?.trim() || undefined,
                       }
                     : i,
                 ),
