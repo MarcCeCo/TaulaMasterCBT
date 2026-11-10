@@ -602,9 +602,7 @@ async function extrauSistemes(
         for (const f of fitxersMaster) {
           urnMaster = await obteUrnFitxer(projectId, f.id, token);
           if (urnMaster) {
-            console.log(
-              `    ✅ MASTER: ${f.attributes?.displayName ?? f.id}`,
-            );
+            console.log(`    ✅ MASTER: ${f.attributes?.displayName ?? f.id}`);
             break;
           }
         }
