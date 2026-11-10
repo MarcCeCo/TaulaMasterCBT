@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Llista totes les instal·lacions agrupades per sistema en una taula.
 // Clicar "Visualitzar" obre el Viewer SDK d'Autodesk APS carregant el model
-// directament via URN (sense iframe ni URL compartida manual).
+// directament via l'URN del model MASTER (sense iframe ni URL compartida).
 // Admins/Editors poden crear, editar i eliminar sistemes i instal·lacions.
 // Les dades es persisteixen a Supabase (taules: visor3d_sistemes, visor3d_installacions).
 
@@ -248,22 +248,20 @@ function SistemaFormDialog({
 }
 
 // ─── Formulari Instal·lació ───────────────────────────────────────────────────
-// El camp URN s'omple automàticament via l'agent APS. El formulari manual
-// permet afegir/corregir URNs i conserva embedUrl com a fallback.
+// El camp URN MASTER s'omple automàticament via l'agent APS. El formulari manual
+// permet afegir/corregir l'URN del MASTER.
 
 interface InstallacioFormData {
   nom: string;
   descripcio: string;
   codiInstallacio: string;
-  embedUrl: string;
-  urn: string;
+  urnMaster: string;
 }
 const INSTALLACIO_BUIDA: InstallacioFormData = {
   nom: "",
   descripcio: "",
   codiInstallacio: "",
-  embedUrl: "",
-  urn: "",
+  urnMaster: "",
 };
 
 function InstallacioFormDialog({
@@ -291,9 +289,7 @@ function InstallacioFormDialog({
   useEffect(() => {
     if (open) setForm(initial ?? INSTALLACIO_BUIDA);
   }, [open, initial]);
-  const valid =
-    form.nom.trim().length > 0 &&
-    (form.urn.trim().length > 0 || form.embedUrl.trim().length > 0);
+  const valid = form.nom.trim().length > 0 && form.urnMaster.trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -356,42 +352,21 @@ function InstallacioFormDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wide flex items-center gap-1.5">
-              <Box className="h-3 w-3 text-[#0099A8]" /> URN del model APS
-              <span className="text-[10px] font-normal text-[#0099A8] bg-[#0099A8]/10 px-1.5 py-0.5 rounded ml-1">
-                recomanat
-              </span>
+              <Box className="h-3 w-3 text-[#0099A8]" /> URN del model MASTER
             </Label>
             <Input
-              value={form.urn}
-              onChange={(e) => setForm((f) => ({ ...f, urn: e.target.value }))}
+              value={form.urnMaster}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, urnMaster: e.target.value }))
+              }
               placeholder="urn:adsk.wipprod:dm.lineage:XXXX…"
               className="text-xs font-mono"
             />
             <p className="text-[10.5px] text-slate-400 leading-relaxed">
-              L'agent APS omple aquest camp automàticament. Normalment no cal
-              introduir-lo manualment.
+              L'agent APS omple aquest camp automàticament a partir del fitxer
+              *_MASTER.rvt. Normalment no cal introduir-lo manualment.
             </p>
           </div>
-
-          <details className="group">
-            <summary className="text-[10.5px] text-slate-400 cursor-pointer hover:text-slate-600 select-none list-none flex items-center gap-1">
-              <ChevronRight className="h-3 w-3 group-open:rotate-90 transition-transform" />
-              URL embed de fallback (opcional)
-            </summary>
-            <div className="mt-2 space-y-1.5">
-              <Input
-                value={form.embedUrl}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, embedUrl: e.target.value }))
-                }
-                placeholder="https://besostordera.autodesk360.com/…?mode=embed"
-                className="text-xs font-mono"
-              />
-              <p className="text-[10.5px] text-slate-400">
-                S'usa com a últim recurs si no hi ha URN vàlid.
-              </p>
-            </div>
-          </details>
         </div>
         <DialogFooter className="gap-2">
           <Button
@@ -424,12 +399,12 @@ function InstallacioFormDialog({
 
 // ─── Viewer SDK d'Autodesk APS ────────────────────────────────────────────────
 //
-// Carrega el Viewer SDK via CDN i renderitza el model identificat per l'URN.
+// Carrega el Viewer SDK via CDN i renderitza el model MASTER de la instal·lació.
 // Flux:
 //   1. Injecta CSS + JS del Viewer SDK
-//   2. Demana token 2-legged a /api/aps-token de l'agent
+//   2. Demana el token APS al token-service (/api/aps-token, amb la sessió de Supabase)
 //   3. Inicialitza Autodesk.Viewing.Initializer
-//   4. Crea GuiViewer3D i carrega el document (URN)
+//   4. Crea GuiViewer3D i carrega el document (URN MASTER)
 
 const VIEWER_CSS_URL =
   "https://developer.api.autodesk.com/modelderivative/v2/viewers/7.99/style.css";
@@ -497,10 +472,8 @@ type ViewerEstat =
 
 interface VistaModel {
   node: ExternalObject; // Autodesk.Viewing.BubbleNode
-  doc: ExternalObject; // Autodesk.Viewing.Document (necessari en mode federat)
   nom: string;
   rol: "3d" | "2d";
-  disciplina?: string; // "MEP" | "ENT" | "EST" | undefined
   index: number;
 }
 
@@ -510,6 +483,11 @@ function normalitzaUrn(urn: string): string {
   return urn.startsWith("urn:")
     ? btoa(urn).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "")
     : urn;
+}
+
+/** URN del MASTER. Si la BD en té diversos separats per coma (dades antigues), agafa el primer. */
+function urnMasterDe(inst?: Installacio): string {
+  return inst?.urnMaster?.split(",")[0]?.trim() ?? "";
 }
 
 // ─── Hook useApsViewer ────────────────────────────────────────────────────────
@@ -563,43 +541,12 @@ function useApsViewer(
       return;
     }
 
-    // Selecció d'URNs a carregar:
-    //  1. Si hi ha URN MASTER → carrega només aquest (mode individual, vincles inclosos)
-    //  2. Si no → carrega MEP + ENT + EST per separat (mode federat fallback)
-    //  3. Fallback final → URN principal genèric
-    const splitUrns = (val?: string) =>
-      val
-        ? val
-            .split(",")
-            .map((u) => u.trim())
-            .filter(Boolean)
-        : [];
-
-    const urnsMaster = splitUrns(installacio.urnMaster);
-
-    let urns: string[];
-    if (urnsMaster.length > 0) {
-      // Mode MASTER: un sol URN que conté tots els vincles publicats des de Revit.
-      // El Viewer SDK els carrega automàticament sense necessitat de globalOffset manual.
-      console.log(`[Viewer] Mode MASTER detectat: ${urnsMaster[0]}`);
-      urns = urnsMaster;
-    } else {
-      // Mode fallback: URNs individuals per disciplina
-      const urnsPerDisciplina = [
-        ...splitUrns(installacio.urnMep),
-        ...splitUrns(installacio.urnEnt),
-        ...splitUrns(installacio.urnEst),
-      ];
-      urns =
-        urnsPerDisciplina.length > 0
-          ? urnsPerDisciplina
-          : splitUrns(installacio.urn);
-    }
-
-    if (urns.length === 0) {
+    // L'únic model que carrega el visor és el MASTER (federat: ja inclou tots els vincles).
+    const urnMaster = urnMasterDe(installacio);
+    if (!urnMaster) {
       setEstat("error");
       setError(
-        "No hi ha URN assignat a aquesta instal·lació. Executa l'agent APS per sincronitzar.",
+        "Aquesta instal·lació no té model MASTER. Cal un fitxer *_MASTER.rvt a la carpeta MODEL-BIM i executar l'agent APS per sincronitzar-lo.",
       );
       return;
     }
@@ -627,7 +574,7 @@ function useApsViewer(
       setEstat("carregant-token");
       // Envia la sessió de l'usuari al token-service. Si falla, el missatge
       // llançat és el real del servidor (p. ex. "La connexió amb Autodesk ha caducat…").
-      const { access_token, expires_in } = await obteApsToken();
+      const { access_token } = await obteApsToken();
       if (!mountedRef.current) return;
 
       setEstat("inicialitzant");
@@ -659,177 +606,54 @@ function useApsViewer(
 
       setEstat("carregant-model");
 
-      if (urns.length === 1) {
-        // ── Mode individual (un sol URN) ──────────────────────────────────────
-        const viewer = new AV.GuiViewer3D(containerRef.current);
-        viewer.start();
-        viewerRef.current = viewer;
+      const viewer = new AV.GuiViewer3D(containerRef.current);
+      viewer.start();
+      viewerRef.current = viewer;
 
-        const urnB64 = normalitzaUrn(urns[0]);
-
-        await new Promise<void>((res, rej) => {
-          AV.Document.load(
-            `urn:${urnB64}`,
-            (doc: ExternalObject) => {
-              if (!mountedRef.current) {
-                rej(new Error("_desmontat_"));
-                return;
-              }
-              docRef.current = doc;
-              const root = doc.getRoot();
-              const nodes3d: ExternalObject[] =
-                root.search({ type: "geometry", role: "3d" }) ?? [];
-              const nodes2d: ExternalObject[] =
-                root.search({ type: "geometry", role: "2d" }) ?? [];
-              const toVista =
-                (role: "3d" | "2d") =>
-                (node: ExternalObject, i: number): VistaModel => ({
-                  node,
-                  doc,
-                  nom: node.name() || `Vista ${i + 1}`,
-                  rol: role,
-                  index: i,
-                });
-              const totes: VistaModel[] = [
-                ...nodes3d.map(toVista("3d")),
-                ...nodes2d.map(toVista("2d")),
-              ];
-              const primerNode =
-                totes[0]?.node ??
-                root.getDefaultGeometry(true) ??
-                root.getDefaultGeometry();
-              if (!primerNode) {
-                rej(new Error("El model no té geometries disponibles."));
-                return;
-              }
-              viewer.loadDocumentNode(doc, primerNode);
-              setVistes(totes);
-              setVistaActual(0);
-              setEstat("ok");
-              res();
-            },
-            (code: number, msg: string) =>
-              rej(new Error(`Error APS (codi ${code}): ${msg}`)),
-          );
-        });
-      } else {
-        // ── Mode federat (múltiples URNs: MEP + ENT + EST) ────────────────────
-        // Usem keepCurrentModels + globalOffset compartit per alinear els models.
-        // NOTA: Si existeix un URN MASTER (fitxer Revit federat amb vincles publicats),
-        // l'agent ja l'haurà posat com a urns[0] i el flux entra al mode "individual"
-        // de dalt, que carrega tot automàticament. Aquest bloc és el fallback quan
-        // no hi ha MASTER i cal carregar cada disciplina per separat.
-        const viewer = new AV.GuiViewer3D(containerRef.current);
-        viewer.start();
-        viewerRef.current = viewer;
-
-        const disciplineLabels: Record<string, string> = {};
-        const splitUrnsLocal = (val?: string) =>
-          val
-            ? val
-                .split(",")
-                .map((u: string) => u.trim())
-                .filter(Boolean)
-            : [];
-        splitUrnsLocal(installacio.urnMep).forEach(
-          (u) => (disciplineLabels[normalitzaUrn(u)] = "MEP"),
+      await new Promise<void>((res, rej) => {
+        AV.Document.load(
+          `urn:${normalitzaUrn(urnMaster)}`,
+          (doc: ExternalObject) => {
+            if (!mountedRef.current) {
+              rej(new Error("_desmontat_"));
+              return;
+            }
+            docRef.current = doc;
+            const root = doc.getRoot();
+            const nodes3d: ExternalObject[] =
+              root.search({ type: "geometry", role: "3d" }) ?? [];
+            const nodes2d: ExternalObject[] =
+              root.search({ type: "geometry", role: "2d" }) ?? [];
+            const toVista =
+              (role: "3d" | "2d") =>
+              (node: ExternalObject, i: number): VistaModel => ({
+                node,
+                nom: node.name() || `Vista ${i + 1}`,
+                rol: role,
+                index: i,
+              });
+            const totes: VistaModel[] = [
+              ...nodes3d.map(toVista("3d")),
+              ...nodes2d.map(toVista("2d")),
+            ];
+            const primerNode =
+              totes[0]?.node ??
+              root.getDefaultGeometry(true) ??
+              root.getDefaultGeometry();
+            if (!primerNode) {
+              rej(new Error("El model no té geometries disponibles."));
+              return;
+            }
+            viewer.loadDocumentNode(doc, primerNode);
+            setVistes(totes);
+            setVistaActual(0);
+            setEstat("ok");
+            res();
+          },
+          (code: number, msg: string) =>
+            rej(new Error(`Error APS (codi ${code}): ${msg}`)),
         );
-        splitUrnsLocal(installacio.urnEnt).forEach(
-          (u) => (disciplineLabels[normalitzaUrn(u)] = "ENT"),
-        );
-        splitUrnsLocal(installacio.urnEst).forEach(
-          (u) => (disciplineLabels[normalitzaUrn(u)] = "EST"),
-        );
-
-        const documents = await Promise.all(
-          urns.map(
-            (urn) =>
-              new Promise<ExternalObject>((res) => {
-                const urnB64 = normalitzaUrn(urn);
-                AV.Document.load(
-                  `urn:${urnB64}`,
-                  (doc: ExternalObject) => res({ urnB64, doc }),
-                  (code: number, msg: string) => {
-                    console.warn(
-                      `[Viewer] Error carregant URN ${urnB64}: ${code} ${msg}`,
-                    );
-                    res(null);
-                  },
-                );
-              }),
-          ),
-        );
-
-        if (!mountedRef.current) return;
-
-        const docsVàlids = documents.filter(Boolean) as {
-          urnB64: string;
-          doc: ExternalObject;
-        }[];
-        if (docsVàlids.length === 0)
-          throw new Error("Cap dels models ha pogut carregar.");
-
-        const tostesVistes: VistaModel[] = [];
-        let isFirst = true;
-        let globalIdx = 0;
-
-        for (const { urnB64, doc } of docsVàlids) {
-          const root = doc.getRoot();
-          const nodes3d: ExternalObject[] =
-            root.search({ type: "geometry", role: "3d" }) ?? [];
-          const nodes2d: ExternalObject[] =
-            root.search({ type: "geometry", role: "2d" }) ?? [];
-          const disciplina = disciplineLabels[urnB64] ?? undefined;
-
-          // Recull totes les vistes d'aquest document
-          for (const node of nodes3d) {
-            tostesVistes.push({
-              node,
-              doc,
-              nom: `${disciplina ? `[${disciplina}] ` : ""}${node.name() || `Vista ${globalIdx + 1}`}`,
-              rol: "3d",
-              disciplina,
-              index: globalIdx++,
-            });
-          }
-          for (const node of nodes2d) {
-            tostesVistes.push({
-              node,
-              doc,
-              nom: `${disciplina ? `[${disciplina}] ` : ""}${node.name() || `Plànol ${globalIdx + 1}`}`,
-              rol: "2d",
-              disciplina,
-              index: globalIdx++,
-            });
-          }
-
-          // Carrega el primer node 3D (o 2D com a fallback) d'aquest document
-          const primerNode =
-            nodes3d[0] ??
-            nodes2d[0] ??
-            root.getDefaultGeometry(true) ??
-            root.getDefaultGeometry();
-          if (!primerNode) continue;
-
-          // applyScaling + preserveView garanteix que tots els models
-          // s'apliquen al mateix sistema de coordenades globals.
-          await viewer.loadDocumentNode(doc, primerNode, {
-            keepCurrentModels: !isFirst,
-            applyScaling: "m", // RVT exporta en peus → APS converteix a metres
-            preserveView: false, // no recentra la càmera per a cada model addicional
-          });
-          isFirst = false;
-        }
-
-        if (isFirst) throw new Error("Cap model té geometries disponibles.");
-
-        console.log(
-          `[Viewer] Mode fallback federat: ${docsVàlids.length} model(s), ${tostesVistes.length} vistes totals`,
-        );
-        setVistes(tostesVistes);
-        setVistaActual(0);
-        setEstat("ok");
-      }
+      });
     } catch (err) {
       if (!mountedRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
@@ -842,12 +666,10 @@ function useApsViewer(
   const carregaVista = useCallback(
     async (idx: number) => {
       const vista = vistes[idx];
-      if (!vista || !viewerRef.current || canviantVista) return;
+      const doc = docRef.current;
+      if (!vista || !doc || !viewerRef.current || canviantVista) return;
       setCanviantVista(true);
       try {
-        // En mode federat cada vista té el seu propi doc; en mode individual usem docRef
-        const doc = vista.doc ?? docRef.current;
-        if (!doc) return;
         await viewerRef.current.loadDocumentNode(doc, vista.node, {
           keepCurrentModels: false, // en canviar vista, mostrem només aquesta
         });
@@ -912,15 +734,7 @@ function SelectorVistes({
     v.nom.toLowerCase().includes(filtre.toLowerCase()),
   );
 
-  // Agrupa per disciplina (mode federat) o per rol (mode individual)
-  const esFederat = vistes.some((v) => v.disciplina);
-  const disciplineColors: Record<string, string> = {
-    MEP: "#3b82f6",
-    ENT: "#f59e0b",
-    EST: "#22c55e",
-  };
-
-  // Agrupa les vistes filtrades
+  // Agrupa les vistes filtrades per rol (3D / plànols)
   type Grup = {
     label: string;
     color: string;
@@ -928,83 +742,22 @@ function SelectorVistes({
     vistes: VistaModel[];
   };
   const grups: Grup[] = [];
-
-  if (esFederat) {
-    const disciplines = [
-      "MEP",
-      "ENT",
-      "EST",
-      ...Array.from(
-        new Set(
-          vistes
-            .map((v) => v.disciplina)
-            .filter(
-              (d): d is string => !!d && !["MEP", "ENT", "EST"].includes(d),
-            ),
-        ),
-      ),
-    ];
-    for (const disc of disciplines) {
-      const vs = filtrades.filter(
-        (v) => v.disciplina === disc && v.rol === "3d",
-      );
-      const vs2d = filtrades.filter(
-        (v) => v.disciplina === disc && v.rol === "2d",
-      );
-      if (vs.length > 0)
-        grups.push({
-          label: `${disc} — 3D`,
-          color: disciplineColors[disc] ?? "#94a3b8",
-          icona: "3d",
-          vistes: vs,
-        });
-      if (vs2d.length > 0)
-        grups.push({
-          label: `${disc} — Plànols`,
-          color: disciplineColors[disc] ?? "#94a3b8",
-          icona: "2d",
-          vistes: vs2d,
-        });
-    }
-    // Vistes sense disciplina
-    const senseDisc3d = filtrades.filter(
-      (v) => !v.disciplina && v.rol === "3d",
-    );
-    const senseDisc2d = filtrades.filter(
-      (v) => !v.disciplina && v.rol === "2d",
-    );
-    if (senseDisc3d.length > 0)
-      grups.push({
-        label: "3D",
-        color: sistemaColor,
-        icona: "3d",
-        vistes: senseDisc3d,
-      });
-    if (senseDisc2d.length > 0)
-      grups.push({
-        label: "Plànols",
-        color: "#94a3b8",
-        icona: "2d",
-        vistes: senseDisc2d,
-      });
-  } else {
-    const vs3d = filtrades.filter((v) => v.rol === "3d");
-    const vs2d = filtrades.filter((v) => v.rol === "2d");
-    if (vs3d.length > 0)
-      grups.push({
-        label: "3D",
-        color: sistemaColor,
-        icona: "3d",
-        vistes: vs3d,
-      });
-    if (vs2d.length > 0)
-      grups.push({
-        label: "Plànols i seccions",
-        color: "#94a3b8",
-        icona: "2d",
-        vistes: vs2d,
-      });
-  }
+  const vs3d = filtrades.filter((v) => v.rol === "3d");
+  const vs2d = filtrades.filter((v) => v.rol === "2d");
+  if (vs3d.length > 0)
+    grups.push({
+      label: "3D",
+      color: sistemaColor,
+      icona: "3d",
+      vistes: vs3d,
+    });
+  if (vs2d.length > 0)
+    grups.push({
+      label: "Plànols i seccions",
+      color: "#94a3b8",
+      icona: "2d",
+      vistes: vs2d,
+    });
 
   return (
     <div className="relative shrink-0" ref={panellRef}>
@@ -1113,9 +866,8 @@ function SelectorVistes({
                         <AlignLeft className="h-2.5 w-2.5" />
                       )}
                     </div>
-                    {/* Neteja el prefix [DISC] del nom per no repetir-lo */}
                     <span className="text-[11px] font-medium truncate flex-1">
-                      {v.nom.replace(/^\[(MEP|ENT|EST)\]\s*/, "")}
+                      {v.nom}
                     </span>
                     {vistaActual === v.index && (
                       <Check
@@ -1152,20 +904,7 @@ function Visor3DDialog({
   onClose: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const splitUrns = (val?: string) =>
-    val
-      ? val
-          .split(",")
-          .map((u) => u.trim())
-          .filter(Boolean)
-      : [];
-
-  const nMep = splitUrns(installacio.urnMep).length;
-  const nEnt = splitUrns(installacio.urnEnt).length;
-  const nEst = splitUrns(installacio.urnEst).length;
-  const esFederat = nMep + nEnt + nEst > 0;
-  const urnDisponible =
-    esFederat || !!installacio.urnMaster || !!installacio.urn;
+  const urnDisponible = !!urnMasterDe(installacio);
 
   const {
     estat,
@@ -1215,26 +954,6 @@ function Visor3DDialog({
                 <Badge className="bg-slate-100 text-slate-500 border-0 text-[10px] font-mono">
                   {installacio.codiInstallacio}
                 </Badge>
-              )}
-              {/* Badges de disciplines del model federat */}
-              {esFederat && (
-                <div className="flex items-center gap-1 ml-1">
-                  {nMep > 0 && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
-                      MEP{nMep > 1 ? ` ×${nMep}` : ""}
-                    </span>
-                  )}
-                  {nEnt > 0 && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                      ENT{nEnt > 1 ? ` ×${nEnt}` : ""}
-                    </span>
-                  )}
-                  {nEst > 0 && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-100 text-green-700">
-                      EST{nEst > 1 ? ` ×${nEst}` : ""}
-                    </span>
-                  )}
-                </div>
               )}
             </div>
             {installacio.descripcio && (
@@ -1301,7 +1020,7 @@ function Visor3DDialog({
                 </p>
                 {!urnDisponible && (
                   <p className="text-xs text-amber-400 mt-2 leading-relaxed max-w-sm">
-                    Executa l'agent APS per sincronitzar l'URN d'aquesta
+                    Executa l'agent APS per sincronitzar el MASTER d'aquesta
                     instal·lació.
                   </p>
                 )}
@@ -1485,18 +1204,18 @@ function SistemaGroup({
               )}
             </td>
             <td className="py-2.5 px-2 hidden lg:table-cell">
-              {inst.urn ? (
+              {urnMasterDe(inst) ? (
                 <span
                   className="text-[10px] font-mono text-[#0099A8] bg-[#0099A8]/8 px-1.5 py-0.5 rounded truncate block max-w-[260px]"
-                  title={inst.urn}
+                  title={urnMasterDe(inst)}
                 >
-                  {inst.urn.length > 42
-                    ? inst.urn.slice(0, 42) + "…"
-                    : inst.urn}
+                  {urnMasterDe(inst).length > 42
+                    ? urnMasterDe(inst).slice(0, 42) + "…"
+                    : urnMasterDe(inst)}
                 </span>
               ) : (
                 <span className="text-[10px] text-slate-300 italic">
-                  Sense URN — sincronitza l'agent
+                  Sense MASTER — sincronitza l'agent
                 </span>
               )}
             </td>
@@ -1506,22 +1225,10 @@ function SistemaGroup({
                   size="sm"
                   className="h-7 px-3 text-[11px] font-semibold gap-1.5 text-white disabled:opacity-40"
                   style={{ background: sistema.color }}
-                  disabled={
-                    !inst.urn &&
-                    !inst.urnMaster &&
-                    !inst.urnMep &&
-                    !inst.urnEnt &&
-                    !inst.urnEst &&
-                    !inst.embedUrl
-                  }
+                  disabled={!urnMasterDe(inst)}
                   title={
-                    !inst.urn &&
-                    !inst.urnMaster &&
-                    !inst.urnMep &&
-                    !inst.urnEnt &&
-                    !inst.urnEst &&
-                    !inst.embedUrl
-                      ? "Sense URN — executa l'agent APS"
+                    !urnMasterDe(inst)
+                      ? "Sense MASTER — executa l'agent APS"
                       : undefined
                   }
                   onClick={() => onVisualitzar(inst)}
@@ -2004,8 +1711,7 @@ export function Visualitzador3DPage() {
                 nom: installacioDialeg.target.nom,
                 descripcio: installacioDialeg.target.descripcio ?? "",
                 codiInstallacio: installacioDialeg.target.codiInstallacio ?? "",
-                embedUrl: installacioDialeg.target.embedUrl ?? "",
-                urn: installacioDialeg.target.urn ?? "",
+                urnMaster: installacioDialeg.target.urnMaster ?? "",
               }
             : undefined
         }

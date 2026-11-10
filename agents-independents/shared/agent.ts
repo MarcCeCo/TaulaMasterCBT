@@ -22,12 +22,7 @@ Object.assign(globalThis, { WebSocket });
 interface InstallacioTrobada {
   codi: string;
   nom: string;
-  embedUrl: string;
-  urn: string; // URN principal: MASTER si existeix, sinó MEP/ENT/EST
-  urnMaster: string; // URN del fitxer MASTER federat (conté tots els vincles)
-  urnMep: string; // URN del fitxer MEP (instal·lacions)
-  urnEnt: string; // URN del fitxer ENT (arquitectura/entorn)
-  urnEst: string; // URN del fitxer EST (estructura)
+  urnMaster: string | null; // URN del fitxer MASTER federat (conté tots els vincles); null si no n'hi ha
   lastModifiedTime: string;
 }
 
@@ -562,13 +557,8 @@ async function extrauSistemes(
         console.warn(`  ⚠️  Codi duplicat: "${parsed.codi}"`);
       }
 
-      // Cerca fitxers per disciplina i per fitxer MASTER federat.
-      // Convenció de noms (case-insensitive):
-      //   _MASTER → fitxer federat que conté tots els vincles publicats (prioritat màxima)
-      //   _MEP    → instal·lacions mecàniques/elèctriques/fontaneria
-      //   _ENT    → arquitectura / entorn
-      //   _EST    → estructura
-      // Ex: ED005_MASTER.rvt, ED005_MEP.rvt, ED005_ENT_R24.rvt → detectats correctament.
+      // Només fem servir el fitxer MASTER (federat: conté tots els vincles publicats).
+      // Convenció de noms (case-insensitive): ED005_MASTER.rvt, ED005_MASTER_R24.rvt…
       const conteParaula = (nom: string, keyword: string): boolean => {
         const upper = nom.toUpperCase();
         const idx = upper.indexOf(`_${keyword}`);
@@ -583,76 +573,50 @@ async function extrauSistemes(
         );
       };
 
-      const fitxersMaster = fitxersRvt.filter((f: JsonAny) =>
-        conteParaula(f.attributes?.displayName ?? "", "MASTER"),
-      );
-      const fitxersMep = fitxersRvt.filter((f: JsonAny) =>
-        conteParaula(f.attributes?.displayName ?? "", "MEP"),
-      );
-      const fitxersEnt = fitxersRvt.filter((f: JsonAny) =>
-        conteParaula(f.attributes?.displayName ?? "", "ENT"),
-      );
-      const fitxersEst = fitxersRvt.filter((f: JsonAny) =>
-        conteParaula(f.attributes?.displayName ?? "", "EST"),
-      );
-
-      // Fitxers que no encaixen en cap disciplina coneguda
-      const fitxersAltres = fitxersRvt.filter((f: JsonAny) => {
-        const nom = f.attributes?.displayName ?? "";
-        return (
-          !conteParaula(nom, "MASTER") &&
-          !conteParaula(nom, "MEP") &&
-          !conteParaula(nom, "ENT") &&
-          !conteParaula(nom, "EST")
+      // Més recent primer: si n'hi ha més d'un, s'usa el darrer modificat.
+      const fitxersMaster = fitxersRvt
+        .filter((f: JsonAny) =>
+          conteParaula(f.attributes?.displayName ?? "", "MASTER"),
+        )
+        .sort((x: JsonAny, y: JsonAny) =>
+          String(y.attributes?.lastModifiedTime ?? "").localeCompare(
+            String(x.attributes?.lastModifiedTime ?? ""),
+          ),
         );
-      });
 
       console.log(
-        `    📁 "${parsed.codi}": ${fitxersRvt.length} RVT(s) — ` +
-          `MASTER:${fitxersMaster.length} MEP:${fitxersMep.length} ENT:${fitxersEnt.length} EST:${fitxersEst.length} altres:${fitxersAltres.length}`,
+        `    📁 "${parsed.codi}": ${fitxersRvt.length} RVT(s) — MASTER:${fitxersMaster.length}`,
       );
-      if (fitxersMaster.length > 0) {
-        console.log(
-          `    ✅ Mode MASTER: el Viewer carregarà els vincles automàticament`,
+
+      let urnMaster: string | null = null;
+      if (fitxersMaster.length === 0) {
+        console.warn(
+          `    ⚠️  "${parsed.codi}": cap fitxer _MASTER.rvt a "${CARPETA_MODEL_BIM}" — el visor no podrà mostrar aquesta instal·lació`,
         );
+      } else {
+        if (fitxersMaster.length > 1) {
+          console.warn(
+            `    ⚠️  "${parsed.codi}": ${fitxersMaster.length} fitxers MASTER — s'usa el més recent`,
+          );
+        }
+        for (const f of fitxersMaster) {
+          urnMaster = await obteUrnFitxer(projectId, f.id, token);
+          if (urnMaster) {
+            console.log(`    ✅ MASTER: ${f.attributes?.displayName ?? f.id}`);
+            break;
+          }
+        }
+        if (!urnMaster) {
+          console.warn(
+            `    ⚠️  "${parsed.codi}": no s'ha pogut obtenir l'URN del MASTER`,
+          );
+        }
       }
 
-      // Obté URN de tots els fitxers de cada disciplina en paral·lel.
-      const obteUrns = async (fitxers: JsonAny[]): Promise<string[]> => {
-        const urns = await Promise.all(
-          fitxers.map((f: JsonAny) => obteUrnFitxer(projectId, f.id, token)),
-        );
-        return urns.filter((u): u is string => !!u);
-      };
-
-      const [urnsMaster, urnsMep, urnsEnt, urnsEst] = await Promise.all([
-        obteUrns(fitxersMaster),
-        obteUrns(fitxersMep),
-        obteUrns(fitxersEnt),
-        obteUrns(fitxersEst),
-      ]);
-
-      // URN principal: MASTER té prioritat absoluta.
-      // Si no hi ha MASTER, fallback als URNs individuals per disciplina.
-      const urnPrincipal =
-        urnsMaster[0] ?? urnsMep[0] ?? urnsEnt[0] ?? urnsEst[0] ?? "";
-
-      const joinUrns = (urns: string[]) => urns.join(",");
-
-      const embedUrl = urnPrincipal
-        ? `https://autodesk360.com/viewer?urn=${urnPrincipal}`
-        : "";
-
-      // lastModifiedTime: el més recent de tots els fitxers
-      const allFitxers = [
-        ...fitxersMaster,
-        ...fitxersMep,
-        ...fitxersEnt,
-        ...fitxersEst,
-        ...fitxersAltres,
-      ];
+      // lastModifiedTime: el del MASTER (o, si no n'hi ha, el més recent dels .rvt)
+      const refFitxers = fitxersMaster.length > 0 ? fitxersMaster : fitxersRvt;
       const lastModified =
-        allFitxers
+        refFitxers
           .map((f: JsonAny) => f.attributes?.lastModifiedTime ?? "")
           .sort()
           .reverse()[0] ?? "";
@@ -660,12 +624,7 @@ async function extrauSistemes(
       installacions.push({
         codi: parsed.codi,
         nom: parsed.nom,
-        embedUrl,
-        urn: urnPrincipal,
-        urnMaster: joinUrns(urnsMaster),
-        urnMep: joinUrns(urnsMep),
-        urnEnt: joinUrns(urnsEnt),
-        urnEst: joinUrns(urnsEst),
+        urnMaster,
         lastModifiedTime: lastModified,
       });
     }
@@ -733,7 +692,7 @@ async function sincronitzaAmbSupabase(
     for (const inst of sistema.installacions) {
       const { data: instExistent } = await supabase
         .from("visor3d_installacions")
-        .select("id, urn, embed_url, last_modified_time, codi_installacio")
+        .select("id, urn_master, last_modified_time, codi_installacio")
         .eq("codi_installacio", inst.codi)
         .maybeSingle();
 
@@ -742,12 +701,7 @@ async function sincronitzaAmbSupabase(
           codi_installacio: inst.codi,
           nom: inst.nom,
           sistema_id: sistemaId,
-          urn: inst.urn,
           urn_master: inst.urnMaster,
-          urn_mep: inst.urnMep,
-          urn_ent: inst.urnEnt,
-          urn_est: inst.urnEst,
-          embed_url: inst.embedUrl,
           last_modified_time: inst.lastModifiedTime,
         });
         if (error) {
@@ -759,8 +713,7 @@ async function sincronitzaAmbSupabase(
           console.log(`    ✅ Instal·lació creada: ${inst.codi}`);
         }
       } else if (
-        instExistent.urn !== inst.urn ||
-        instExistent.embed_url !== inst.embedUrl ||
+        (instExistent.urn_master || null) !== inst.urnMaster ||
         instExistent.last_modified_time !== inst.lastModifiedTime
       ) {
         const { error } = await supabase
@@ -768,12 +721,7 @@ async function sincronitzaAmbSupabase(
           .update({
             nom: inst.nom,
             sistema_id: sistemaId,
-            urn: inst.urn,
             urn_master: inst.urnMaster,
-            urn_mep: inst.urnMep,
-            urn_ent: inst.urnEnt,
-            urn_est: inst.urnEst,
-            embed_url: inst.embedUrl,
             last_modified_time: inst.lastModifiedTime,
           })
           .eq("codi_installacio", inst.codi);

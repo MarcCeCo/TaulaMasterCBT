@@ -73,18 +73,40 @@ export function htmlPagina(
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Comprova si un origen coincideix amb un patró de ALLOWED_ORIGINS.
+ * Sense "*" → igualtat exacta. Amb "*" → substitueix UN sol fragment de nom de host
+ * (lletres, dígits i guions): no creua punts ni barres, així
+ * "https://taula-master-*-equip.vercel.app" NO accepta "https://taula-master-x.evil.com"
+ * ni "https://taula-master-a.b-equip.vercel.app".
+ */
+function origenPermes(origin: string, patro: string): boolean {
+  if (!patro.includes("*")) return origin === patro;
+  const regex = new RegExp(
+    "^" +
+      patro
+        .split("*")
+        .map((troc) => troc.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
+        .join("[a-z0-9-]*") +
+      "$",
+    "i",
+  );
+  return regex.test(origin);
+}
+
 export function setCors(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): void {
-  const origin = req.headers.origin;
+  const origin = req.headers.origin?.replace(/\/$/, "");
   const configured = (process.env.ALLOWED_ORIGINS ?? process.env.APP_URL ?? "")
     .split(",")
     .map((value) => value.trim().replace(/\/$/, ""))
     .filter(Boolean);
   // Sense orígens configurats no habilitem CORS. Les crides server-to-server
   // continuen funcionant; el navegador requereix ALLOWED_ORIGINS explícit.
-  if (origin && configured.includes(origin.replace(/\/$/, ""))) {
+  // Admet patrons amb "*" dins d'un nom de host (vegeu origenPermes).
+  if (origin && configured.some((patro) => origenPermes(origin, patro))) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
   }
