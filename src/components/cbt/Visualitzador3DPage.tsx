@@ -58,6 +58,7 @@ import {
   type Installacio,
 } from "@/hooks/useVisor3DSistemes";
 import type { ExternalObject } from "@/lib/dbTypes";
+import { useProjectes } from "@/lib/useProjectes";
 
 // ─── Helper: codi de sistema derivat de les instal·lacions ───────────────────
 // Llegeix els codiInstallacio del sistema i extreu el codi numèric del primer
@@ -501,6 +502,8 @@ function useApsViewer(
   const [vistes, setVistes] = useState<VistaModel[]>([]);
   const [vistaActual, setVistaActual] = useState<number>(0);
   const [canviantVista, setCanviantVista] = useState(false);
+  // Instància del viewer en estat (perquè altres hooks hi puguin subscriure events)
+  const [viewerObj, setViewerObj] = useState<ExternalObject>(null);
 
   const viewerRef = useRef<ExternalObject>(null);
   const docRef = useRef<ExternalObject>(null);
@@ -566,6 +569,7 @@ function useApsViewer(
       viewerRef.current = null;
     }
     docRef.current = null;
+    setViewerObj(null);
     setVistes([]);
     setVistaActual(0);
     setEstat("carregant-sdk");
@@ -615,6 +619,7 @@ function useApsViewer(
       const viewer = new AV.GuiViewer3D(containerRef.current);
       viewer.start();
       viewerRef.current = viewer;
+      setViewerObj(viewer);
 
       await new Promise<void>((res, rej) => {
         AV.Document.load(
@@ -714,6 +719,7 @@ function useApsViewer(
     vistaActual,
     carregaVista,
     canviantVista,
+    viewer: viewerObj,
   };
 }
 
@@ -911,6 +917,179 @@ function SelectorVistes({
   );
 }
 
+// ─── Pop-up amb el TAG i la descripció de l'equip seleccionat ────────────────
+//
+// En seleccionar un element al visor:
+//   1. Llegeix les propietats de l'element (model.getProperties).
+//   2. Busca el TAG al paràmetre de Revit CBT_TAG (o TAG). Si no hi és, prova de
+//      trobar algun valor de propietat que coincideixi amb un TAG de Rosmiman.
+//   3. Cerca la descripció d'aquest TAG al llistat Rosmiman (rosmiman_equips).
+//   4. Mostra un pop-up a prop del punt on s'ha clicat.
+// Si l'element no té cap TAG, no es mostra res (i es deixa un log a la consola
+// amb els noms de propietats per poder depurar el nom del paràmetre).
+
+interface PopupTag {
+  tag: string;
+  /** null = el TAG no existeix al llistat Rosmiman */
+  descripcio: string | null;
+  nomElement: string;
+  x: number;
+  y: number;
+}
+
+const POPUP_AMPLE = 280;
+const POPUP_ALT = 130;
+
+const normTag = (v: unknown): string =>
+  String(v ?? "")
+    .trim()
+    .toUpperCase();
+
+function trobaTag(
+  props: ExternalObject[],
+  tagsConeguts: Map<string, string>,
+): string {
+  const perNom = props.find((p) =>
+    /^(CBT_)?TAG$/.test(normTag(p.displayName ?? p.attributeName)),
+  );
+  const valor = normTag(perNom?.displayValue);
+  if (valor) return valor;
+  for (const p of props) {
+    const v = normTag(p.displayValue);
+    if (v && tagsConeguts.has(v)) return v;
+  }
+  return "";
+}
+
+function useSeleccioTag(
+  viewer: ExternalObject,
+  wrapperRef: React.RefObject<HTMLDivElement | null>,
+  descripcions: Map<string, string>,
+) {
+  const [popup, setPopup] = useState<PopupTag | null>(null);
+  const darrerClicRef = useRef({ x: 24, y: 24 });
+  const descripcionsRef = useRef(descripcions);
+
+  useEffect(() => {
+    descripcionsRef.current = descripcions;
+  }, [descripcions]);
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    const AV = window.Autodesk?.Viewing;
+    if (!viewer || !wrapper || !AV) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const r = wrapper.getBoundingClientRect();
+      darrerClicRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    wrapper.addEventListener("pointerdown", onPointerDown, true);
+
+    let peticio = 0;
+    const onSeleccio = (ev: ExternalObject) => {
+      const id = ++peticio;
+      const sel = ev?.selections?.[0];
+      const dbId = sel?.dbIdArray?.[0];
+      if (dbId === undefined) {
+        setPopup(null);
+        return;
+      }
+      const model = sel.model ?? viewer.model;
+      model.getProperties(
+        dbId,
+        (res: ExternalObject) => {
+          if (id !== peticio) return; // ja s'ha seleccionat un altre element
+          const props: ExternalObject[] = res?.properties ?? [];
+          const tag = trobaTag(props, descripcionsRef.current);
+          if (!tag) {
+            console.info("[Visor3D] Element sense TAG", {
+              dbId,
+              nom: res?.name,
+              propietats: props.map((p) => p.displayName),
+            });
+            setPopup(null);
+            return;
+          }
+          const r = wrapper.getBoundingClientRect();
+          const { x, y } = darrerClicRef.current;
+          setPopup({
+            tag,
+            descripcio: descripcionsRef.current.get(tag) ?? null,
+            nomElement: String(res?.name ?? ""),
+            x: Math.max(8, Math.min(x + 14, r.width - POPUP_AMPLE - 8)),
+            y: Math.max(8, Math.min(y + 14, r.height - POPUP_ALT - 8)),
+          });
+        },
+        (err: ExternalObject) => {
+          console.warn("[Visor3D] No s'han pogut llegir les propietats", err);
+          if (id === peticio) setPopup(null);
+        },
+      );
+    };
+    viewer.addEventListener(AV.SELECTION_CHANGED_EVENT, onSeleccio);
+
+    return () => {
+      peticio++;
+      wrapper.removeEventListener("pointerdown", onPointerDown, true);
+      try {
+        viewer.removeEventListener(AV.SELECTION_CHANGED_EVENT, onSeleccio);
+      } catch {
+        /* el viewer ja pot estar finalitzat */
+      }
+      setPopup(null);
+    };
+  }, [viewer, wrapperRef]);
+
+  return { popup, tancaPopup: () => setPopup(null) };
+}
+
+function PopupTagEquip({
+  popup,
+  color,
+  onClose,
+}: {
+  popup: PopupTag;
+  color: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="absolute z-20 rounded-xl border border-slate-200 bg-white shadow-2xl p-3"
+      style={{ left: popup.x, top: popup.y, width: POPUP_AMPLE }}
+    >
+      <div className="flex items-start gap-2">
+        <span
+          className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded break-all"
+          style={{ background: `${color}18`, color }}
+        >
+          {popup.tag}
+        </span>
+        <button
+          onClick={onClose}
+          aria-label="Tancar"
+          className="ml-auto h-5 w-5 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 shrink-0"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+      {popup.descripcio ? (
+        <p className="text-xs text-slate-700 mt-2 leading-snug">
+          {popup.descripcio}
+        </p>
+      ) : (
+        <p className="text-xs text-amber-600 mt-2 leading-snug italic">
+          Aquest TAG no consta al llistat Rosmiman.
+        </p>
+      )}
+      {popup.nomElement && (
+        <p className="text-[10px] text-slate-400 mt-2 truncate">
+          {popup.nomElement}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Pop-up Visor 3D ──────────────────────────────────────────────────────────
 
 function Visor3DDialog({
@@ -924,6 +1103,15 @@ function Visor3DDialog({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const urnDisponible = !!urnMasterDe(installacio);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // TAG → descripció, del llistat Rosmiman
+  const { rosmimanEquips } = useProjectes();
+  const descripcioPerTag = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of rosmimanEquips) m.set(normTag(e.tag), e.descripcio);
+    return m;
+  }, [rosmimanEquips]);
 
   const {
     estat,
@@ -933,8 +1121,14 @@ function Visor3DDialog({
     vistaActual,
     carregaVista,
     canviantVista,
+    viewer,
   } = useApsViewer(containerRef, installacio);
   const carregant = estat !== "ok" && estat !== "error";
+  const { popup, tancaPopup } = useSeleccioTag(
+    viewer,
+    wrapperRef,
+    descripcioPerTag,
+  );
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -1004,6 +1198,7 @@ function Visor3DDialog({
         </div>
 
         <div
+          ref={wrapperRef}
           className="relative w-full bg-slate-900"
           style={{ height: "75vh" }}
         >
@@ -1055,6 +1250,14 @@ function Visor3DDialog({
                 </Button>
               )}
             </div>
+          )}
+
+          {popup && (
+            <PopupTagEquip
+              popup={popup}
+              color={sistema.color}
+              onClose={tancaPopup}
+            />
           )}
 
           {/* El div del Viewer SDK — sempre muntat, ocult fins que carregui */}
