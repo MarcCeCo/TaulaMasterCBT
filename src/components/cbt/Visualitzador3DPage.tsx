@@ -49,6 +49,10 @@ import {
   AlertTriangle,
   Loader2,
   RefreshCw,
+  FileDown,
+  ListTree,
+  Info,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -59,6 +63,18 @@ import {
 } from "@/hooks/useVisor3DSistemes";
 import type { ExternalObject } from "@/lib/dbTypes";
 import { useProjectes } from "@/lib/useProjectes";
+import {
+  NIVELLS_JERARQUIA,
+  construeixArbre,
+  escanejaModel,
+  exportaInformeTags,
+  normTag,
+  seleccionaAlViewer,
+  tagsNoAlModel,
+  type ElementModel,
+  type NodeJerarquia,
+} from "@/lib/visor3dModel";
+import { toast } from "sonner";
 
 // ─── Helper: codi de sistema derivat de les instal·lacions ───────────────────
 // Llegeix els codiInstallacio del sistema i extreu el codi numèric del primer
@@ -504,6 +520,10 @@ function useApsViewer(
   const [canviantVista, setCanviantVista] = useState(false);
   // Element seleccionat al visor (null = cap)
   const [seleccio, setSeleccio] = useState<SeleccioTag | null>(null);
+  // Resultat de l'escaneig del model (TAGs + jerarquia)
+  const [escaneig, setEscaneig] = useState<EstatEscaneig>(ESCANEIG_BUIT);
+  const escanejosRef = useRef<Map<number, ElementModel[]>>(new Map());
+  const escanejGenRef = useRef(0);
 
   const viewerRef = useRef<ExternalObject>(null);
   const docRef = useRef<ExternalObject>(null);
@@ -512,6 +532,49 @@ function useApsViewer(
   const forcaTokenRef = useRef(false);
   const reintentAutoRef = useRef(false);
   const inicialitzaRef = useRef<(() => Promise<void>) | null>(null);
+
+  const reiniciaEscaneig = useCallback(() => {
+    escanejGenRef.current++;
+    escanejosRef.current = new Map();
+    setEscaneig(ESCANEIG_BUIT);
+  }, []);
+
+  // Cada cop que el visor acaba de carregar la geometria d'un model 3D, en
+  // llegeix el TAG i la jerarquia (CBT_SISTEMA … CBT_SUBPROCES) de tots els elements.
+  const subscriuEscaneig = useCallback((viewer: ExternalObject) => {
+    const AV = window.Autodesk?.Viewing;
+    if (!AV) return;
+    viewer.addEventListener(
+      AV.GEOMETRY_LOADED_EVENT,
+      async (ev: ExternalObject) => {
+        const model = ev?.model;
+        if (!model || model.is3d?.() === false) return;
+        const gen = escanejGenRef.current;
+        const caducat = () =>
+          gen !== escanejGenRef.current || !mountedRef.current;
+        setEscaneig((e) => ({ ...e, estat: "escanejant", progres: 0 }));
+        try {
+          const els = await escanejaModel(
+            model,
+            (p) => {
+              if (!caducat()) setEscaneig((e) => ({ ...e, progres: p }));
+            },
+            caducat,
+          );
+          if (caducat()) return;
+          escanejosRef.current.set(model.id, els);
+          setEscaneig({
+            estat: "ok",
+            progres: 1,
+            elements: [...escanejosRef.current.values()].flat(),
+          });
+        } catch (err) {
+          console.error("[Visor3D] Error escanejant el model", err);
+          if (!caducat()) setEscaneig({ ...ESCANEIG_BUIT, estat: "error" });
+        }
+      },
+    );
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -570,6 +633,7 @@ function useApsViewer(
     }
     docRef.current = null;
     setSeleccio(null);
+    reiniciaEscaneig();
     setVistes([]);
     setVistaActual(0);
     setEstat("carregant-sdk");
@@ -620,6 +684,7 @@ function useApsViewer(
       viewer.start();
       viewerRef.current = viewer;
       subscriuSeleccioTag(viewer, setSeleccio);
+      subscriuEscaneig(viewer);
 
       await new Promise<void>((res, rej) => {
         AV.Document.load(
@@ -679,7 +744,7 @@ function useApsViewer(
       setError(msg);
       setEstat("error");
     }
-  }, [containerRef, installacio]);
+  }, [containerRef, installacio, reiniciaEscaneig, subscriuEscaneig]);
 
   const carregaVista = useCallback(
     async (idx: number) => {
@@ -687,6 +752,11 @@ function useApsViewer(
       const doc = docRef.current;
       if (!vista || !doc || !viewerRef.current || canviantVista) return;
       setCanviantVista(true);
+      // Una altra vista 3D pot contenir elements diferents: tornem a escanejar
+      if (vista.rol === "3d") {
+        reiniciaEscaneig();
+        setSeleccio(null);
+      }
       try {
         await viewerRef.current.loadDocumentNode(doc, vista.node, {
           keepCurrentModels: false, // en canviar vista, mostrem només aquesta
@@ -698,7 +768,7 @@ function useApsViewer(
         setCanviantVista(false);
       }
     },
-    [vistes, canviantVista],
+    [vistes, canviantVista, reiniciaEscaneig],
   );
 
   useEffect(() => {
@@ -712,12 +782,10 @@ function useApsViewer(
     setSeleccio(null);
   }, []);
 
-  // El panell lateral apareix/desapareix: el viewer ha de recalcular la mida
-  const hiHaSeleccio = seleccio !== null;
-  useEffect(() => {
-    const id = requestAnimationFrame(() => viewerRef.current?.resize());
-    return () => cancelAnimationFrame(id);
-  }, [hiHaSeleccio]);
+  // Selecciona (i enquadra) un conjunt d'elements: selecció múltiple
+  const seleccionaElements = useCallback((els: ElementModel[]) => {
+    if (viewerRef.current) seleccionaAlViewer(viewerRef.current, els);
+  }, []);
 
   return {
     estat,
@@ -734,6 +802,8 @@ function useApsViewer(
     canviantVista,
     seleccio,
     deselecciona,
+    escaneig,
+    seleccionaElements,
   };
 }
 
@@ -931,22 +1001,39 @@ function SelectorVistes({
   );
 }
 
-// ─── Panell lateral amb el TAG i la descripció de l'equip seleccionat ────────
+// ─── Panell lateral fix del visor ─────────────────────────────────────────────
 //
-// En seleccionar un element al visor, llegeix el seu paràmetre de Revit CBT_TAG
-// (model.getProperties). El panell només existeix mentre hi ha selecció; la
+// El panell és SEMPRE visible. Té dues pestanyes:
+//   · «Equip»     → sense selecció: nom i codi de la instal·lació, equips donats
+//                   d'alta (Rosmiman) i informe de TAGs que no són al model.
+//                   Amb selecció: TAG i descripció de l'element (o el recompte
+//                   si se n'han seleccionat diversos).
+//   · «Jerarquia» → arbre CBT_SISTEMA > CBT_SUBSISTEMA > CBT_LINIA_DE_TRACTAMENT
+//                   > CBT_PROCES > CBT_SUBPROCES; clicar un nivell selecciona
+//                   al visor tots els equips que conté.
+// El TAG es llegeix del paràmetre de Revit CBT_TAG (model.getProperties); la
 // descripció es busca al llistat Rosmiman (rosmiman_equips) dins del panell,
 // de manera que la càrrega del visor no depèn de les dades de Rosmiman.
 
 interface SeleccioTag {
-  /** "" = l'element seleccionat no té TAG */
+  /** TAG de l'element seleccionat ("" = sense TAG o selecció múltiple) */
   tag: string;
+  /** Nombre d'elements seleccionats */
+  count: number;
+  /** Només en selecció múltiple: identificadors dels elements */
+  elements?: { modelId: number; dbId: number }[];
 }
 
-const normTag = (v: unknown): string =>
-  String(v ?? "")
-    .trim()
-    .toUpperCase();
+interface EstatEscaneig {
+  estat: "idle" | "escanejant" | "ok" | "error";
+  progres: number;
+  elements: ElementModel[];
+}
+const ESCANEIG_BUIT: EstatEscaneig = {
+  estat: "idle",
+  progres: 0,
+  elements: [],
+};
 
 function subscriuSeleccioTag(
   viewer: ExternalObject,
@@ -959,7 +1046,27 @@ function subscriuSeleccioTag(
   // agregada del viewer (vàlid amb models federats).
   const onSeleccio = () => {
     const id = ++peticio;
-    const sel = viewer.getAggregateSelection?.()?.[0];
+    const agregada: ExternalObject[] = viewer.getAggregateSelection?.() ?? [];
+    const total = agregada.reduce((n, g) => n + (g?.selection?.length ?? 0), 0);
+    if (total === 0) {
+      onChange(null);
+      return;
+    }
+    // Selecció múltiple: només comptem elements
+    if (total > 1) {
+      onChange({
+        tag: "",
+        count: total,
+        elements: agregada.flatMap((g) =>
+          (g.selection as number[]).map((dbId) => ({
+            modelId: g.model?.id as number,
+            dbId,
+          })),
+        ),
+      });
+      return;
+    }
+    const sel = agregada.find((g) => g?.selection?.length);
     const dbId = sel?.selection?.[0];
     if (dbId === undefined || !sel?.model) {
       onChange(null);
@@ -981,7 +1088,7 @@ function subscriuSeleccioTag(
             propietats: props.map((x) => x.displayName),
           });
         }
-        onChange({ tag });
+        onChange({ tag, count: 1 });
       },
       (err: ExternalObject) => {
         console.warn("[Visor3D] No s'han pogut llegir les propietats", err);
@@ -995,43 +1102,394 @@ function subscriuSeleccioTag(
   );
 }
 
-function PanellTagEquip({ seleccio }: { seleccio: SeleccioTag }) {
+const ETIQUETA =
+  "text-[10px] font-bold uppercase tracking-widest text-slate-400";
+
+// ── Arbre de jerarquia ────────────────────────────────────────────────────────
+
+const MAX_FULLES_VISIBLES = 200;
+
+function FilaNode({
+  node,
+  fondaria,
+  obert,
+  marcat,
+  onToggleObert,
+  onToggleMarca,
+  onSeleccionar,
+  obertsSet,
+  marcatsSet,
+  color,
+}: {
+  node: NodeJerarquia;
+  fondaria: number;
+  obert: boolean;
+  marcat: boolean;
+  onToggleObert: (id: string) => void;
+  onToggleMarca: (n: NodeJerarquia) => void;
+  onSeleccionar: (els: ElementModel[]) => void;
+  obertsSet: Set<string>;
+  marcatsSet: Set<string>;
+  color: string;
+}) {
+  const teFills = node.fills.length > 0 || node.directs.length > 0;
+  const etiquetaNivell =
+    node.nivell >= 0 ? NIVELLS_JERARQUIA[node.nivell].etiqueta : "";
+  return (
+    <>
+      <div
+        className="group flex items-center gap-1 rounded-md pr-1 hover:bg-slate-50"
+        style={{ paddingLeft: 4 + fondaria * 12 }}
+      >
+        <button
+          type="button"
+          onClick={() => onToggleObert(node.id)}
+          disabled={!teFills}
+          aria-label={obert ? "Replega" : "Desplega"}
+          className="h-5 w-4 shrink-0 flex items-center justify-center text-slate-400 disabled:opacity-0"
+        >
+          {obert ? (
+            <ChevronDown className="h-3 w-3" />
+          ) : (
+            <ChevronRight className="h-3 w-3" />
+          )}
+        </button>
+        <input
+          type="checkbox"
+          checked={marcat}
+          onChange={() => onToggleMarca(node)}
+          title="Afegeix / treu aquest nivell de la selecció múltiple"
+          className="h-3 w-3 shrink-0 cursor-pointer"
+          style={{ accentColor: color }}
+        />
+        <button
+          type="button"
+          onClick={() => onSeleccionar(node.elements)}
+          title={`Selecciona els ${node.elements.length} equips de «${node.nom}»`}
+          className="flex-1 min-w-0 flex items-center gap-1.5 py-1 text-left"
+        >
+          <span className="text-[11px] font-medium text-slate-700 truncate">
+            {node.nom}
+          </span>
+          {etiquetaNivell && (
+            <span className="hidden xl:inline text-[8.5px] uppercase tracking-wider text-slate-300 shrink-0">
+              {etiquetaNivell}
+            </span>
+          )}
+          <span
+            className="ml-auto text-[10px] font-semibold px-1.5 rounded shrink-0"
+            style={{ background: `${color}18`, color }}
+          >
+            {node.elements.length}
+          </span>
+        </button>
+      </div>
+
+      {obert && (
+        <>
+          {node.fills.map((f) => (
+            <FilaNode
+              key={f.id}
+              node={f}
+              fondaria={fondaria + 1}
+              obert={obertsSet.has(f.id)}
+              marcat={marcatsSet.has(f.id)}
+              onToggleObert={onToggleObert}
+              onToggleMarca={onToggleMarca}
+              onSeleccionar={onSeleccionar}
+              obertsSet={obertsSet}
+              marcatsSet={marcatsSet}
+              color={color}
+            />
+          ))}
+          {node.directs.slice(0, MAX_FULLES_VISIBLES).map((el) => (
+            <button
+              key={`${el.modelId}:${el.dbId}`}
+              type="button"
+              onClick={() => onSeleccionar([el])}
+              className="w-full text-left rounded-md py-0.5 pr-2 font-mono text-[10.5px] text-slate-500 hover:bg-slate-50 hover:text-slate-800 truncate"
+              style={{ paddingLeft: 24 + (fondaria + 1) * 12 }}
+              title={el.tag || `Element ${el.dbId}`}
+            >
+              {el.tag || `(sense TAG) #${el.dbId}`}
+            </button>
+          ))}
+          {node.directs.length > MAX_FULLES_VISIBLES && (
+            <p
+              className="py-0.5 text-[10px] italic text-slate-400"
+              style={{ paddingLeft: 24 + (fondaria + 1) * 12 }}
+            >
+              … i {node.directs.length - MAX_FULLES_VISIBLES} equips més
+              (selecciona el nivell per veure'ls tots al model)
+            </p>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+function PestanyaJerarquia({
+  escaneig,
+  onSeleccionar,
+  color,
+}: {
+  escaneig: EstatEscaneig;
+  onSeleccionar: (els: ElementModel[]) => void;
+  color: string;
+}) {
+  const arbre = useMemo(
+    () => construeixArbre(escaneig.elements),
+    [escaneig.elements],
+  );
+  const [oberts, setOberts] = useState<Set<string>>(new Set());
+  const [marcats, setMarcats] = useState<Map<string, NodeJerarquia>>(new Map());
+
+  // Si es torna a escanejar (altra vista) les marques ja no són vàlides
+  useEffect(() => {
+    setMarcats(new Map());
+    setOberts(new Set());
+  }, [escaneig.elements]);
+
+  const toggleObert = (id: string) =>
+    setOberts((p) => {
+      const n = new Set(p);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+
+  // Selecció múltiple: unió dels elements de tots els nivells marcats
+  const toggleMarca = (node: NodeJerarquia) => {
+    setMarcats((p) => {
+      const n = new Map(p);
+      if (n.has(node.id)) n.delete(node.id);
+      else n.set(node.id, node);
+      onSeleccionar(unio([...n.values()]));
+      return n;
+    });
+  };
+
+  const marcatsSet = useMemo(() => new Set(marcats.keys()), [marcats]);
+
+  if (escaneig.estat === "idle" || escaneig.estat === "escanejant") {
+    return (
+      <div className="p-4 flex flex-col items-center gap-2 text-center text-slate-400">
+        <Loader2 className="h-5 w-5 animate-spin text-[#0099A8]" />
+        <p className="text-xs">
+          {escaneig.estat === "idle"
+            ? "Esperant que el model acabi de carregar…"
+            : `Llegint la jerarquia del model… ${Math.round(escaneig.progres * 100)}%`}
+        </p>
+      </div>
+    );
+  }
+  if (escaneig.estat === "error") {
+    return (
+      <p className="p-4 text-xs text-amber-600 italic">
+        No s'ha pogut llegir la jerarquia d'aquest model.
+      </p>
+    );
+  }
+  if (arbre.length === 0) {
+    return (
+      <p className="p-4 text-xs text-slate-400 italic leading-relaxed">
+        Cap element del model té els paràmetres{" "}
+        {NIVELLS_JERARQUIA.map((n) => `CBT_${n.param}`).join(", ")} omplerts.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col min-h-0">
+      <div className="px-3 py-2 flex items-center gap-2 border-b border-slate-100">
+        <p className="text-[10.5px] text-slate-400 leading-snug flex-1">
+          Clica un nivell per seleccionar-ne tots els equips. Amb les caselles
+          pots combinar-ne diversos.
+        </p>
+        {marcats.size > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setMarcats(new Map());
+              onSeleccionar([]);
+            }}
+            className="text-[10px] font-semibold text-slate-500 hover:text-slate-800 shrink-0"
+          >
+            Desmarca ({marcats.size})
+          </button>
+        )}
+      </div>
+      <div className="overflow-y-auto px-1.5 py-1.5">
+        {arbre.map((n) => (
+          <FilaNode
+            key={n.id}
+            node={n}
+            fondaria={0}
+            obert={oberts.has(n.id)}
+            marcat={marcatsSet.has(n.id)}
+            onToggleObert={toggleObert}
+            onToggleMarca={toggleMarca}
+            onSeleccionar={onSeleccionar}
+            obertsSet={oberts}
+            marcatsSet={marcatsSet}
+            color={color}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Unió sense duplicats dels elements de diversos nodes */
+function unio(nodes: NodeJerarquia[]): ElementModel[] {
+  const vist = new Set<string>();
+  const res: ElementModel[] = [];
+  for (const n of nodes)
+    for (const el of n.elements) {
+      const k = `${el.modelId}:${el.dbId}`;
+      if (!vist.has(k)) {
+        vist.add(k);
+        res.push(el);
+      }
+    }
+  return res;
+}
+
+// ── Pestanya «Equip» ──────────────────────────────────────────────────────────
+
+function PestanyaEquip({
+  installacio,
+  sistema,
+  seleccio,
+  escaneig,
+}: {
+  installacio: Installacio;
+  sistema: Sistema;
+  seleccio: SeleccioTag | null;
+  escaneig: EstatEscaneig;
+}) {
   const { rosmimanEquips } = useProjectes();
+  const [exportant, setExportant] = useState(false);
+
+  const codi = normTag(installacio.codiInstallacio);
+
+  // Equips donats d'alta (Rosmiman) d'aquesta instal·lació
+  const tagsAlta = useMemo(
+    () =>
+      codi
+        ? rosmimanEquips.filter(
+            (e) =>
+              normTag(e.codiInstallacio) === codi ||
+              normTag(e.tag).startsWith(codi),
+          )
+        : [],
+    [rosmimanEquips, codi],
+  );
+
+  const tagsModel = useMemo(
+    () =>
+      new Set(escaneig.elements.map((e) => e.tag).filter((t) => t.length > 0)),
+    [escaneig.elements],
+  );
+  const absents = useMemo(
+    () => tagsNoAlModel(tagsAlta, tagsModel),
+    [tagsAlta, tagsModel],
+  );
+  const escanejat = escaneig.estat === "ok";
+
   const descripcio = useMemo(
     () =>
-      seleccio.tag
+      seleccio?.tag
         ? (rosmimanEquips.find((e) => normTag(e.tag) === seleccio.tag)
             ?.descripcio ?? null)
         : null,
-    [rosmimanEquips, seleccio.tag],
+    [rosmimanEquips, seleccio?.tag],
   );
 
-  return (
-    <aside className="w-72 shrink-0 flex flex-col border-l border-slate-200 bg-white">
-      <div className="px-4 py-3 border-b border-slate-100">
-        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Equip seleccionat
-        </p>
-      </div>
+  // Selecció múltiple: quants dels elements tenen TAG / consten a Rosmiman
+  const resumMultiple = useMemo(() => {
+    if (!seleccio?.elements) return null;
+    const perClau = new Map(
+      escaneig.elements.map((e) => [`${e.modelId}:${e.dbId}`, e.tag]),
+    );
+    const alta = new Set(tagsAlta.map((t) => normTag(t.tag)));
+    let ambTag = 0;
+    let donatsAlta = 0;
+    for (const el of seleccio.elements) {
+      const tag = perClau.get(`${el.modelId}:${el.dbId}`);
+      if (tag) {
+        ambTag++;
+        if (alta.has(tag)) donatsAlta++;
+      }
+    }
+    return { ambTag, donatsAlta };
+  }, [seleccio?.elements, escaneig.elements, tagsAlta]);
+
+  const exporta = async () => {
+    setExportant(true);
+    try {
+      await exportaInformeTags({
+        instalacioNom: installacio.nom,
+        instalacioCodi: installacio.codiInstallacio ?? "",
+        sistemaNom: sistema.nom,
+        tagsAlta,
+        tagsModel,
+      });
+      toast.success("Informe exportat");
+    } catch (e) {
+      toast.error(
+        `No s'ha pogut exportar l'informe: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      setExportant(false);
+    }
+  };
+
+  // ── Amb selecció ──
+  if (seleccio) {
+    return (
       <div className="p-4 space-y-4 overflow-y-auto">
-        {!seleccio.tag ? (
+        {seleccio.count > 1 ? (
+          <>
+            <div className="space-y-1.5">
+              <p className={ETIQUETA}>Selecció múltiple</p>
+              <p className="text-sm text-slate-700">
+                <span className="font-bold">{seleccio.count}</span> elements
+                seleccionats
+              </p>
+            </div>
+            {resumMultiple && (
+              <div className="space-y-1 text-xs text-slate-500">
+                <p>
+                  Amb TAG:{" "}
+                  <span className="font-semibold text-slate-700">
+                    {resumMultiple.ambTag}
+                  </span>
+                </p>
+                <p>
+                  Donats d'alta:{" "}
+                  <span className="font-semibold text-slate-700">
+                    {resumMultiple.donatsAlta}
+                  </span>
+                </p>
+              </div>
+            )}
+          </>
+        ) : !seleccio.tag ? (
           <p className="text-xs text-slate-400 italic leading-relaxed">
             L'element seleccionat no té TAG.
           </p>
         ) : (
           <>
             <div className="space-y-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                TAG
-              </p>
+              <p className={ETIQUETA}>TAG</p>
               <p className="text-sm text-slate-700 leading-snug break-all">
                 {seleccio.tag}
               </p>
             </div>
             <div className="space-y-1.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Descripció
-              </p>
+              <p className={ETIQUETA}>Descripció</p>
               {descripcio ? (
                 <p className="text-sm text-slate-700 leading-snug">
                   {descripcio}
@@ -1046,6 +1504,178 @@ function PanellTagEquip({ seleccio }: { seleccio: SeleccioTag }) {
         )}
         <p className="text-[10px] text-slate-300">Esc per deseleccionar</p>
       </div>
+    );
+  }
+
+  // ── Sense selecció: resum de la instal·lació ──
+  return (
+    <div className="p-4 space-y-5 overflow-y-auto">
+      <div className="space-y-1.5">
+        <p className={ETIQUETA}>Instal·lació</p>
+        <p className="text-sm font-bold text-slate-800 uppercase tracking-wide leading-snug">
+          {installacio.nom}
+        </p>
+      </div>
+      <div className="space-y-1.5">
+        <p className={ETIQUETA}>Codi</p>
+        {installacio.codiInstallacio ? (
+          <span className="inline-block font-mono text-xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+            {installacio.codiInstallacio}
+          </span>
+        ) : (
+          <p className="text-xs text-slate-300">—</p>
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <p className={ETIQUETA}>Equips donats d'alta</p>
+        <p
+          className="text-2xl font-bold leading-none"
+          style={{ color: sistema.color }}
+        >
+          {tagsAlta.length}
+        </p>
+        {!codi && (
+          <p className="text-[10.5px] text-amber-600 italic">
+            La instal·lació no té codi: no es poden comptar els equips.
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-2 border-t border-slate-100 pt-4">
+        <p className={ETIQUETA}>Comparativa amb el model</p>
+        {escaneig.estat === "ok" ? (
+          <div className="space-y-1 text-xs text-slate-500">
+            <p>
+              TAGs diferents al model:{" "}
+              <span className="font-semibold text-slate-700">
+                {tagsModel.size}
+              </span>
+            </p>
+            <p className="flex items-center gap-1">
+              {absents.length === 0 ? (
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+              ) : (
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+              )}
+              Donats d'alta i no al model:{" "}
+              <span
+                className={cn(
+                  "font-bold",
+                  absents.length === 0 ? "text-emerald-600" : "text-amber-600",
+                )}
+              >
+                {absents.length}
+              </span>
+            </p>
+          </div>
+        ) : escaneig.estat === "error" ? (
+          <p className="text-xs text-amber-600 italic">
+            No s'han pogut llegir els TAGs del model.
+          </p>
+        ) : (
+          <p className="text-xs text-slate-400 flex items-center gap-1.5">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            {escaneig.estat === "escanejant"
+              ? `Llegint els TAGs del model… ${Math.round(escaneig.progres * 100)}%`
+              : "Esperant el model…"}
+          </p>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!escanejat || tagsAlta.length === 0 || exportant}
+          onClick={exporta}
+          className="w-full h-8 gap-1.5 text-[11px] font-semibold"
+          title={
+            tagsAlta.length === 0
+              ? "No hi ha equips donats d'alta per a aquesta instal·lació"
+              : undefined
+          }
+        >
+          {exportant ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <FileDown className="h-3.5 w-3.5" />
+          )}
+          Exportar informe (.xlsx)
+        </Button>
+        <p className="text-[10px] text-slate-300 leading-snug">
+          L'informe compara amb la vista 3D carregada actualment.
+        </p>
+      </div>
+
+      <p className="text-[10.5px] text-slate-400 italic leading-relaxed">
+        Selecciona un element del model per veure'n el TAG i la descripció.
+      </p>
+    </div>
+  );
+}
+
+// ── Panell (contenidor amb pestanyes) ─────────────────────────────────────────
+
+function PanellVisor({
+  installacio,
+  sistema,
+  seleccio,
+  escaneig,
+  onSeleccionarElements,
+}: {
+  installacio: Installacio;
+  sistema: Sistema;
+  seleccio: SeleccioTag | null;
+  escaneig: EstatEscaneig;
+  onSeleccionarElements: (els: ElementModel[]) => void;
+}) {
+  const [pestanya, setPestanya] = useState<"equip" | "jerarquia">("equip");
+
+  const Tab = ({
+    id,
+    icona,
+    text,
+  }: {
+    id: "equip" | "jerarquia";
+    icona: React.ReactNode;
+    text: string;
+  }) => (
+    <button
+      type="button"
+      onClick={() => setPestanya(id)}
+      className={cn(
+        "flex-1 flex items-center justify-center gap-1.5 py-2.5 text-[11px] font-semibold border-b-2 transition-colors",
+        pestanya === id
+          ? "text-slate-800"
+          : "border-transparent text-slate-400 hover:text-slate-600",
+      )}
+      style={pestanya === id ? { borderColor: sistema.color } : undefined}
+    >
+      {icona} {text}
+    </button>
+  );
+
+  return (
+    <aside className="w-80 shrink-0 flex flex-col min-h-0 border-l border-slate-200 bg-white">
+      <div className="flex border-b border-slate-100 shrink-0">
+        <Tab id="equip" icona={<Info className="h-3.5 w-3.5" />} text="Equip" />
+        <Tab
+          id="jerarquia"
+          icona={<ListTree className="h-3.5 w-3.5" />}
+          text="Jerarquia"
+        />
+      </div>
+      {pestanya === "equip" ? (
+        <PestanyaEquip
+          installacio={installacio}
+          sistema={sistema}
+          seleccio={seleccio}
+          escaneig={escaneig}
+        />
+      ) : (
+        <PestanyaJerarquia
+          escaneig={escaneig}
+          onSeleccionar={onSeleccionarElements}
+          color={sistema.color}
+        />
+      )}
     </aside>
   );
 }
@@ -1074,6 +1704,8 @@ function Visor3DDialog({
     canviantVista,
     seleccio,
     deselecciona,
+    escaneig,
+    seleccionaElements,
   } = useApsViewer(containerRef, installacio);
   const carregant = estat !== "ok" && estat !== "error";
 
@@ -1210,7 +1842,13 @@ function Visor3DDialog({
               style={{ visibility: estat === "ok" ? "visible" : "hidden" }}
             />
           </div>
-          {seleccio && <PanellTagEquip seleccio={seleccio} />}
+          <PanellVisor
+            installacio={installacio}
+            sistema={sistema}
+            seleccio={seleccio}
+            escaneig={escaneig}
+            onSeleccionarElements={seleccionaElements}
+          />
         </div>
       </DialogContent>
     </Dialog>
