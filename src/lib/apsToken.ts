@@ -56,9 +56,14 @@ export function oblidaApsToken(): void {
  *   de llocs el llegeixen sols.
  */
 export function obteApsToken(
-  opts: { sessionToken?: string } = {},
+  opts: { sessionToken?: string; fresh?: boolean } = {},
 ): Promise<ApsToken> {
   const ara = Date.now();
+  if (opts.fresh) {
+    // Autodesk ha rebutjat el token anterior: el descartem i en demanem un de nou
+    cache = null;
+    enCurs = null;
+  }
   if (cache && cache.expiraA - MARGE_MS > ara) {
     return Promise.resolve({
       access_token: cache.access_token,
@@ -67,14 +72,17 @@ export function obteApsToken(
   }
   // Evita peticions duplicades quan diverses parts de la UI el demanen alhora
   if (!enCurs) {
-    enCurs = demanaToken(opts.sessionToken).finally(() => {
+    enCurs = demanaToken(opts.sessionToken, opts.fresh).finally(() => {
       enCurs = null;
     });
   }
   return enCurs;
 }
 
-async function demanaToken(sessionTokenParam?: string): Promise<ApsToken> {
+async function demanaToken(
+  sessionTokenParam?: string,
+  fresh = false,
+): Promise<ApsToken> {
   const base = tokenServiceUrl();
   if (!base) {
     throw new ApsTokenError(
@@ -96,7 +104,7 @@ async function demanaToken(sessionTokenParam?: string): Promise<ApsToken> {
 
   let resp: Response;
   try {
-    resp = await fetch(`${base}/api/aps-token`, {
+    resp = await fetch(`${base}/api/aps-token${fresh ? "?fresh=1" : ""}`, {
       headers: { Authorization: `Bearer ${sessioToken}` },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });

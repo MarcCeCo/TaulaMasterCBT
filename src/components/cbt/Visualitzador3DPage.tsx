@@ -505,6 +505,10 @@ function useApsViewer(
   const viewerRef = useRef<ExternalObject>(null);
   const docRef = useRef<ExternalObject>(null);
   const mountedRef = useRef(true);
+  // Si Autodesk respon 401/403, es reintenta UNA vegada amb un token nou
+  const forcaTokenRef = useRef(false);
+  const reintentAutoRef = useRef(false);
+  const inicialitzaRef = useRef<(() => Promise<void>) | null>(null);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -574,7 +578,9 @@ function useApsViewer(
       setEstat("carregant-token");
       // Envia la sessió de l'usuari al token-service. Si falla, el missatge
       // llançat és el real del servidor (p. ex. "La connexió amb Autodesk ha caducat…").
-      const { access_token } = await obteApsToken();
+      const fresh = forcaTokenRef.current;
+      forcaTokenRef.current = false;
+      const { access_token } = await obteApsToken({ fresh });
       if (!mountedRef.current) return;
 
       setEstat("inicialitzant");
@@ -647,6 +653,7 @@ function useApsViewer(
             viewer.loadDocumentNode(doc, primerNode);
             setVistes(totes);
             setVistaActual(0);
+            reintentAutoRef.current = false;
             setEstat("ok");
             res();
           },
@@ -658,6 +665,12 @@ function useApsViewer(
       if (!mountedRef.current) return;
       const msg = err instanceof Error ? err.message : String(err);
       if (msg === "_desmontat_") return;
+      if (/\b(401|403)\b/.test(msg) && !reintentAutoRef.current) {
+        reintentAutoRef.current = true;
+        forcaTokenRef.current = true;
+        void inicialitzaRef.current?.();
+        return;
+      }
       setError(msg);
       setEstat("error");
     }
@@ -684,13 +697,19 @@ function useApsViewer(
   );
 
   useEffect(() => {
+    inicialitzaRef.current = inicialitza;
     inicialitza();
   }, [inicialitza]);
 
   return {
     estat,
     error,
-    reintentar: inicialitza,
+    // El botó «Reintentar» demana sempre un token nou al servei
+    reintentar: () => {
+      forcaTokenRef.current = true;
+      reintentAutoRef.current = false;
+      return inicialitza();
+    },
     vistes,
     vistaActual,
     carregaVista,
