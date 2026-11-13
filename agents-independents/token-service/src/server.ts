@@ -1,6 +1,12 @@
 // token-service/src/server.ts
 // Servei lleuger i sempre actiu que exposa el token APS 3-legged per al Viewer SDK.
-// Renova el token proactivament calculant el temps restant real del token a Supabase.
+//
+// Dos modes (es tria sol segons les variables d'entorn):
+//   · MODE BOT (SSA): si hi ha APS_SSA_ID, APS_SSA_KEY_ID i APS_SSA_PRIVATE_KEY, el
+//     token és el del Secure Service Account "taulamaster_bot". Sense refresh token,
+//     sense /auth/login i sense intervenció humana.
+//   · MODE USUARI (antic): OAuth 3-legged d'un compte tècnic; el refresh token es
+//     guarda a Supabase (taula aps_tokens) i es renova proactivament.
 //
 // Endpoints:
 //   GET /health         → estat del servei + estat del token APS (sempre HTTP 200)
@@ -21,7 +27,12 @@ import http from "http";
 import crypto from "crypto";
 import WebSocket from "ws";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { obteToken3Legged, ApsReauthError } from "../../shared/agent";
+import {
+  obteToken3Legged,
+  obteTokenSSA,
+  configSSA,
+  ApsReauthError,
+} from "../../shared/agent";
 import {
   setCors,
   htmlPagina,
@@ -35,6 +46,29 @@ const PORT = process.env.PORT || 3001;
 const TOKEN_SERVICE_SECRET = process.env.TOKEN_SERVICE_SECRET?.trim() || "";
 
 const pendingStates = new Map<string, number>();
+
+/** Mode bot (SSA) actiu quan tota la seva configuració és a l'entorn. */
+const modeBot = (): boolean => configSSA() !== null;
+
+/**
+ * Mode bot: anota a aps_tokens (fila id=1) quan caduca el token actual perquè
+ * «Control d'agents» continuï mostrant-ne l'estat. Només ACTUALITZA la fila
+ * existent (no hi toca el refresh_token); si falla, no és greu.
+ */
+async function anotaTokenBotASupabase(
+  supabase: SupabaseClient,
+  expiresInSegons: number,
+): Promise<void> {
+  const { error } = await supabase
+    .from("aps_tokens")
+    .update({ expires_at: Date.now() + expiresInSegons * 1000 })
+    .eq("id", 1);
+  if (error)
+    console.warn(
+      "⚠️  No s'ha pogut anotar el token del bot a aps_tokens:",
+      error.message,
+    );
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -162,6 +196,31 @@ async function llegeixEstatToken(): Promise<{
   estat: EstatToken;
   minuts_restants: number | null;
 }> {
+  // Mode bot: no hi ha res a Supabase per llegir. Demanem (o reutilitzem de la
+  // memòria cau) un token real: és la prova més fiable que la cadena funciona.
+  const cfgBot = configSSA();
+  if (cfgBot) {
+    try {
+      const t = await obteTokenSSA(cfgBot);
+      registraRenovacioOk();
+      return {
+        token_ok: true,
+        estat: "ok",
+        minuts_restants: Math.round(t.expires_in / 60),
+      };
+    } catch (err) {
+      registraErrorRenovacio(err);
+      return {
+        token_ok: false,
+        estat:
+          err instanceof ApsReauthError
+            ? "reautenticacio_necessaria"
+            : "error_renovacio",
+        minuts_restants: null,
+      };
+    }
+  }
+
   const supabase = creaSupabase();
   if (!supabase)
     return {
@@ -208,6 +267,7 @@ async function cosHealth() {
   return {
     status: "ok", // el procés està viu
     service: "token-service",
+    mode: modeBot() ? "bot-ssa" : "usuari-3legged",
     token_ok: estat.token_ok, // la cadena d'Autodesk funciona
     token: {
       estat: estat.estat,
@@ -264,6 +324,17 @@ const server = http.createServer(async (req, res) => {
 
   // ── OAuth: login ──────────────────────────────────────────────────────────
   if (url.pathname === "/auth/login" && req.method === "GET") {
+    if (modeBot()) {
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(
+        htmlPagina(
+          "No cal iniciar sessió",
+          "El servei fa servir el compte de servei (taulamaster_bot) i no necessita cap autenticació manual.",
+          true,
+        ),
+      );
+      return;
+    }
     const clientId = process.env.APS_CLIENT_ID;
     const callbackUrl = process.env.APS_CALLBACK_URL;
 
@@ -425,6 +496,24 @@ const server = http.createServer(async (req, res) => {
         return;
       }
 
+      // ── Mode bot (SSA): token del compte de servei, sense refresh token ──
+      const cfgBot = configSSA();
+      if (cfgBot) {
+        try {
+          const t = await obteTokenSSA(cfgBot);
+          registraRenovacioOk();
+          void anotaTokenBotASupabase(supabase, t.expires_in);
+          json(res, 200, {
+            access_token: t.access_token,
+            expires_in: t.expires_in,
+          });
+        } catch (err) {
+          registraErrorRenovacio(err);
+          throw err;
+        }
+        return;
+      }
+
       const { data: row, error: dbError } = await supabase
         .from("aps_tokens")
         .select("access_token, refresh_token, expires_at")
@@ -517,6 +606,12 @@ server.listen(PORT, async () => {
     console.warn(
       "⚠️  TOKEN_SERVICE_SECRET no definit: els serveis interns (Visor 3D) no podran demanar el token.",
     );
+  }
+  if (modeBot()) {
+    console.log(
+      "🤖 Mode bot (SSA): token del compte de servei, sense scheduler.",
+    );
+    return;
   }
   // En arrencar, llegim expires_at real de Supabase i programem la renovació
   // al moment òptim en lloc d'usar un interval fix des de zero.
