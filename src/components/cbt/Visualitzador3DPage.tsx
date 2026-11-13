@@ -986,15 +986,17 @@ function useSeleccioTag(
     wrapper.addEventListener("pointerdown", onPointerDown, true);
 
     let peticio = 0;
-    const onSeleccio = (ev: ExternalObject) => {
+    // No depenem del format de l'esdeveniment: en cada canvi de selecció
+    // llegim la selecció agregada del viewer (valid amb models federats).
+    const onSeleccio = () => {
       const id = ++peticio;
-      const sel = ev?.selections?.[0];
-      const dbId = sel?.dbIdArray?.[0];
-      if (dbId === undefined) {
+      const sel = viewer.getAggregateSelection?.()?.[0];
+      const dbId = sel?.selection?.[0];
+      if (dbId === undefined || !sel?.model) {
         setPopup(null);
         return;
       }
-      const model = sel.model ?? viewer.model;
+      const model = sel.model;
       model.getProperties(
         dbId,
         (res: ExternalObject) => {
@@ -1010,6 +1012,7 @@ function useSeleccioTag(
             setPopup(null);
             return;
           }
+          console.info("[Visor3D] TAG trobat:", tag);
           const r = wrapper.getBoundingClientRect();
           const { x, y } = darrerClicRef.current;
           setPopup({
@@ -1026,13 +1029,15 @@ function useSeleccioTag(
         },
       );
     };
-    viewer.addEventListener(AV.SELECTION_CHANGED_EVENT, onSeleccio);
+    const evSeleccio =
+      AV.AGGREGATE_SELECTION_CHANGED_EVENT ?? AV.SELECTION_CHANGED_EVENT;
+    viewer.addEventListener(evSeleccio, onSeleccio);
 
     return () => {
       peticio++;
       wrapper.removeEventListener("pointerdown", onPointerDown, true);
       try {
-        viewer.removeEventListener(AV.SELECTION_CHANGED_EVENT, onSeleccio);
+        viewer.removeEventListener(evSeleccio, onSeleccio);
       } catch {
         /* el viewer ja pot estar finalitzat */
       }
@@ -1054,8 +1059,13 @@ function PopupTagEquip({
 }) {
   return (
     <div
-      className="absolute z-20 rounded-xl border border-slate-200 bg-white shadow-2xl p-3"
-      style={{ left: popup.x, top: popup.y, width: POPUP_AMPLE }}
+      className="absolute rounded-xl border border-slate-200 bg-white shadow-2xl p-3"
+      style={{
+        left: popup.x,
+        top: popup.y,
+        width: POPUP_AMPLE,
+        zIndex: 10000, // per sobre dels panells i la barra d'eines del Viewer
+      }}
     >
       <div className="flex items-start gap-2">
         <span
