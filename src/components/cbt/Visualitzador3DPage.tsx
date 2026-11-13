@@ -502,8 +502,8 @@ function useApsViewer(
   const [vistes, setVistes] = useState<VistaModel[]>([]);
   const [vistaActual, setVistaActual] = useState<number>(0);
   const [canviantVista, setCanviantVista] = useState(false);
-  // Instància del viewer en estat (perquè altres hooks hi puguin subscriure events)
-  const [viewerObj, setViewerObj] = useState<ExternalObject>(null);
+  // Element seleccionat al visor (null = cap)
+  const [seleccio, setSeleccio] = useState<SeleccioTag | null>(null);
 
   const viewerRef = useRef<ExternalObject>(null);
   const docRef = useRef<ExternalObject>(null);
@@ -569,7 +569,7 @@ function useApsViewer(
       viewerRef.current = null;
     }
     docRef.current = null;
-    setViewerObj(null);
+    setSeleccio(null);
     setVistes([]);
     setVistaActual(0);
     setEstat("carregant-sdk");
@@ -619,7 +619,7 @@ function useApsViewer(
       const viewer = new AV.GuiViewer3D(containerRef.current);
       viewer.start();
       viewerRef.current = viewer;
-      setViewerObj(viewer);
+      subscriuSeleccioTag(viewer, setSeleccio);
 
       await new Promise<void>((res, rej) => {
         AV.Document.load(
@@ -706,6 +706,19 @@ function useApsViewer(
     inicialitza();
   }, [inicialitza]);
 
+  // Deselecciona l'element actual (tecla Esc)
+  const deselecciona = useCallback(() => {
+    viewerRef.current?.clearSelection();
+    setSeleccio(null);
+  }, []);
+
+  // El panell lateral apareix/desapareix: el viewer ha de recalcular la mida
+  const hiHaSeleccio = seleccio !== null;
+  useEffect(() => {
+    const id = requestAnimationFrame(() => viewerRef.current?.resize());
+    return () => cancelAnimationFrame(id);
+  }, [hiHaSeleccio]);
+
   return {
     estat,
     error,
@@ -719,7 +732,8 @@ function useApsViewer(
     vistaActual,
     carregaVista,
     canviantVista,
-    viewer: viewerObj,
+    seleccio,
+    deselecciona,
   };
 }
 
@@ -917,186 +931,131 @@ function SelectorVistes({
   );
 }
 
-// ─── Pop-up amb el TAG i la descripció de l'equip seleccionat ────────────────
+// ─── Panell lateral amb el TAG i la descripció de l'equip seleccionat ────────
 //
-// En seleccionar un element al visor:
-//   1. Llegeix les propietats de l'element (model.getProperties).
-//   2. Busca el TAG al paràmetre de Revit CBT_TAG (o TAG). Si no hi és, prova de
-//      trobar algun valor de propietat que coincideixi amb un TAG de Rosmiman.
-//   3. Cerca la descripció d'aquest TAG al llistat Rosmiman (rosmiman_equips).
-//   4. Mostra un pop-up a prop del punt on s'ha clicat.
-// Si l'element no té cap TAG, no es mostra res (i es deixa un log a la consola
-// amb els noms de propietats per poder depurar el nom del paràmetre).
+// En seleccionar un element al visor, llegeix el seu paràmetre de Revit CBT_TAG
+// (model.getProperties). El panell només existeix mentre hi ha selecció; la
+// descripció es busca al llistat Rosmiman (rosmiman_equips) dins del panell,
+// de manera que la càrrega del visor no depèn de les dades de Rosmiman.
 
-interface PopupTag {
+interface SeleccioTag {
+  /** "" = l'element seleccionat no té TAG */
   tag: string;
-  /** null = el TAG no existeix al llistat Rosmiman */
-  descripcio: string | null;
-  nomElement: string;
-  x: number;
-  y: number;
 }
-
-const POPUP_AMPLE = 280;
-const POPUP_ALT = 130;
 
 const normTag = (v: unknown): string =>
   String(v ?? "")
     .trim()
     .toUpperCase();
 
-function trobaTag(
-  props: ExternalObject[],
-  tagsConeguts: Map<string, string>,
-): string {
-  const perNom = props.find((p) =>
-    /^(CBT_)?TAG$/.test(normTag(p.displayName ?? p.attributeName)),
-  );
-  const valor = normTag(perNom?.displayValue);
-  if (valor) return valor;
-  for (const p of props) {
-    const v = normTag(p.displayValue);
-    if (v && tagsConeguts.has(v)) return v;
-  }
-  return "";
-}
-
-function useSeleccioTag(
+function subscriuSeleccioTag(
   viewer: ExternalObject,
-  wrapperRef: React.RefObject<HTMLDivElement | null>,
-  descripcions: Map<string, string>,
+  onChange: (s: SeleccioTag | null) => void,
 ) {
-  const [popup, setPopup] = useState<PopupTag | null>(null);
-  const darrerClicRef = useRef({ x: 24, y: 24 });
-  const descripcionsRef = useRef(descripcions);
-
-  useEffect(() => {
-    descripcionsRef.current = descripcions;
-  }, [descripcions]);
-
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    const AV = window.Autodesk?.Viewing;
-    if (!viewer || !wrapper || !AV) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      const r = wrapper.getBoundingClientRect();
-      darrerClicRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
-    };
-    wrapper.addEventListener("pointerdown", onPointerDown, true);
-
-    let peticio = 0;
-    // No depenem del format de l'esdeveniment: en cada canvi de selecció
-    // llegim la selecció agregada del viewer (valid amb models federats).
-    const onSeleccio = () => {
-      const id = ++peticio;
-      const sel = viewer.getAggregateSelection?.()?.[0];
-      const dbId = sel?.selection?.[0];
-      if (dbId === undefined || !sel?.model) {
-        setPopup(null);
-        return;
-      }
-      const model = sel.model;
-      model.getProperties(
-        dbId,
-        (res: ExternalObject) => {
-          if (id !== peticio) return; // ja s'ha seleccionat un altre element
-          const props: ExternalObject[] = res?.properties ?? [];
-          const tag = trobaTag(props, descripcionsRef.current);
-          if (!tag) {
-            console.info("[Visor3D] Element sense TAG", {
-              dbId,
-              nom: res?.name,
-              propietats: props.map((p) => p.displayName),
-            });
-            setPopup(null);
-            return;
-          }
-          console.info("[Visor3D] TAG trobat:", tag);
-          const r = wrapper.getBoundingClientRect();
-          const { x, y } = darrerClicRef.current;
-          setPopup({
-            tag,
-            descripcio: descripcionsRef.current.get(tag) ?? null,
-            nomElement: String(res?.name ?? ""),
-            x: Math.max(8, Math.min(x + 14, r.width - POPUP_AMPLE - 8)),
-            y: Math.max(8, Math.min(y + 14, r.height - POPUP_ALT - 8)),
+  const AV = window.Autodesk?.Viewing;
+  if (!AV) return;
+  let peticio = 0;
+  // No depenem del format de l'esdeveniment: a cada canvi llegim la selecció
+  // agregada del viewer (vàlid amb models federats).
+  const onSeleccio = () => {
+    const id = ++peticio;
+    const sel = viewer.getAggregateSelection?.()?.[0];
+    const dbId = sel?.selection?.[0];
+    if (dbId === undefined || !sel?.model) {
+      onChange(null);
+      return;
+    }
+    sel.model.getProperties(
+      dbId,
+      (res: ExternalObject) => {
+        if (id !== peticio) return; // ja s'ha seleccionat un altre element
+        const props: ExternalObject[] = res?.properties ?? [];
+        const p = props.find((x) =>
+          /^(CBT_)?TAG$/.test(normTag(x.displayName ?? x.attributeName)),
+        );
+        const tag = normTag(p?.displayValue);
+        if (!tag) {
+          console.info("[Visor3D] Element sense TAG", {
+            dbId,
+            nom: res?.name,
+            propietats: props.map((x) => x.displayName),
           });
-        },
-        (err: ExternalObject) => {
-          console.warn("[Visor3D] No s'han pogut llegir les propietats", err);
-          if (id === peticio) setPopup(null);
-        },
-      );
-    };
-    const evSeleccio =
-      AV.AGGREGATE_SELECTION_CHANGED_EVENT ?? AV.SELECTION_CHANGED_EVENT;
-    viewer.addEventListener(evSeleccio, onSeleccio);
-
-    return () => {
-      peticio++;
-      wrapper.removeEventListener("pointerdown", onPointerDown, true);
-      try {
-        viewer.removeEventListener(evSeleccio, onSeleccio);
-      } catch {
-        /* el viewer ja pot estar finalitzat */
-      }
-      setPopup(null);
-    };
-  }, [viewer, wrapperRef]);
-
-  return { popup, tancaPopup: () => setPopup(null) };
+        }
+        onChange({ tag });
+      },
+      (err: ExternalObject) => {
+        console.warn("[Visor3D] No s'han pogut llegir les propietats", err);
+        if (id === peticio) onChange(null);
+      },
+    );
+  };
+  viewer.addEventListener(
+    AV.AGGREGATE_SELECTION_CHANGED_EVENT ?? AV.SELECTION_CHANGED_EVENT,
+    onSeleccio,
+  );
 }
 
-function PopupTagEquip({
-  popup,
+function PanellTagEquip({
+  seleccio,
   color,
-  onClose,
 }: {
-  popup: PopupTag;
+  seleccio: SeleccioTag;
   color: string;
-  onClose: () => void;
 }) {
+  const { rosmimanEquips } = useProjectes();
+  const descripcio = useMemo(
+    () =>
+      seleccio.tag
+        ? (rosmimanEquips.find((e) => normTag(e.tag) === seleccio.tag)
+            ?.descripcio ?? null)
+        : null,
+    [rosmimanEquips, seleccio.tag],
+  );
+
   return (
-    <div
-      className="absolute rounded-xl border border-slate-200 bg-white shadow-2xl p-3"
-      style={{
-        left: popup.x,
-        top: popup.y,
-        width: POPUP_AMPLE,
-        zIndex: 10000, // per sobre dels panells i la barra d'eines del Viewer
-      }}
-    >
-      <div className="flex items-start gap-2">
-        <span
-          className="font-mono text-[11px] font-bold px-1.5 py-0.5 rounded break-all"
-          style={{ background: `${color}18`, color }}
-        >
-          {popup.tag}
-        </span>
-        <button
-          onClick={onClose}
-          aria-label="Tancar"
-          className="ml-auto h-5 w-5 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 shrink-0"
-        >
-          <X className="h-3 w-3" />
-        </button>
+    <aside className="w-72 shrink-0 flex flex-col border-l border-slate-200 bg-white">
+      <div className="px-4 py-3 border-b border-slate-100">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          Equip seleccionat
+        </p>
       </div>
-      {popup.descripcio ? (
-        <p className="text-xs text-slate-700 mt-2 leading-snug">
-          {popup.descripcio}
-        </p>
-      ) : (
-        <p className="text-xs text-amber-600 mt-2 leading-snug italic">
-          Aquest TAG no consta al llistat Rosmiman.
-        </p>
-      )}
-      {popup.nomElement && (
-        <p className="text-[10px] text-slate-400 mt-2 truncate">
-          {popup.nomElement}
-        </p>
-      )}
-    </div>
+      <div className="p-4 space-y-4 overflow-y-auto">
+        {!seleccio.tag ? (
+          <p className="text-xs text-slate-400 italic leading-relaxed">
+            L'element seleccionat no té TAG.
+          </p>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                TAG
+              </p>
+              <span
+                className="inline-block font-mono text-xs font-bold px-2 py-1 rounded break-all"
+                style={{ background: `${color}18`, color }}
+              >
+                {seleccio.tag}
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                Descripció
+              </p>
+              {descripcio ? (
+                <p className="text-sm text-slate-700 leading-snug">
+                  {descripcio}
+                </p>
+              ) : (
+                <p className="text-xs text-amber-600 italic leading-snug">
+                  Aquest TAG no consta al llistat Rosmiman.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+        <p className="text-[10px] text-slate-300">Esc per deseleccionar</p>
+      </div>
+    </aside>
   );
 }
 
@@ -1113,15 +1072,6 @@ function Visor3DDialog({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const urnDisponible = !!urnMasterDe(installacio);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-
-  // TAG → descripció, del llistat Rosmiman
-  const { rosmimanEquips } = useProjectes();
-  const descripcioPerTag = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const e of rosmimanEquips) m.set(normTag(e.tag), e.descripcio);
-    return m;
-  }, [rosmimanEquips]);
 
   const {
     estat,
@@ -1131,14 +1081,10 @@ function Visor3DDialog({
     vistaActual,
     carregaVista,
     canviantVista,
-    viewer,
+    seleccio,
+    deselecciona,
   } = useApsViewer(containerRef, installacio);
   const carregant = estat !== "ok" && estat !== "error";
-  const { popup, tancaPopup } = useSeleccioTag(
-    viewer,
-    wrapperRef,
-    descripcioPerTag,
-  );
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -1146,6 +1092,13 @@ function Visor3DDialog({
       <DialogContent
         className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden [&>button:last-child]:hidden"
         style={{ maxHeight: "90vh" }}
+        onEscapeKeyDown={(e) => {
+          // Esc deselecciona l'element; només tanca el visor si no n'hi ha cap
+          if (seleccio) {
+            e.preventDefault();
+            deselecciona();
+          }
+        }}
         aria-describedby={undefined}
       >
         {/* DialogTitle ocult però present per accessibilitat (Radix ho requereix) */}
@@ -1207,75 +1160,68 @@ function Visor3DDialog({
           </button>
         </div>
 
-        <div
-          ref={wrapperRef}
-          className="relative w-full bg-slate-900"
-          style={{ height: "75vh" }}
-        >
-          {carregant && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-slate-900">
-              <Loader2 className="h-8 w-8 animate-spin text-[#0099A8]" />
-              <div className="text-center">
-                <p className="text-sm font-semibold text-white">
-                  {estat === "carregant-sdk" && "Carregant Viewer SDK…"}
-                  {estat === "carregant-token" && "Autenticant amb APS…"}
-                  {estat === "inicialitzant" && "Inicialitzant el visor…"}
-                  {estat === "carregant-model" && "Carregant el model 3D…"}
-                  {estat === "idle" && "Preparant…"}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">
-                  {installacio.codiInstallacio} — {installacio.nom}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {estat === "error" && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-8 text-center bg-slate-900">
-              <div className="h-12 w-12 rounded-2xl bg-red-900/30 border border-red-800/40 flex items-center justify-center">
-                <AlertTriangle className="h-6 w-6 text-red-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-white text-sm">
-                  No s'ha pogut carregar el model 3D
-                </p>
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-sm">
-                  {error}
-                </p>
-                {!urnDisponible && (
-                  <p className="text-xs text-amber-400 mt-2 leading-relaxed max-w-sm">
-                    Executa l'agent APS per sincronitzar el MASTER d'aquesta
-                    instal·lació.
+        <div className="flex w-full" style={{ height: "75vh" }}>
+          <div className="relative min-w-0 flex-1 bg-slate-900">
+            {carregant && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-slate-900">
+                <Loader2 className="h-8 w-8 animate-spin text-[#0099A8]" />
+                <div className="text-center">
+                  <p className="text-sm font-semibold text-white">
+                    {estat === "carregant-sdk" && "Carregant Viewer SDK…"}
+                    {estat === "carregant-token" && "Autenticant amb APS…"}
+                    {estat === "inicialitzant" && "Inicialitzant el visor…"}
+                    {estat === "carregant-model" && "Carregant el model 3D…"}
+                    {estat === "idle" && "Preparant…"}
                   </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {installacio.codiInstallacio} — {installacio.nom}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {estat === "error" && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-8 text-center bg-slate-900">
+                <div className="h-12 w-12 rounded-2xl bg-red-900/30 border border-red-800/40 flex items-center justify-center">
+                  <AlertTriangle className="h-6 w-6 text-red-400" />
+                </div>
+                <div>
+                  <p className="font-semibold text-white text-sm">
+                    No s'ha pogut carregar el model 3D
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed max-w-sm">
+                    {error}
+                  </p>
+                  {!urnDisponible && (
+                    <p className="text-xs text-amber-400 mt-2 leading-relaxed max-w-sm">
+                      Executa l'agent APS per sincronitzar el MASTER d'aquesta
+                      instal·lació.
+                    </p>
+                  )}
+                </div>
+                {urnDisponible && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white"
+                    onClick={reintentar}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" /> Reintentar
+                  </Button>
                 )}
               </div>
-              {urnDisponible && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5 border-slate-600 text-slate-300 hover:bg-slate-800 hover:text-white"
-                  onClick={reintentar}
-                >
-                  <RefreshCw className="h-3.5 w-3.5" /> Reintentar
-                </Button>
-              )}
-            </div>
-          )}
+            )}
 
-          {popup && (
-            <PopupTagEquip
-              popup={popup}
-              color={sistema.color}
-              onClose={tancaPopup}
+            {/* El div del Viewer SDK — sempre muntat, ocult fins que carregui */}
+            <div
+              ref={containerRef}
+              className="w-full h-full"
+              style={{ visibility: estat === "ok" ? "visible" : "hidden" }}
             />
+          </div>
+          {seleccio && (
+            <PanellTagEquip seleccio={seleccio} color={sistema.color} />
           )}
-
-          {/* El div del Viewer SDK — sempre muntat, ocult fins que carregui */}
-          <div
-            ref={containerRef}
-            className="w-full h-full"
-            style={{ visibility: estat === "ok" ? "visible" : "hidden" }}
-          />
         </div>
       </DialogContent>
     </Dialog>
