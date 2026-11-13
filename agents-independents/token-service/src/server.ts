@@ -30,6 +30,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   obteToken3Legged,
   obteTokenSSA,
+  invalidaCacheSSA,
   configSSA,
   ApsReauthError,
 } from "../../shared/agent";
@@ -46,6 +47,10 @@ const PORT = process.env.PORT || 3001;
 const TOKEN_SERVICE_SECRET = process.env.TOKEN_SERVICE_SECRET?.trim() || "";
 
 const pendingStates = new Map<string, number>();
+
+// Mode bot: mínim entre dos tokens forçats (?fresh=1), per no martellejar Autodesk
+const MIN_FRESH_MS = 30_000;
+let ultimFreshAt = 0;
 
 /** Mode bot (SSA) actiu quan tota la seva configuració és a l'entorn. */
 const modeBot = (): boolean => configSSA() !== null;
@@ -500,6 +505,15 @@ const server = http.createServer(async (req, res) => {
       const cfgBot = configSSA();
       if (cfgBot) {
         try {
+          // ?fresh=1: el client ha rebut un 401 d'Autodesk amb el token anterior.
+          // Descartem la memòria cau (com a molt un cop cada MIN_FRESH_MS).
+          if (
+            url.searchParams.get("fresh") === "1" &&
+            Date.now() - ultimFreshAt > MIN_FRESH_MS
+          ) {
+            ultimFreshAt = Date.now();
+            invalidaCacheSSA();
+          }
           const t = await obteTokenSSA(cfgBot);
           registraRenovacioOk();
           void anotaTokenBotASupabase(supabase, t.expires_in);
@@ -609,8 +623,23 @@ server.listen(PORT, async () => {
   }
   if (modeBot()) {
     console.log(
-      "🤖 Mode bot (SSA): token del compte de servei, sense scheduler.",
+      "🤖 Mode bot (SSA): renovació automàtica del token cada 10 min.",
     );
+    const renovaBot = async (): Promise<void> => {
+      const cfg = configSSA();
+      if (!cfg) return;
+      try {
+        // Només en demana un de nou a Autodesk si en queden < 5 min
+        const t = await obteTokenSSA(cfg);
+        registraRenovacioOk();
+        const supabase = creaSupabase();
+        if (supabase) await anotaTokenBotASupabase(supabase, t.expires_in);
+      } catch (err) {
+        registraErrorRenovacio(err);
+      }
+    };
+    await renovaBot();
+    setInterval(renovaBot, 10 * 60 * 1000).unref();
     return;
   }
   // En arrencar, llegim expires_at real de Supabase i programem la renovació

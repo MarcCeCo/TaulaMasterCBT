@@ -327,6 +327,15 @@ let cacheSSA: {
 let ssaEnCurs: Promise<TokenSSA> | null = null;
 
 /**
+ * Descarta el token SSA de la memòria cau perquè el proper `obteTokenSSA`
+ * en demani un de nou a Autodesk (p. ex. si Autodesk el rebutja amb un 401
+ * o s'han canviat els permisos del bot a ACC).
+ */
+export function invalidaCacheSSA(): void {
+  cacheSSA = null;
+}
+
+/**
  * Obté un token 3-legged del bot. Es reutilitza fins que queden < 5 min de vida.
  * Errors 400/401 (assertion invàlida, clau revocada, bot eliminat…) llancen
  * ApsReauthError: cal intervenció humana (revisar clau/bot), no reintentar.
