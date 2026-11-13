@@ -52,7 +52,6 @@ import {
   FileDown,
   ListTree,
   Info,
-  CheckCircle2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -69,8 +68,8 @@ import {
   escanejaModel,
   exportaInformeTags,
   normTag,
+  tagIgnorat,
   seleccionaAlViewer,
-  tagsNoAlModel,
   type ElementModel,
   type NodeJerarquia,
 } from "@/lib/visor3dModel";
@@ -1380,8 +1379,9 @@ function PestanyaEquip({
       codi
         ? rosmimanEquips.filter(
             (e) =>
-              normTag(e.codiInstallacio) === codi ||
-              normTag(e.tag).startsWith(codi),
+              !tagIgnorat(e.tag) &&
+              (normTag(e.codiInstallacio) === codi ||
+                normTag(e.tag).startsWith(codi)),
           )
         : [],
     [rosmimanEquips, codi],
@@ -1389,12 +1389,12 @@ function PestanyaEquip({
 
   const tagsModel = useMemo(
     () =>
-      new Set(escaneig.elements.map((e) => e.tag).filter((t) => t.length > 0)),
+      new Set(
+        escaneig.elements
+          .map((e) => e.tag)
+          .filter((t) => t.length > 0 && !tagIgnorat(t)),
+      ),
     [escaneig.elements],
-  );
-  const absents = useMemo(
-    () => tagsNoAlModel(tagsAlta, tagsModel),
-    [tagsAlta, tagsModel],
   );
   const escanejat = escaneig.estat === "ok";
 
@@ -1542,44 +1542,19 @@ function PestanyaEquip({
       </div>
 
       <div className="space-y-2 border-t border-slate-100 pt-4">
-        <p className={ETIQUETA}>Comparativa amb el model</p>
-        {escaneig.estat === "ok" ? (
-          <div className="space-y-1 text-xs text-slate-500">
-            <p>
-              TAGs diferents al model:{" "}
-              <span className="font-semibold text-slate-700">
-                {tagsModel.size}
-              </span>
-            </p>
-            <p className="flex items-center gap-1">
-              {absents.length === 0 ? (
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              ) : (
-                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-              )}
-              Donats d'alta i no al model:{" "}
-              <span
-                className={cn(
-                  "font-bold",
-                  absents.length === 0 ? "text-emerald-600" : "text-amber-600",
-                )}
-              >
-                {absents.length}
-              </span>
-            </p>
-          </div>
-        ) : escaneig.estat === "error" ? (
+        <p className={ETIQUETA}>Informe de TAGs</p>
+        {escaneig.estat === "error" ? (
           <p className="text-xs text-amber-600 italic">
             No s'han pogut llegir els TAGs del model.
           </p>
-        ) : (
+        ) : escaneig.estat !== "ok" ? (
           <p className="text-xs text-slate-400 flex items-center gap-1.5">
             <Loader2 className="h-3 w-3 animate-spin" />
             {escaneig.estat === "escanejant"
               ? `Llegint els TAGs del model… ${Math.round(escaneig.progres * 100)}%`
               : "Esperant el model…"}
           </p>
-        )}
+        ) : null}
         <Button
           size="sm"
           variant="outline"

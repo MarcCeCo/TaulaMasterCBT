@@ -30,6 +30,10 @@ export const normTag = (v: unknown): string =>
     .trim()
     .toUpperCase();
 
+/** Els TAGs que contenen «CN00» no es tenen en compte (ni al recompte ni a l'informe). */
+export const tagIgnorat = (tag: unknown): boolean =>
+  normTag(tag).includes("CN00");
+
 /** Nom del paràmetre normalitzat: majúscules, espais → "_" i sense prefix CBT_ */
 function claParam(nom: unknown): string {
   return normTag(nom).replace(/\s+/g, "_").replace(/^CBT_/, "");
@@ -293,14 +297,17 @@ export function tagsNoAlModel(
   tagsAlta: TagAlta[],
   tagsModel: Set<string>,
 ): TagAlta[] {
-  return tagsAlta.filter((t) => !tagsModel.has(normTag(t.tag)));
+  return tagsAlta.filter(
+    (t) => !tagIgnorat(t.tag) && !tagsModel.has(normTag(t.tag)),
+  );
 }
 
 export async function exportaInformeTags(d: DadesInforme): Promise<void> {
   // PERF: xlsx es carrega lazily
   const XLSX = await import("xlsx");
   const absents = tagsNoAlModel(d.tagsAlta, d.tagsModel);
-  const alModel = d.tagsAlta.length - absents.length;
+  const alta = d.tagsAlta.filter((t) => !tagIgnorat(t.tag));
+  const alModel = alta.length - absents.length;
 
   const resum: (string | number)[][] = [
     ["INFORME DE TAGS — VISUALITZADOR 3D"],
@@ -310,7 +317,7 @@ export async function exportaInformeTags(d: DadesInforme): Promise<void> {
     ["Codi instal·lació", d.instalacioCodi],
     ["Data", new Date().toLocaleString("ca-ES")],
     [],
-    ["Equips donats d'alta (Rosmiman)", d.tagsAlta.length],
+    ["Equips donats d'alta (Rosmiman, sense CN00)", alta.length],
     ["Donats d'alta i presents al model", alModel],
     ["Donats d'alta i NO presents al model", absents.length],
     ["TAGs diferents trobats al model", d.tagsModel.size],
