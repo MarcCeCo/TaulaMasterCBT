@@ -812,12 +812,24 @@ function useApsViewer(
         kb?.unlock?.();
       }
     };
+    // El Viewer d'Autodesk també escolta Esc (i en surt de la pantalla completa).
+    // Ens avancem en fase de captura a window: si hi ha res a restablir, ho fem
+    // nosaltres i aturem l'esdeveniment perquè ni el Viewer ni el diàleg el vegin.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (restableixVista()) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }
+    };
     document.addEventListener("fullscreenchange", onFullscreen);
+    window.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreen);
+      window.removeEventListener("keydown", onKey, true);
       kb?.unlock?.();
     };
-  }, []);
+  }, [restableixVista]);
 
   // Selecciona (i enquadra) un conjunt d'elements: selecció múltiple
   const seleccionaElements = useCallback((els: ElementModel[]) => {

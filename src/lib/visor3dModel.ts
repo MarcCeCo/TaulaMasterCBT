@@ -296,12 +296,11 @@ export function vistaModificada(viewer: ExternalObject): boolean {
   }
 }
 
-/** Torna a la vista normal: sense selecció, tot visible i model enquadrat. */
+/** Torna a la vista normal: sense selecció i tot visible (la càmera no es mou). */
 export function tornaVistaNormal(viewer: ExternalObject) {
   if (!viewer) return;
   viewer.clearSelection();
   viewer.showAll();
-  viewer.fitToView();
 }
 
 // ─── Informe: TAGs donats d'alta que no són al model ─────────────────────────
