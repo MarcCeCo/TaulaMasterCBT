@@ -995,13 +995,7 @@ function subscriuSeleccioTag(
   );
 }
 
-function PanellTagEquip({
-  seleccio,
-  color,
-}: {
-  seleccio: SeleccioTag;
-  color: string;
-}) {
+function PanellTagEquip({ seleccio }: { seleccio: SeleccioTag }) {
   const { rosmimanEquips } = useProjectes();
   const descripcio = useMemo(
     () =>
@@ -1030,12 +1024,9 @@ function PanellTagEquip({
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 TAG
               </p>
-              <span
-                className="inline-block font-mono text-xs font-bold px-2 py-1 rounded break-all"
-                style={{ background: `${color}18`, color }}
-              >
+              <p className="text-sm text-slate-700 leading-snug break-all">
                 {seleccio.tag}
-              </span>
+              </p>
             </div>
             <div className="space-y-1.5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -1219,9 +1210,7 @@ function Visor3DDialog({
               style={{ visibility: estat === "ok" ? "visible" : "hidden" }}
             />
           </div>
-          {seleccio && (
-            <PanellTagEquip seleccio={seleccio} color={sistema.color} />
-          )}
+          {seleccio && <PanellTagEquip seleccio={seleccio} />}
         </div>
       </DialogContent>
     </Dialog>
