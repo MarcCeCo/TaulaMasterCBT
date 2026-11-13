@@ -70,6 +70,8 @@ import {
   normTag,
   tagIgnorat,
   seleccionaAlViewer,
+  tornaVistaNormal,
+  vistaModificada,
   type ElementModel,
   type NodeJerarquia,
 } from "@/lib/visor3dModel";
@@ -523,6 +525,8 @@ function useApsViewer(
   const [escaneig, setEscaneig] = useState<EstatEscaneig>(ESCANEIG_BUIT);
   const escanejosRef = useRef<Map<number, ElementModel[]>>(new Map());
   const escanejGenRef = useRef(0);
+  // Compta les vegades que Esc ha restablert la vista (per netejar marques de l'arbre)
+  const [restabliments, setRestabliments] = useState(0);
 
   const viewerRef = useRef<ExternalObject>(null);
   const docRef = useRef<ExternalObject>(null);
@@ -775,10 +779,44 @@ function useApsViewer(
     inicialitza();
   }, [inicialitza]);
 
-  // Deselecciona l'element actual (tecla Esc)
-  const deselecciona = useCallback(() => {
-    viewerRef.current?.clearSelection();
+  // Tecla Esc: torna a la vista normal (sense selecció, mostrant-ho tot).
+  // Retorna true si hi havia res a restablir (llavors Esc no tanca res més).
+  const restableixVista = useCallback((): boolean => {
+    const viewer = viewerRef.current;
+    if (!viewer || !vistaModificada(viewer)) return false;
+    tornaVistaNormal(viewer);
     setSeleccio(null);
+    setRestabliments((n) => n + 1);
+    return true;
+  }, []);
+
+  // Mode pantalla completa: el navegador reserva Esc per sortir-ne i la pàgina
+  // no rep la tecla. Amb el Keyboard Lock API (Chrome/Edge) la capturem perquè
+  // Esc pugui deseleccionar l'element; sense selecció, Esc surt de la pantalla
+  // completa (ho gestiona onEscapeKeyDown del diàleg).
+  useEffect(() => {
+    const kb = (
+      navigator as Navigator & {
+        keyboard?: {
+          lock?: (k: string[]) => Promise<void>;
+          unlock?: () => void;
+        };
+      }
+    ).keyboard;
+    const onFullscreen = () => {
+      if (document.fullscreenElement) {
+        kb?.lock?.(["Escape"])?.catch(() => {
+          /* no suportat: Esc sortirà de la pantalla completa */
+        });
+      } else {
+        kb?.unlock?.();
+      }
+    };
+    document.addEventListener("fullscreenchange", onFullscreen);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreen);
+      kb?.unlock?.();
+    };
   }, []);
 
   // Selecciona (i enquadra) un conjunt d'elements: selecció múltiple
@@ -800,7 +838,8 @@ function useApsViewer(
     carregaVista,
     canviantVista,
     seleccio,
-    deselecciona,
+    restableixVista,
+    restabliments,
     escaneig,
     seleccionaElements,
   };
@@ -1229,10 +1268,12 @@ function FilaNode({
 }
 
 function PestanyaJerarquia({
+  restabliments,
   escaneig,
   onSeleccionar,
   color,
 }: {
+  restabliments: number;
   escaneig: EstatEscaneig;
   onSeleccionar: (els: ElementModel[]) => void;
   color: string;
@@ -1243,6 +1284,11 @@ function PestanyaJerarquia({
   );
   const [oberts, setOberts] = useState<Set<string>>(new Set());
   const [marcats, setMarcats] = useState<Map<string, NodeJerarquia>>(new Map());
+
+  // Esc ha tornat a la vista normal: ja no hi ha nivells seleccionats
+  useEffect(() => {
+    setMarcats(new Map());
+  }, [restabliments]);
 
   // Si es torna a escanejar (altra vista) les marques ja no són vàlides
   useEffect(() => {
@@ -1502,7 +1548,9 @@ function PestanyaEquip({
             </div>
           </>
         )}
-        <p className="text-[10px] text-slate-300">Esc per deseleccionar</p>
+        <p className="text-[10px] text-slate-300">
+          Esc per tornar a la vista normal
+        </p>
       </div>
     );
   }
@@ -1589,6 +1637,7 @@ function PestanyaEquip({
 // ── Panell (contenidor amb pestanyes) ─────────────────────────────────────────
 
 function PanellVisor({
+  restabliments,
   installacio,
   sistema,
   seleccio,
@@ -1600,6 +1649,7 @@ function PanellVisor({
   seleccio: SeleccioTag | null;
   escaneig: EstatEscaneig;
   onSeleccionarElements: (els: ElementModel[]) => void;
+  restabliments: number;
 }) {
   const [pestanya, setPestanya] = useState<"equip" | "jerarquia">("equip");
 
@@ -1646,6 +1696,7 @@ function PanellVisor({
         />
       ) : (
         <PestanyaJerarquia
+          restabliments={restabliments}
           escaneig={escaneig}
           onSeleccionar={onSeleccionarElements}
           color={sistema.color}
@@ -1678,7 +1729,8 @@ function Visor3DDialog({
     carregaVista,
     canviantVista,
     seleccio,
-    deselecciona,
+    restableixVista,
+    restabliments,
     escaneig,
     seleccionaElements,
   } = useApsViewer(containerRef, installacio);
@@ -1691,10 +1743,15 @@ function Visor3DDialog({
         className="max-w-[92vw] w-full p-0 gap-0 overflow-hidden [&>button:last-child]:hidden"
         style={{ maxHeight: "90vh" }}
         onEscapeKeyDown={(e) => {
-          // Esc deselecciona l'element; només tanca el visor si no n'hi ha cap
-          if (seleccio) {
+          // Esc torna a la vista normal (sense selecció i mostrant-ho tot).
+          // Si ja hi és: en pantalla completa en surt; si no, tanca el visor.
+          if (restableixVista()) {
             e.preventDefault();
-            deselecciona();
+            return;
+          }
+          if (document.fullscreenElement) {
+            e.preventDefault();
+            void document.exitFullscreen();
           }
         }}
         aria-describedby={undefined}
@@ -1818,6 +1875,7 @@ function Visor3DDialog({
             />
           </div>
           <PanellVisor
+            restabliments={restabliments}
             installacio={installacio}
             sistema={sistema}
             seleccio={seleccio}

@@ -275,6 +275,33 @@ export function seleccionaAlViewer(
   }
 }
 
+// ─── Vista normal («mostrar tot») ────────────────────────────────────────────
+
+/** Hi ha selecció o elements aïllats/amagats al visor? */
+export function vistaModificada(viewer: ExternalObject): boolean {
+  if (!viewer) return false;
+  try {
+    const sel: ExternalObject[] = viewer.getAggregateSelection?.() ?? [];
+    if (sel.some((g) => g?.selection?.length)) return true;
+    const models: ExternalObject[] = viewer.getAllModels?.() ?? [];
+    return models.some(
+      (m) =>
+        (viewer.getIsolatedNodes?.(m)?.length ?? 0) > 0 ||
+        (viewer.getHiddenNodes?.(m)?.length ?? 0) > 0,
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Torna a la vista normal: sense selecció, tot visible i model enquadrat. */
+export function tornaVistaNormal(viewer: ExternalObject) {
+  if (!viewer) return;
+  viewer.clearSelection();
+  viewer.showAll();
+  viewer.fitToView();
+}
+
 // ─── Informe: TAGs donats d'alta que no són al model ─────────────────────────
 
 export interface TagAlta {
