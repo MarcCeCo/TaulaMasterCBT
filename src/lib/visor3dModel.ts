@@ -127,6 +127,8 @@ export async function escanejaModel(
           if (idx >= 0) nivells[idx] = valor;
         }
       }
+      // Els elements amb TAG que conté CN00 no es tenen en compte
+      if (tagIgnorat(tag)) continue;
       if (tag || nivells.some(Boolean)) {
         resultat.push({
           model,

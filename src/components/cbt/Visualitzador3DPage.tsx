@@ -1522,6 +1522,10 @@ function PestanyaEquip({
               </div>
             )}
           </>
+        ) : tagIgnorat(seleccio.tag) ? (
+          <p className="text-xs text-slate-400 italic leading-relaxed">
+            Aquest element s'ignora (el TAG conté CN00).
+          </p>
         ) : !seleccio.tag ? (
           <p className="text-xs text-slate-400 italic leading-relaxed">
             L'element seleccionat no té TAG.
