@@ -723,7 +723,7 @@ function useApsViewer(
                 .normalize("NFD")
                 .replace(/[\u0300-\u036f]/g, "")
                 .toLowerCase()
-                .replace(/[_\s]+/g, " ")
+                .replace(/[_\s-]+/g, " ")
                 .trim();
             const vistes3d = totes.filter((v) => v.rol === "3d");
             const vistaInicial =
