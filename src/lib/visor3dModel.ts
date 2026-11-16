@@ -236,19 +236,8 @@ export function construeixArbre(
       if (v) ultim = i;
     });
 
-    // Cap nivell de jerarquia al GMAO
-    if (ultim < 0) {
-      let n = arrels.get(SENSE_JERARQUIA);
-      if (!n) {
-        n = nouNode(SENSE_JERARQUIA, -1, SENSE_JERARQUIA);
-        arrels.set(SENSE_JERARQUIA, n);
-      }
-      n.elements.push(...entrada.elements);
-      n.tagsDirectes.push(entrada);
-      n.totalTags++;
-      if (alModel) n.tagsAlModel++;
-      continue;
-    }
+    // Sense jerarquia al GMAO: no es mostra a l'arbre
+    if (ultim < 0) continue;
 
     let cami = "";
     let pare: NodeJerarquia | null = null;

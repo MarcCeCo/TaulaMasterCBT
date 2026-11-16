@@ -1413,9 +1413,9 @@ function PestanyaJerarquia({
   if (arbre.length === 0) {
     return (
       <p className="p-4 text-xs text-slate-400 italic leading-relaxed">
-        No hi ha equips donats d'alta (TAGs Rosmiman) per a la instal·lació{" "}
-        {codi || installacio.nom}. Importa'ls des del pop-up «TAGs Rosmiman» amb
-        la jerarquia del GMAO.
+        Cap equip donat d'alta (TAGs Rosmiman) de la instal·lació{" "}
+        {codi || installacio.nom} té jerarquia. Importa la plantilla amb la
+        jerarquia del GMAO des del pop-up «TAGs Rosmiman».
       </p>
     );
   }
