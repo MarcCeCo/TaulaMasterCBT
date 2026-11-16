@@ -619,7 +619,6 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
             created_at: Date.now(),
           }));
           const BATCH = 100;
-          let actualInserted = 0;
           for (let i = 0; i < rows.length; i += BATCH) {
             try {
               // Upsert real: on_conflict=tag ignora duplicats per la columna TAG
@@ -632,7 +631,6 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
                   Prefer: "resolution=ignore-duplicates,return=minimal",
                 },
               );
-              actualInserted += rows.slice(i, i + BATCH).length;
             } catch (err) {
               // Si el batch falla per duplicat (409), intentem fila per fila
               const msgErr = errorMessage(err, "");
@@ -648,7 +646,6 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
                         Prefer: "resolution=ignore-duplicates,return=minimal",
                       },
                     );
-                    actualInserted++;
                   } catch {
                     // Duplicat individual: skip silenciós
                   }

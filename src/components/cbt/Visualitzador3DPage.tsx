@@ -1910,7 +1910,6 @@ function SistemaGroup({
   sistema,
   expanded,
   onToggle,
-  canEdit,
   modeAdmin,
   onEditSistema,
   onDeleteSistema,
@@ -1923,7 +1922,6 @@ function SistemaGroup({
   sistema: Sistema;
   expanded: boolean;
   onToggle: () => void;
-  canEdit: boolean;
   modeAdmin: boolean;
   onEditSistema: () => void;
   onDeleteSistema: () => void;
@@ -2467,7 +2465,6 @@ export function Visualitzador3DPage() {
                       sistema={sistema}
                       expanded={expanded.has(sistema.id)}
                       onToggle={() => toggleExpanded(sistema.id)}
-                      canEdit={canEdit}
                       modeAdmin={modeAdmin}
                       filterQ={filterQ}
                       onVisualitzar={(inst) => setVisor({ inst, sistema })}

@@ -593,21 +593,42 @@ async function trobaSubcarpeta(
   return trobada;
 }
 
+interface UrnFitxer {
+  urn: string;
+  /** Número de versió de la darrera versió (tip) a ACC */
+  versio: number | null;
+  /** Data de la darrera versió (tip) a ACC */
+  data: string;
+}
+
 async function obteUrnFitxer(
   projectId: string,
   itemId: string,
   token: string,
-): Promise<string | null> {
+): Promise<UrnFitxer | null> {
   const resp = await fetch(
     `${APS_BASE}/data/v1/projects/${projectId}/items/${encodeURIComponent(itemId)}/tip`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   if (!resp.ok) return null;
   const json = (await resp.json()) as {
-    data?: { relationships?: { derivatives?: { data?: { id?: string } } } };
+    data?: {
+      attributes?: {
+        versionNumber?: number;
+        lastModifiedTime?: string;
+        createTime?: string;
+      };
+      relationships?: { derivatives?: { data?: { id?: string } } };
+    };
   };
   const urn = json.data?.relationships?.derivatives?.data?.id;
-  return urn ?? null;
+  if (!urn) return null;
+  const attrs = json.data?.attributes;
+  return {
+    urn,
+    versio: attrs?.versionNumber ?? null,
+    data: attrs?.lastModifiedTime ?? attrs?.createTime ?? "",
+  };
 }
 
 // ─── Extracció de sistemes i instal·lacions de Forma ────────────────────────
@@ -766,9 +787,15 @@ async function extrauSistemes(
           );
         }
         for (const f of fitxersMaster) {
-          urnMaster = await obteUrnFitxer(projectId, f.id, token);
-          if (urnMaster) {
-            console.log(`    ✅ MASTER: ${f.attributes?.displayName ?? f.id}`);
+          const tip = await obteUrnFitxer(projectId, f.id, token);
+          if (tip) {
+            urnMaster = tip.urn;
+            // Versió i data de la darrera versió a ACC: permet comprovar als
+            // logs si el MASTER s'ha tornat a publicar (si no canvia, el visor
+            // no pot mostrar res de nou).
+            console.log(
+              `    ✅ MASTER: ${f.attributes?.displayName ?? f.id} — versió ${tip.versio ?? "?"} (${tip.data || "sense data"})`,
+            );
             break;
           }
         }

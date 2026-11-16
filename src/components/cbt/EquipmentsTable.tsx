@@ -74,8 +74,6 @@ const EquipmentRow = memo(function EquipmentRow({
   isChild,
   isSharedCode,
   groupColorIdx,
-  isFirstInGroup,
-  groupSize,
   childDepth,
   canEdit,
 }: {

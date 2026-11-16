@@ -10,7 +10,7 @@
 
 import type { Equipment } from "@/hooks/useEquipments";
 import type { FieldMeta } from "@/lib/fields";
-import type { ProjectTag, Projecte } from "@/lib/useProjectes";
+import type { Projecte } from "@/lib/useProjectes";
 import type { WorkSheet } from "xlsx";
 
 type XlsxModule = typeof import("xlsx");

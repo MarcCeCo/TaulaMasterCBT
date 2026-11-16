@@ -1,6 +1,5 @@
 // src/components/cbt/DashboardHome.tsx — CBT redesign v2
 import { useMemo } from "react";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
