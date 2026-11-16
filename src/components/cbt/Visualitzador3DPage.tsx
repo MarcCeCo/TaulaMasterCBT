@@ -1229,7 +1229,7 @@ function FilaNode({
           title={
             seleccionable
               ? `Selecciona els ${node.elements.length} elements de «${node.nom}» presents al model`
-              : `Cap dels ${node.totalTags} TAGs de «${node.nom}» és al model`
+              : `Cap TAG de «${node.nom}» és al model`
           }
           className={cn(
             "flex-1 min-w-0 flex items-center gap-1.5 py-1 text-left",
@@ -1244,13 +1244,6 @@ function FilaNode({
               {etiquetaNivell}
             </span>
           )}
-          <span
-            className="ml-auto text-[10px] font-semibold px-1.5 rounded shrink-0"
-            style={{ background: `${color}18`, color }}
-            title="TAGs al model / TAGs donats d'alta"
-          >
-            {node.tagsAlModel}/{node.totalTags}
-          </span>
         </button>
       </div>
 
