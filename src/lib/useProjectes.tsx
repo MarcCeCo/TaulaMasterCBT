@@ -43,7 +43,28 @@ export interface RosmimanEquip {
   descripcio: string; // Descripció (col B de l'Excel)
   codiInstallacio: string; // primers 5 caràcters del TAG
   createdAt: number;
+  // Jerarquia procedent del GMAO ("" = sense valor)
+  sistema: string;
+  subsistema: string;
+  liniaTractament: string;
+  proces: string;
+  subproces: string;
 }
+
+/** Camps de jerarquia GMAO d'un equip Rosmiman */
+export type RosmimanJerarquiaKey =
+  | "sistema"
+  | "subsistema"
+  | "liniaTractament"
+  | "proces"
+  | "subproces";
+
+/** Equip a importar: la jerarquia és opcional (importacions sense GMAO) */
+export type RosmimanImportEquip = Omit<
+  RosmimanEquip,
+  "id" | "createdAt" | RosmimanJerarquiaKey
+> &
+  Partial<Pick<RosmimanEquip, RosmimanJerarquiaKey>>;
 
 export interface ProjectTag {
   id: string;
@@ -228,6 +249,11 @@ const toRosmimanEquip = (row: DbRow): RosmimanEquip => ({
   descripcio: row.descripcio ?? "",
   codiInstallacio: row.codi_installacio ?? "",
   createdAt: row.created_at ?? Date.now(),
+  sistema: row.sistema ?? "",
+  subsistema: row.subsistema ?? "",
+  liniaTractament: row.linia_tractament ?? "",
+  proces: row.proces ?? "",
+  subproces: row.subproces ?? "",
 });
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -258,8 +284,9 @@ export interface ProjectesValue {
   rosmimanEquips: RosmimanEquip[];
   loadingRosmiman: boolean;
   importRosmimanEquips: (
-    equips: Omit<RosmimanEquip, "id" | "createdAt">[],
-  ) => Promise<{ inserted: number; skipped: number }>;
+    equips: RosmimanImportEquip[],
+    opcions?: { actualitza?: boolean },
+  ) => Promise<{ inserted: number; skipped: number; updated: number }>;
   deleteRosmimanEquip: (id: string) => Promise<void>;
   clearRosmimanEquips: () => Promise<void>;
 
@@ -592,78 +619,153 @@ export function ProjectesProvider({ children }: { children: ReactNode }) {
 
   const importRosmimanEquips = useCallback(
     async (
-      equips: Omit<RosmimanEquip, "id" | "createdAt">[],
-    ): Promise<{ inserted: number; skipped: number }> => {
+      equips: RosmimanImportEquip[],
+      opcions?: { actualitza?: boolean },
+    ): Promise<{ inserted: number; skipped: number; updated: number }> => {
       const token = getToken();
+      const actualitza = opcions?.actualitza ?? false;
       setLoadingRosmiman(true);
       try {
         // Sempre consultem la BD per tenir els tags actuals, evitant falsos positius
-        // si l'estat local estava desactualitzat
-        const freshRows = await supa(
-          token,
-          "GET",
-          "rosmiman_equips?select=tag",
+        // si l'estat local estava desactualitzat (paginat: Supabase limita les files)
+        const PAGINA = 1000;
+        const freshRows: DbRow[] = [];
+        for (let off = 0; ; off += PAGINA) {
+          const pag = await supa(
+            token,
+            "GET",
+            `rosmiman_equips?select=*&order=tag.asc&limit=${PAGINA}&offset=${off}`,
+          );
+          freshRows.push(...pag);
+          if (pag.length < PAGINA) break;
+        }
+        const existents = new Map<string, DbRow>(
+          freshRows.map((r: DbRow) => [r.tag as string, r]),
         );
-        const existingTags = new Set(
-          freshRows.map((r: DbRow) => r.tag as string),
-        );
-        const toInsert = equips.filter((e) => !existingTags.has(e.tag));
-        const skipped = equips.length - toInsert.length;
 
-        if (toInsert.length > 0) {
-          const rows = toInsert.map((e) => ({
-            id: uid(),
-            tag: e.tag,
-            descripcio: e.descripcio,
-            codi_installacio: e.codiInstallacio,
-            created_at: Date.now(),
-          }));
-          const BATCH = 100;
-          for (let i = 0; i < rows.length; i += BATCH) {
-            try {
-              // Upsert real: on_conflict=tag ignora duplicats per la columna TAG
-              await supa(
-                token,
-                "POST",
-                "rosmiman_equips?on_conflict=tag",
-                rows.slice(i, i + BATCH),
-                {
-                  Prefer: "resolution=ignore-duplicates,return=minimal",
-                },
-              );
-            } catch (err) {
-              // Si el batch falla per duplicat (409), intentem fila per fila
-              const msgErr = errorMessage(err, "");
-              if (msgErr.includes("409") || msgErr.includes("23505")) {
-                for (const row of rows.slice(i, i + BATCH)) {
-                  try {
-                    await supa(
-                      token,
-                      "POST",
-                      "rosmiman_equips?on_conflict=tag",
-                      [row],
-                      {
-                        Prefer: "resolution=ignore-duplicates,return=minimal",
-                      },
-                    );
-                  } catch {
-                    // Duplicat individual: skip silenciós
-                  }
-                }
-              } else {
-                throw err;
-              }
+        // Camps actualitzables d'un equip ja existent (clau JS → columna BD)
+        const CAMPS: [keyof RosmimanImportEquip, string][] = [
+          ["descripcio", "descripcio"],
+          ["sistema", "sistema"],
+          ["subsistema", "subsistema"],
+          ["liniaTractament", "linia_tractament"],
+          ["proces", "proces"],
+          ["subproces", "subproces"],
+        ];
+
+        const toInsert: RosmimanImportEquip[] = [];
+        const filesActualitzar: DbRow[] = [];
+        let skipped = 0;
+        const vistos = new Set<string>();
+        for (const e of equips) {
+          if (vistos.has(e.tag)) continue; // duplicat dins del mateix fitxer
+          vistos.add(e.tag);
+          const ex = existents.get(e.tag);
+          if (!ex) {
+            toInsert.push(e);
+            continue;
+          }
+          if (!actualitza) {
+            skipped++;
+            continue;
+          }
+          // Només sobreescrivim amb valors no buits (mai esborrem dades)
+          const fila: DbRow = { ...ex };
+          let canvi = false;
+          for (const [key, col] of CAMPS) {
+            const nou = String(e[key] ?? "").trim();
+            if (nou && nou !== String(ex[col] ?? "")) {
+              fila[col] = nou;
+              canvi = true;
             }
           }
+          if (canvi) filesActualitzar.push(fila);
+          else skipped++;
+        }
+
+        const nousRows = toInsert.map((e) => ({
+          id: uid(),
+          tag: e.tag,
+          descripcio: e.descripcio,
+          codi_installacio: e.codiInstallacio,
+          sistema: e.sistema ?? "",
+          subsistema: e.subsistema ?? "",
+          linia_tractament: e.liniaTractament ?? "",
+          proces: e.proces ?? "",
+          subproces: e.subproces ?? "",
+          created_at: Date.now(),
+        }));
+
+        const BATCH = 100;
+        // Inserció de nous (upsert amb ignore-duplicates)
+        for (let i = 0; i < nousRows.length; i += BATCH) {
+          try {
+            // Upsert real: on_conflict=tag ignora duplicats per la columna TAG
+            await supa(
+              token,
+              "POST",
+              "rosmiman_equips?on_conflict=tag",
+              nousRows.slice(i, i + BATCH),
+              {
+                Prefer: "resolution=ignore-duplicates,return=minimal",
+              },
+            );
+          } catch (err) {
+            // Si el batch falla per duplicat (409), intentem fila per fila
+            const msgErr = errorMessage(err, "");
+            if (msgErr.includes("409") || msgErr.includes("23505")) {
+              for (const row of nousRows.slice(i, i + BATCH)) {
+                try {
+                  await supa(
+                    token,
+                    "POST",
+                    "rosmiman_equips?on_conflict=tag",
+                    [row],
+                    {
+                      Prefer: "resolution=ignore-duplicates,return=minimal",
+                    },
+                  );
+                } catch {
+                  // Duplicat individual: skip silenciós
+                }
+              }
+            } else {
+              throw err;
+            }
+          }
+        }
+
+        // Actualització d'existents (files completes → no es perd cap columna)
+        for (let i = 0; i < filesActualitzar.length; i += BATCH) {
+          await supa(
+            token,
+            "POST",
+            "rosmiman_equips?on_conflict=tag",
+            filesActualitzar.slice(i, i + BATCH),
+            { Prefer: "resolution=merge-duplicates,return=minimal" },
+          );
+        }
+
+        if (nousRows.length > 0 || filesActualitzar.length > 0) {
+          const actualitzats = new Map(
+            filesActualitzar.map((r) => [r.tag as string, toRosmimanEquip(r)]),
+          );
           setRosmimanEquips((prev) =>
-            [...prev, ...rows.map(toRosmimanEquip)].sort(
+            [
+              ...prev.map((e) => actualitzats.get(e.tag) ?? e),
+              ...nousRows.map(toRosmimanEquip),
+            ].sort(
               (a, b) =>
                 a.codiInstallacio.localeCompare(b.codiInstallacio) ||
                 a.tag.localeCompare(b.tag),
             ),
           );
         }
-        return { inserted: toInsert.length, skipped };
+        return {
+          inserted: nousRows.length,
+          skipped,
+          updated: filesActualitzar.length,
+        };
       } finally {
         setLoadingRosmiman(false);
       }

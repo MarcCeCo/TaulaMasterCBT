@@ -2,10 +2,13 @@
 //
 // Utilitats del Visualitzador 3D que treballen sobre les propietats dels
 // elements del model (Autodesk Viewer SDK):
-//   1. escanejaModel()      → llegeix CBT_TAG i la jerarquia CBT_SISTEMA >
+//   1. escanejaModel()      → llegeix CBT_TAG (i la jerarquia CBT_SISTEMA >
 //                             CBT_SUBSISTEMA > CBT_LINIA_DE_TRACTAMENT >
-//                             CBT_PROCES > CBT_SUBPROCES de tots els elements.
-//   2. construeixArbre()    → agrupa els elements en l'arbre de jerarquia.
+//                             CBT_PROCES > CBT_SUBPROCES) de tots els elements.
+//   2. construeixArbre()    → arbre de jerarquia construït a partir dels TAGs
+//                             donats d'alta (Rosmiman, jerarquia del GMAO).
+//                             Cada TAG es creua amb el model: si hi és, és
+//                             seleccionable; si no, es mostra atenuat.
 //   3. seleccionaAlViewer() → selecció múltiple d'elements al visor.
 //   4. exportaInformeTags() → informe .xlsx amb els TAGs donats d'alta
 //                             (Rosmiman) que NO són al model.
@@ -149,75 +152,120 @@ export async function escanejaModel(
 
 // ─── Arbre de jerarquia ───────────────────────────────────────────────────────
 
+/** TAG donat d'alta (Rosmiman) amb la seva jerarquia del GMAO */
+export interface TagAltaJerarquia {
+  tag: string;
+  descripcio: string;
+  /** Valor dels 5 nivells de la jerarquia ("" = buit) */
+  nivells: string[];
+}
+
+/** TAG de l'arbre: donat d'alta i, si és al model, els seus elements */
+export interface TagArbre {
+  tag: string;
+  descripcio: string;
+  /** Elements del model amb aquest TAG (buit = no és al model) */
+  elements: ElementModel[];
+}
+
 export interface NodeJerarquia {
   /** Identificador únic (camí complet) */
   id: string;
   /** 0..4 = índex a NIVELLS_JERARQUIA; -1 = node arrel "sense jerarquia" */
   nivell: number;
   nom: string;
-  /** Tots els elements d'aquest node i dels seus descendents */
+  /** Elements del MODEL d'aquest node i dels seus descendents (seleccionables) */
   elements: ElementModel[];
-  /** Elements que s'aturen en aquest nivell (no tenen valors més avall) */
-  directs: ElementModel[];
+  /** TAGs donats d'alta que s'aturen en aquest nivell */
+  tagsDirectes: TagArbre[];
+  /** TAGs donats d'alta d'aquest node i dels seus descendents */
+  totalTags: number;
+  /** D'aquests, els que són al model */
+  tagsAlModel: number;
   fills: NodeJerarquia[];
 }
 
-export function construeixArbre(elements: ElementModel[]): NodeJerarquia[] {
-  const arrels = new Map<string, NodeJerarquia>();
+/**
+ * Arbre de jerarquia dels TAGs donats d'alta (Rosmiman). Només hi surten els
+ * TAGs del llistat; els elements del model que no hi són no es mostren.
+ */
+export function construeixArbre(
+  tagsAlta: TagAltaJerarquia[],
+  elements: ElementModel[],
+): NodeJerarquia[] {
   const SEP = "\u0001";
 
-  const obteNode = (
-    mapa: Map<string, NodeJerarquia>,
-    id: string,
-    nivell: number,
-    nom: string,
-  ): NodeJerarquia => {
-    let n = mapa.get(id);
-    if (!n) {
-      n = { id, nivell, nom, elements: [], directs: [], fills: [] };
-      mapa.set(id, n);
-    }
-    return n;
-  };
+  // TAG → elements del model
+  const perTag = new Map<string, ElementModel[]>();
+  for (const el of elements) {
+    if (!el.tag) continue;
+    const g = perTag.get(el.tag);
+    if (g) g.push(el);
+    else perTag.set(el.tag, [el]);
+  }
 
+  const arrels = new Map<string, NodeJerarquia>();
   // Mapa pla per accedir ràpid als nodes de qualsevol profunditat
   const tots = new Map<string, NodeJerarquia>();
+  const nouNode = (id: string, nivell: number, nom: string): NodeJerarquia => ({
+    id,
+    nivell,
+    nom,
+    elements: [],
+    tagsDirectes: [],
+    totalTags: 0,
+    tagsAlModel: 0,
+    fills: [],
+  });
 
-  for (const el of elements) {
+  const vistos = new Set<string>();
+  for (const t of tagsAlta) {
+    const clau = normTag(t.tag);
+    if (!clau || tagIgnorat(clau) || vistos.has(clau)) continue;
+    vistos.add(clau);
+
+    const entrada: TagArbre = {
+      tag: clau,
+      descripcio: t.descripcio,
+      elements: perTag.get(clau) ?? [],
+    };
+    const alModel = entrada.elements.length > 0;
+
     let ultim = -1;
-    el.nivells.forEach((v, i) => {
+    t.nivells.forEach((v, i) => {
       if (v) ultim = i;
     });
 
+    // Cap nivell de jerarquia al GMAO
     if (ultim < 0) {
-      // Té TAG però cap nivell de jerarquia
-      const n = obteNode(arrels, SENSE_JERARQUIA, -1, SENSE_JERARQUIA);
-      n.elements.push(el);
-      n.directs.push(el);
+      let n = arrels.get(SENSE_JERARQUIA);
+      if (!n) {
+        n = nouNode(SENSE_JERARQUIA, -1, SENSE_JERARQUIA);
+        arrels.set(SENSE_JERARQUIA, n);
+      }
+      n.elements.push(...entrada.elements);
+      n.tagsDirectes.push(entrada);
+      n.totalTags++;
+      if (alModel) n.tagsAlModel++;
       continue;
     }
 
-    let camí = "";
+    let cami = "";
     let pare: NodeJerarquia | null = null;
     for (let i = 0; i <= ultim; i++) {
-      const nom = el.nivells[i] || SENSE_VALOR;
-      camí += SEP + nom;
-      let node = tots.get(camí);
+      const nom = t.nivells[i] || SENSE_VALOR;
+      cami += SEP + nom;
+      let node = tots.get(cami);
       if (!node) {
-        node = {
-          id: camí,
-          nivell: i,
-          nom,
-          elements: [],
-          directs: [],
-          fills: [],
-        };
-        tots.set(camí, node);
+        node = nouNode(cami, i, nom);
+        tots.set(cami, node);
         if (pare) pare.fills.push(node);
-        else arrels.set(camí, node);
+        else arrels.set(cami, node);
       }
-      node.elements.push(el);
-      if (i === ultim) node.directs.push(el);
+      node.elements.push(...entrada.elements);
+      node.totalTags++;
+      if (alModel) node.tagsAlModel++;
+      if (i === ultim) node.tagsDirectes.push(entrada);
       pare = node;
     }
   }
@@ -230,7 +278,12 @@ export function construeixArbre(elements: ElementModel[]): NodeJerarquia[] {
       if (sa !== sb) return sa - sb;
       return a.nom.localeCompare(b.nom, "ca", { numeric: true });
     });
-    llista.forEach((n) => ordena(n.fills));
+    llista.forEach((n) => {
+      n.tagsDirectes.sort((x, y) =>
+        x.tag.localeCompare(y.tag, "ca", { numeric: true }),
+      );
+      ordena(n.fills);
+    });
   };
   const resultat = [...arrels.values()];
   ordena(resultat);

@@ -1,7 +1,10 @@
 // src/components/cbt/RosmimanEquipsPage.tsx
 // Llistat d'equips donats d'alta a Rosmiman.
-// Permet importar des d'Excel (col A = TAG, col B = descripció)
-// i consultar-los per evitar duplicitats de TAG en crear projectes.
+// Permet importar des d'Excel (plantilla amb TAG, descripció i jerarquia del
+// GMAO: sistema, subsistema, línia, procés, subprocés; o el format antic
+// col A = TAG, col B = descripció) i consultar-los per evitar duplicitats de TAG.
+// El botó «Exportar plantilla» descarrega l'Excel buit amb les columnes.
+// La jerarquia alimenta l'arbre del Visualitzador 3D.
 
 import { useRef, useState, useMemo } from "react";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -28,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Upload,
+  Download,
   Trash2,
   Search,
   ClipboardList,
@@ -39,6 +43,10 @@ import { useProjectes, type RosmimanEquip } from "@/lib/useProjectes";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
 import { errorMessage } from "@/lib/errors";
+import {
+  exportaPlantillaRosmiman,
+  llegeixFilesPlantilla,
+} from "@/lib/rosmimanTemplate";
 
 // Regex del format de TAG vàlid: XXXXX_YYYYY_NNNL
 // XXXXX = codi instal·lació (5 alfanumèrics)
@@ -53,6 +61,13 @@ function isTagValid(tag: string): boolean {
 
 function extractCodiInstallacio(tag: string): string {
   return tag.trim().substring(0, 5).toUpperCase();
+}
+
+/** Camí de jerarquia GMAO d'un equip: «Sistema › Subsistema › …» (només nivells omplerts) */
+function cami(e: RosmimanEquip): string {
+  return [e.sistema, e.subsistema, e.liniaTractament, e.proces, e.subproces]
+    .filter(Boolean)
+    .join(" › ");
 }
 
 // ─── component ────────────────────────────────────────────────────────────────
@@ -100,7 +115,8 @@ export function RosmimanEquipsPage() {
       (e) =>
         e.tag.toLowerCase().includes(q) ||
         e.descripcio.toLowerCase().includes(q) ||
-        e.codiInstallacio.toLowerCase().includes(q),
+        e.codiInstallacio.toLowerCase().includes(q) ||
+        cami(e).toLowerCase().includes(q),
     );
   }, [rosmimanEquips, debouncedCerca]);
 
@@ -155,21 +171,22 @@ export function RosmimanEquipsPage() {
       const valid: RosmimanEquip[] = [];
       const invalids: string[] = [];
 
-      for (const row of rows) {
-        const tagRaw = String(row[0] ?? "").trim();
-        const desc = String(row[1] ?? "").trim();
-        if (!tagRaw) continue;
-
-        if (isTagValid(tagRaw)) {
+      for (const f of llegeixFilesPlantilla(rows)) {
+        if (isTagValid(f.tag)) {
           valid.push({
             id: "",
-            tag: tagRaw.toUpperCase(),
-            descripcio: desc,
-            codiInstallacio: extractCodiInstallacio(tagRaw),
+            tag: f.tag.toUpperCase(),
+            descripcio: f.descripcio,
+            codiInstallacio: extractCodiInstallacio(f.tag),
             createdAt: 0,
+            sistema: f.sistema,
+            subsistema: f.subsistema,
+            liniaTractament: f.liniaTractament,
+            proces: f.proces,
+            subproces: f.subproces,
           });
         } else {
-          invalids.push(tagRaw);
+          invalids.push(f.tag);
         }
       }
 
@@ -183,17 +200,28 @@ export function RosmimanEquipsPage() {
     if (!importPreview) return;
     setImportLoading(true);
     try {
-      const { inserted, skipped } = await importRosmimanEquips(
+      // actualitza: els TAGs existents reben la jerarquia/descripció del fitxer
+      const { inserted, skipped, updated } = await importRosmimanEquips(
         importPreview.valid,
+        { actualitza: true },
       );
       toast.success(
-        `Importació completada: ${inserted} nous, ${skipped} ja existien.`,
+        `Importació completada: ${inserted} nous, ${updated} actualitzats, ${skipped} sense canvis.`,
       );
       setImportPreview(null);
     } catch (e) {
       toast.error(errorMessage(e, "Error en la importació."));
     } finally {
       setImportLoading(false);
+    }
+  }
+
+  async function handleExportaPlantilla() {
+    try {
+      await exportaPlantillaRosmiman();
+      toast.success("Plantilla exportada");
+    } catch (e) {
+      toast.error(errorMessage(e, "Error exportant la plantilla."));
     }
   }
 
@@ -252,36 +280,47 @@ export function RosmimanEquipsPage() {
           </p>
         </div>
 
-        {canEdit && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {rosmimanEquips.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportaPlantilla}
+            title="Descarrega l'Excel buit amb les columnes TAG, descripció, sistema, subsistema…"
+          >
+            <Download className="h-4 w-4 mr-1.5" />
+            Exportar plantilla
+          </Button>
+          {canEdit && (
+            <>
+              {rosmimanEquips.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  onClick={() => setDialogEsborrarTot(true)}
+                >
+                  <Trash2 className="h-4 w-4 mr-1.5" /> Buidar llistat
+                </Button>
+              )}
               <Button
-                variant="outline"
                 size="sm"
-                className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                onClick={() => setDialogEsborrarTot(true)}
+                className="bg-[#0099A8] hover:bg-[#006E7A] text-white"
+                onClick={() => fileRef.current?.click()}
+                disabled={loadingRosmiman}
               >
-                <Trash2 className="h-4 w-4 mr-1.5" /> Buidar llistat
+                <Upload className="h-4 w-4 mr-1.5" />
+                Importar Excel
               </Button>
-            )}
-            <Button
-              size="sm"
-              className="bg-[#0099A8] hover:bg-[#006E7A] text-white"
-              onClick={() => fileRef.current?.click()}
-              disabled={loadingRosmiman}
-            >
-              <Upload className="h-4 w-4 mr-1.5" />
-              Importar Excel
-            </Button>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".xlsx,.xls,.ods"
-              className="hidden"
-              onChange={handleFileChange}
-            />
-          </div>
-        )}
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.xls,.ods"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Preview importació */}
@@ -339,7 +378,7 @@ export function RosmimanEquipsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
           <Input
             className="pl-9 h-9 text-sm"
-            placeholder="Cerca TAG, descripció o codi…"
+            placeholder="Cerca TAG, descripció, jerarquia o codi…"
             value={cerca}
             onChange={(e) => setCerca(e.target.value)}
           />
@@ -355,8 +394,8 @@ export function RosmimanEquipsPage() {
           <div>
             <p className="font-semibold text-slate-700">Llistat buit</p>
             <p className="text-sm text-slate-500 mt-1">
-              Importa un Excel amb la columna A (TAG) i la columna B
-              (descripció).
+              Exporta la plantilla, omple-la (TAG, descripció i jerarquia del
+              GMAO) i importa-la.
             </p>
           </div>
           {canEdit && (
@@ -462,10 +501,20 @@ export function RosmimanEquipsPage() {
                         <span className="px-4 font-mono text-xs text-slate-700 w-56 shrink-0 truncate">
                           {equip.tag}
                         </span>
-                        <span className="px-4 text-slate-600 flex-1 text-sm truncate">
+                        <span className="px-4 text-slate-600 flex-1 min-w-0 text-sm truncate">
                           {equip.descripcio || (
                             <span className="text-slate-300 italic">
                               sense descripció
+                            </span>
+                          )}
+                        </span>
+                        <span
+                          className="px-3 text-slate-500 flex-1 min-w-0 text-xs truncate"
+                          title={cami(equip)}
+                        >
+                          {cami(equip) || (
+                            <span className="text-slate-300 italic">
+                              sense jerarquia
                             </span>
                           )}
                         </span>
