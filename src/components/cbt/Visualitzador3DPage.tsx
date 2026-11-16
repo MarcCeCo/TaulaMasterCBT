@@ -716,8 +716,22 @@ function useApsViewer(
               ...nodes3d.map(toVista("3d")),
               ...nodes2d.map(toVista("2d")),
             ];
+            // Vista inicial: la 3D anomenada «Estat actual» (si n'hi ha);
+            // si no, la primera vista disponible.
+            const normNom = (v: string) =>
+              v
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .replace(/[_\s]+/g, " ")
+                .trim();
+            const vistes3d = totes.filter((v) => v.rol === "3d");
+            const vistaInicial =
+              vistes3d.find((v) => normNom(v.nom) === "estat actual") ??
+              vistes3d.find((v) => normNom(v.nom).includes("estat actual")) ??
+              totes[0];
             const primerNode =
-              totes[0]?.node ??
+              vistaInicial?.node ??
               root.getDefaultGeometry(true) ??
               root.getDefaultGeometry();
             if (!primerNode) {
@@ -726,7 +740,7 @@ function useApsViewer(
             }
             viewer.loadDocumentNode(doc, primerNode);
             setVistes(totes);
-            setVistaActual(0);
+            setVistaActual(vistaInicial ? totes.indexOf(vistaInicial) : 0);
             reintentAutoRef.current = false;
             setEstat("ok");
             res();
