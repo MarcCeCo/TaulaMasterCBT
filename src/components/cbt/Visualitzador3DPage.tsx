@@ -74,6 +74,7 @@ import {
   vistaModificada,
   type ElementModel,
   type NodeJerarquia,
+  type TagAltaJerarquia,
 } from "@/lib/visor3dModel";
 import { toast } from "sonner";
 
@@ -715,8 +716,22 @@ function useApsViewer(
               ...nodes3d.map(toVista("3d")),
               ...nodes2d.map(toVista("2d")),
             ];
+            // Vista inicial: la 3D anomenada «Estat actual» (si n'hi ha);
+            // si no, la primera vista disponible.
+            const normNom = (v: string) =>
+              v
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .replace(/[_\s-]+/g, " ")
+                .trim();
+            const vistes3d = totes.filter((v) => v.rol === "3d");
+            const vistaInicial =
+              vistes3d.find((v) => normNom(v.nom) === "estat actual") ??
+              vistes3d.find((v) => normNom(v.nom).includes("estat actual")) ??
+              totes[0];
             const primerNode =
-              totes[0]?.node ??
+              vistaInicial?.node ??
               root.getDefaultGeometry(true) ??
               root.getDefaultGeometry();
             if (!primerNode) {
@@ -725,7 +740,7 @@ function useApsViewer(
             }
             viewer.loadDocumentNode(doc, primerNode);
             setVistes(totes);
-            setVistaActual(0);
+            setVistaActual(vistaInicial ? totes.indexOf(vistaInicial) : 0);
             reintentAutoRef.current = false;
             setEstat("ok");
             res();
@@ -1058,9 +1073,11 @@ function SelectorVistes({
 //                   d'alta (Rosmiman) i informe de TAGs que no són al model.
 //                   Amb selecció: TAG i descripció de l'element (o el recompte
 //                   si se n'han seleccionat diversos).
-//   · «Jerarquia» → arbre CBT_SISTEMA > CBT_SUBSISTEMA > CBT_LINIA_DE_TRACTAMENT
-//                   > CBT_PROCES > CBT_SUBPROCES; clicar un nivell selecciona
-//                   al visor tots els equips que conté.
+//   · «Jerarquia» → arbre Sistema > Subsistema > Línia de tractament > Procés
+//                   > Subprocés construït amb els TAGs donats d'alta (Rosmiman,
+//                   jerarquia del GMAO). Els TAGs que són al model es poden
+//                   seleccionar (clicar un nivell selecciona al visor tots els
+//                   equips que conté); els que no hi són es veuen atenuats.
 // El TAG es llegeix del paràmetre de Revit CBT_TAG (model.getProperties); la
 // descripció es busca al llistat Rosmiman (rosmiman_equips) dins del panell,
 // de manera que la càrrega del visor no depèn de les dades de Rosmiman.
@@ -1182,9 +1199,11 @@ function FilaNode({
   marcatsSet: Set<string>;
   color: string;
 }) {
-  const teFills = node.fills.length > 0 || node.directs.length > 0;
+  const teFills = node.fills.length > 0 || node.tagsDirectes.length > 0;
   const etiquetaNivell =
     node.nivell >= 0 ? NIVELLS_JERARQUIA[node.nivell].etiqueta : "";
+  // Cap TAG d'aquest nivell és al model: no es pot seleccionar (atenuat)
+  const seleccionable = node.elements.length > 0;
   return (
     <>
       <div
@@ -1207,16 +1226,29 @@ function FilaNode({
         <input
           type="checkbox"
           checked={marcat}
+          disabled={!seleccionable}
           onChange={() => onToggleMarca(node)}
-          title="Afegeix / treu aquest nivell de la selecció múltiple"
-          className="h-3 w-3 shrink-0 cursor-pointer"
+          title={
+            seleccionable
+              ? "Afegeix / treu aquest nivell de la selecció múltiple"
+              : "Cap TAG d'aquest nivell és al model"
+          }
+          className="h-3 w-3 shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
           style={{ accentColor: color }}
         />
         <button
           type="button"
           onClick={() => onSeleccionar(node.elements)}
-          title={`Selecciona els ${node.elements.length} equips de «${node.nom}»`}
-          className="flex-1 min-w-0 flex items-center gap-1.5 py-1 text-left"
+          disabled={!seleccionable}
+          title={
+            seleccionable
+              ? `Selecciona els ${node.elements.length} elements de «${node.nom}» presents al model`
+              : `Cap TAG de «${node.nom}» és al model`
+          }
+          className={cn(
+            "flex-1 min-w-0 flex items-center gap-1.5 py-1 text-left",
+            !seleccionable && "opacity-40 cursor-not-allowed",
+          )}
         >
           <span className="text-[11px] font-medium text-slate-700 truncate">
             {node.nom}
@@ -1226,12 +1258,6 @@ function FilaNode({
               {etiquetaNivell}
             </span>
           )}
-          <span
-            className="ml-auto text-[10px] font-semibold px-1.5 rounded shrink-0"
-            style={{ background: `${color}18`, color }}
-          >
-            {node.elements.length}
-          </span>
         </button>
       </div>
 
@@ -1252,24 +1278,37 @@ function FilaNode({
               color={color}
             />
           ))}
-          {node.directs.slice(0, MAX_FULLES_VISIBLES).map((el) => (
-            <button
-              key={`${el.modelId}:${el.dbId}`}
-              type="button"
-              onClick={() => onSeleccionar([el])}
-              className="w-full text-left rounded-md py-0.5 pr-2 font-mono text-[10.5px] text-slate-500 hover:bg-slate-50 hover:text-slate-800 truncate"
-              style={{ paddingLeft: 24 + (fondaria + 1) * 12 }}
-              title={el.tag || `Element ${el.dbId}`}
-            >
-              {el.tag || `(sense TAG) #${el.dbId}`}
-            </button>
-          ))}
-          {node.directs.length > MAX_FULLES_VISIBLES && (
+          {node.tagsDirectes.slice(0, MAX_FULLES_VISIBLES).map((t) => {
+            const alModel = t.elements.length > 0;
+            return (
+              <button
+                key={t.tag}
+                type="button"
+                disabled={!alModel}
+                onClick={() => onSeleccionar(t.elements)}
+                className={cn(
+                  "w-full text-left rounded-md py-0.5 pr-2 font-mono text-[10.5px] truncate",
+                  alModel
+                    ? "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                    : "text-slate-300 opacity-60 cursor-not-allowed",
+                )}
+                style={{ paddingLeft: 24 + (fondaria + 1) * 12 }}
+                title={
+                  alModel
+                    ? `${t.tag}${t.descripcio ? ` — ${t.descripcio}` : ""}`
+                    : `${t.tag} — no és al model`
+                }
+              >
+                {t.tag}
+              </button>
+            );
+          })}
+          {node.tagsDirectes.length > MAX_FULLES_VISIBLES && (
             <p
               className="py-0.5 text-[10px] italic text-slate-400"
               style={{ paddingLeft: 24 + (fondaria + 1) * 12 }}
             >
-              … i {node.directs.length - MAX_FULLES_VISIBLES} equips més
+              … i {node.tagsDirectes.length - MAX_FULLES_VISIBLES} TAGs més
               (selecciona el nivell per veure'ls tots al model)
             </p>
           )}
@@ -1281,18 +1320,48 @@ function FilaNode({
 
 function PestanyaJerarquia({
   restabliments,
+  installacio,
   escaneig,
   onSeleccionar,
   color,
 }: {
   restabliments: number;
+  installacio: Installacio;
   escaneig: EstatEscaneig;
   onSeleccionar: (els: ElementModel[]) => void;
   color: string;
 }) {
+  const { rosmimanEquips } = useProjectes();
+  const codi = normTag(installacio.codiInstallacio);
+
+  // TAGs donats d'alta (Rosmiman) d'aquesta instal·lació, amb la jerarquia del GMAO
+  const tagsAlta = useMemo<TagAltaJerarquia[]>(
+    () =>
+      codi
+        ? rosmimanEquips
+            .filter(
+              (e) =>
+                normTag(e.codiInstallacio) === codi ||
+                normTag(e.tag).startsWith(codi),
+            )
+            .map((e) => ({
+              tag: e.tag,
+              descripcio: e.descripcio,
+              nivells: [
+                e.sistema,
+                e.subsistema,
+                e.liniaTractament,
+                e.proces,
+                e.subproces,
+              ],
+            }))
+        : [],
+    [rosmimanEquips, codi],
+  );
+
   const arbre = useMemo(
-    () => construeixArbre(escaneig.elements),
-    [escaneig.elements],
+    () => construeixArbre(tagsAlta, escaneig.elements),
+    [tagsAlta, escaneig.elements],
   );
   const [oberts, setOberts] = useState<Set<string>>(new Set());
   const [marcats, setMarcats] = useState<Map<string, NodeJerarquia>>(new Map());
@@ -1351,8 +1420,9 @@ function PestanyaJerarquia({
   if (arbre.length === 0) {
     return (
       <p className="p-4 text-xs text-slate-400 italic leading-relaxed">
-        Cap element del model té els paràmetres{" "}
-        {NIVELLS_JERARQUIA.map((n) => `CBT_${n.param}`).join(", ")} omplerts.
+        Cap equip donat d'alta (TAGs Rosmiman) de la instal·lació{" "}
+        {codi || installacio.nom} té jerarquia. Importa la plantilla amb la
+        jerarquia del GMAO des del pop-up «TAGs Rosmiman».
       </p>
     );
   }
@@ -1361,8 +1431,8 @@ function PestanyaJerarquia({
     <div className="flex flex-col min-h-0">
       <div className="px-3 py-2 flex items-center gap-2 border-b border-slate-100">
         <p className="text-[10.5px] text-slate-400 leading-snug flex-1">
-          Clica un nivell per seleccionar-ne tots els equips. Amb les caselles
-          pots combinar-ne diversos.
+          Clica un nivell per seleccionar-ne els equips. Amb les caselles pots
+          combinar-ne diversos. Els TAGs atenuats no són al model.
         </p>
         {marcats.size > 0 && (
           <button
@@ -1713,6 +1783,7 @@ function PanellVisor({
       ) : (
         <PestanyaJerarquia
           restabliments={restabliments}
+          installacio={installacio}
           escaneig={escaneig}
           onSeleccionar={onSeleccionarElements}
           color={sistema.color}
