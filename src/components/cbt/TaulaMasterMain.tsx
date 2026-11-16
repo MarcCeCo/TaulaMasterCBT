@@ -185,7 +185,6 @@ export function TaulaMasterMain() {
     user,
     isAdmin,
     loading: authLoading,
-    getToken,
   } = useAuth();
 
   const VALID_SECTIONS = [
@@ -242,45 +241,6 @@ export function TaulaMasterMain() {
     !canSeeView("rosmiman") &&
     !canSeeView("visor3d");
 
-  const sectionTitles: Record<string, { title: string; sub: string }> = {
-    dashboard: {
-      title: "Resum general",
-      sub: "Visió global de l'estat de la Taula Master",
-    },
-    equips: {
-      title: "Taula Master",
-      sub: "Llista i gestió de tots els equips tècnics",
-    },
-    "revit-bim": {
-      title: "Documentació BIM",
-      sub: "Portal de recursos i famílies Revit",
-    },
-    "visualitzador-3d": {
-      title: "Visualitzador 3D",
-      sub: "Models BIM de les instal·lacions",
-    },
-    "projectes-equips": {
-      title: "Llistat de projectes",
-      sub: "Equips assignats per projecte",
-    },
-    rosmiman: {
-      title: "TAGs Rosmiman",
-      sub: "Integració amb el sistema Rosmiman",
-    },
-    usuaris: {
-      title: "Gestió d'usuaris",
-      sub: "Administració de comptes i permisos",
-    },
-    "control-agents": {
-      title: "Control d'agents",
-      sub: "Estat i gestió de la sincronització amb Autodesk",
-    },
-    canviapwd: {
-      title: "Canvia contrasenya",
-      sub: "Actualitza les teves credencials d'accés",
-    },
-  };
-
   const renderContent = () => {
     if (noAccessAtAll) {
       return (
@@ -320,29 +280,11 @@ export function TaulaMasterMain() {
       case "projectes-equips":
         if (!canSeeView("projectes") && !canSeeView("rosmiman"))
           return <AccessDenied />;
-        return (
-          <ProjectesEquipsPage
-            initialTab="projectes"
-            onTabChange={(tab) =>
-              setActiveSection(
-                tab === "rosmiman" ? "rosmiman" : "projectes-equips",
-              )
-            }
-          />
-        );
+        return <ProjectesEquipsPage initialTab="projectes" />;
 
       case "rosmiman":
         if (!canSeeView("rosmiman")) return <AccessDenied />;
-        return (
-          <ProjectesEquipsPage
-            initialTab="rosmiman"
-            onTabChange={(tab) =>
-              setActiveSection(
-                tab === "rosmiman" ? "rosmiman" : "projectes-equips",
-              )
-            }
-          />
-        );
+        return <ProjectesEquipsPage initialTab="rosmiman" />;
 
       case "usuaris":
         if (!isAdmin) return <AccessDenied />;

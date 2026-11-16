@@ -21,7 +21,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFile } from "child_process";
 import WebSocket from "ws";
-import { type JsonAny, errorMessage } from "./tipus";
 
 Object.assign(globalThis, { WebSocket });
 
@@ -295,7 +294,6 @@ export async function executaCrearMasters(
           if (totsAccessibles) {
             const nom = nomMaster(inst.codi, inst.nom);
             const carpetaSortida = params.carpetaSortida ?? inst.carpeta;
-            const rutaSortida = path.join(carpetaSortida, `${nom}.rvt`);
 
             // En mode web sense Revit, marquem com "pendent"
             console.log(`  📋 Pendent: ${nom}.rvt`);

@@ -11,7 +11,6 @@ import { Equipment } from "@/hooks/useEquipments";
 import { GubimNode, codeLevel, parentCode } from "@/hooks/useGubimClass";
 import { FieldMeta, isClassifier } from "@/lib/fields";
 import { LevelBadge } from "./LevelBadge";
-import { cn } from "@/lib/utils";
 
 interface Props {
   open: boolean;
@@ -29,7 +28,6 @@ export function EquipmentDetailDialog({
   onOpenChange,
   equipment,
   nodeMap,
-  fieldMap,
   fields,
   onEdit,
   canEdit = false,

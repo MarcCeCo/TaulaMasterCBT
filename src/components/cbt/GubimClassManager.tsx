@@ -44,7 +44,6 @@ import {
   useGubimClass,
 } from "@/hooks/useGubimClass";
 import { LevelBadge } from "./LevelBadge";
-import { uid } from "@/lib/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth";
@@ -650,5 +649,3 @@ export function GubimClassManager(_props: Props = {}) {
     </div>
   );
 }
-
-export const _newId = () => uid();

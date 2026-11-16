@@ -11,11 +11,11 @@
 // local no apliquen (s'usen les metadades d'ACC directament).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 import * as fs from "fs";
 import * as path from "path";
 import WebSocket from "ws";
-import { type JsonAny, errorMessage } from "./tipus";
+import { type JsonAny } from "./tipus";
 
 Object.assign(globalThis, { WebSocket });
 
@@ -46,7 +46,6 @@ const SUFIXOS_COPIA = [
   "_COOR",
   "_STR",
 ];
-const SUFIX_MASTER = "_MASTER";
 
 function getConfig() {
   return {
@@ -383,30 +382,6 @@ async function registraXRefs(
   );
   if (!resp.ok) return null;
   return ((await resp.json()) as JsonAny).data?.id ?? null;
-}
-
-// ─── Cerca fitxers al USB ─────────────────────────────────────────────────────
-
-function trobaFitxersBim(carpeta: string, sufixos: string[]): string[] {
-  const resultats: string[] = [];
-  function navega(dir: string) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        navega(fullPath);
-      } else if (entry.name.toLowerCase().endsWith(".rvt")) {
-        const nomUpper = entry.name.toUpperCase();
-        if (
-          sufixos.some((s) => nomUpper.includes(s)) &&
-          !nomUpper.includes("_MASTER")
-        ) {
-          resultats.push(fullPath);
-        }
-      }
-    }
-  }
-  navega(carpeta);
-  return resultats.sort();
 }
 
 // ─── Desa log a Supabase ──────────────────────────────────────────────────────

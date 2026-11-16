@@ -1,5 +1,5 @@
 // src/components/cbt/AppSidebar.tsx  — CBT redesign v2
-import { memo, useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   BookOpen,
   Bot,

@@ -32,7 +32,6 @@ import {
   FileSpreadsheet,
   FileText,
   Flame,
-  FolderOpen,
   Lightbulb,
   Package,
   Pipette,
@@ -283,7 +282,7 @@ const RfaTableRow = memo(function RfaTableRow({
   row: EquipRow;
   onDownload: (rfaName: string) => void;
 }) {
-  const { eq, parentName, cat, hasValidCat, rfaName } = row;
+  const { eq, parentName, cat, rfaName } = row;
   const fullName = parentName ? `${parentName} ${eq.equipName}` : eq.equipName;
   return (
     <tr className="border-t border-slate-100 hover:bg-slate-50/50">

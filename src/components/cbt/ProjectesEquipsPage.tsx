@@ -30,9 +30,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   Archive,
-  ChevronRight,
   FolderOpen,
-  FolderArchive,
   Plus,
   Trash2,
   Tags,
@@ -183,33 +181,14 @@ function TagStatusBadge({ status }: { status: TagStatus }) {
   );
 }
 
-// ─── Badge d'estat del projecte ───────────────────────────────────────────────
-function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
-  if (status === "arxivat")
-    return (
-      <Badge className="bg-slate-100 text-slate-500 border-0 text-[10px]">
-        <FolderArchive className="h-3 w-3 mr-1" />
-        Arxivat
-      </Badge>
-    );
-  return (
-    <Badge className="bg-[#0099A8]/15 text-[#006E7A] border-0 text-[10px]">
-      <FolderOpen className="h-3 w-3 mr-1" />
-      Actiu
-    </Badge>
-  );
-}
-
 // ─── component principal ──────────────────────────────────────────────────────
 
 interface ProjectesEquipsPageProps {
   initialTab?: "projectes" | "rosmiman";
-  onTabChange?: (tab: "projectes" | "rosmiman") => void;
 }
 
 export function ProjectesEquipsPage({
   initialTab = "projectes",
-  onTabChange,
 }: ProjectesEquipsPageProps) {
   const {
     canEditView,
@@ -234,15 +213,8 @@ export function ProjectesEquipsPage({
     if (!entry) return "viewer";
     return entry.role;
   };
-  const [tabActiva, setTabActivaInternal] = useState<"projectes" | "rosmiman">(
-    initialTab,
-  );
   const [rosmimanOpen, setRosmimanOpen] = useState(initialTab === "rosmiman");
 
-  const setTabActiva = (tab: "projectes" | "rosmiman") => {
-    setTabActivaInternal(tab);
-    onTabChange?.(tab);
-  };
   const {
     equipments,
     gubimNodes,
@@ -255,9 +227,6 @@ export function ProjectesEquipsPage({
 
   const {
     projectes,
-    loading: projectesLoading,
-    error: projectesError,
-    retry: projectesRetry,
     createProjecte,
     updateProjecte,
     updateProjecteUsers,
@@ -294,8 +263,7 @@ export function ProjectesEquipsPage({
 
   // Diàleg assignació usuaris (només admins)
   const [dialogUsuaris, setDialogUsuaris] = useState<string | null>(null); // id projecte
-  const [dialogUsuarisIsOpen, setDialogUsuarisIsOpen] =
-    useState<boolean>(false); // true = accés obert (null a BD)
+  const [, setDialogUsuarisIsOpen] = useState<boolean>(false); // true = accés obert (null a BD)
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [selectedProjectUsers, setSelectedProjectUsers] = useState<
@@ -933,8 +901,7 @@ export function ProjectesEquipsPage({
               descripcio: equipMap.get(t.equipId)?.equipName ?? "",
               codiInstallacio: t.codiInstallacio,
             }));
-            const { inserted, skipped } =
-              await importRosmimanEquips(equipsAImportar);
+            const { inserted } = await importRosmimanEquips(equipsAImportar);
             if (inserted > 0) {
               toast.success(
                 `Tots els tags validats ✓ — ${inserted} tag${inserted !== 1 ? "s" : ""} afegit${inserted !== 1 ? "s" : ""} al llistat Rosmiman.`,
@@ -1313,8 +1280,6 @@ export function ProjectesEquipsPage({
                       const rebutjats = p.tags.filter(
                         (t) => t.status === "rebutjat",
                       ).length;
-                      const pct =
-                        total > 0 ? Math.round((validats / total) * 100) : 0;
                       const installacioText =
                         p.codisInstallacio?.length > 0
                           ? p.codisInstallacio

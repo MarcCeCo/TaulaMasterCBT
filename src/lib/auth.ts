@@ -88,16 +88,6 @@ export const DEFAULT_SECTION_PERMISSIONS: SectionPermissions = {
   visor3d: "none",
 };
 
-export const FULL_SECTION_PERMISSIONS: SectionPermissions = {
-  equips: "editor",
-  gubimclass: "editor",
-  fields: "editor",
-  revit: "editor",
-  projectes: "editor",
-  rosmiman: "editor",
-  visor3d: "editor",
-};
-
 export interface UserProfile {
   id: string;
   email: string;

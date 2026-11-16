@@ -34,7 +34,6 @@ import {
   useAuth,
   type UserPermissionLevel,
   type UserProfile,
-  type AppView,
   type SectionRole,
   type SectionPermissions,
   ALL_VIEWS,
@@ -231,51 +230,6 @@ function PermissionsMatrix({
           Els administradors tenen accés complet a totes les seccions.
         </p>
       )}
-    </div>
-  );
-}
-
-// ─── PermissionsSummaryPills ──────────────────────────────────────────────────
-
-function PermissionsSummaryPills({ profile }: { profile: UserProfile }) {
-  if (profile.role === "admin") {
-    return (
-      <span className="inline-flex items-center gap-1 text-[11px] text-violet-600 italic">
-        <Shield className="h-3 w-3" /> Accés complet
-      </span>
-    );
-  }
-  const perms = profile.section_permissions ?? DEFAULT_SECTION_PERMISSIONS;
-
-  const editors = ALL_VIEWS.filter((v) => perms[v] === "editor");
-  const viewers = ALL_VIEWS.filter((v) => perms[v] === "viewer");
-  const noneCount = ALL_VIEWS.filter((v) => perms[v] === "none").length;
-
-  if (noneCount === ALL_VIEWS.length) {
-    return (
-      <span className="text-[11px] text-slate-400 italic">
-        Sense accés a cap secció
-      </span>
-    );
-  }
-  return (
-    <div className="flex flex-wrap gap-1">
-      {editors.map((v) => (
-        <span
-          key={v}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-blue-50 text-blue-700 border border-blue-100"
-        >
-          <Pencil className="h-2.5 w-2.5" /> {VIEW_LABELS[v]}
-        </span>
-      ))}
-      {viewers.map((v) => (
-        <span
-          key={v}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100"
-        >
-          <Eye className="h-2.5 w-2.5" /> {VIEW_LABELS[v]}
-        </span>
-      ))}
     </div>
   );
 }
