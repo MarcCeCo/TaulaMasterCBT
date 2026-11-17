@@ -1,7 +1,8 @@
 // api/public-links/revoke.ts
 //
 // POST /api/public-links/revoke   Body { id }   — ADMIN
-// Revoca un enllaç públic (deixa de funcionar immediatament).
+// Revoca un enllaç públic: n'esborra la fila de visor_public_links, així que
+// deixa de funcionar immediatament i desapareix de la llista.
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { aplicaCors, json } from "../_lib/http.js";
@@ -37,9 +38,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const { error } = await supabase
       .from("visor_public_links")
-      .update({ revoked_at: new Date().toISOString() })
-      .eq("id", id)
-      .is("revoked_at", null);
+      .delete()
+      .eq("id", id);
     if (error) throw new Error(error.message);
     return json(res, 200, { ok: true });
   } catch (err) {

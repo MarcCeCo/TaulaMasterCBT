@@ -520,8 +520,15 @@ export function useApsViewer(
     /** Proveïdor del token APS. Per defecte, el de la sessió de l'usuari; el visor
      *  públic (enllaç compartit) hi passa el seu, basat en el token de l'enllaç. */
     obteToken?: (o?: { fresh?: boolean }) => Promise<ApsToken>;
+    /** Només carrega i exposa la vista 3D «Estat actual» (enllaços públics).
+     *  Si el model no la té, mostra un error en lloc d'una altra vista. */
+    nomesEstatActual?: boolean;
   },
 ) {
+  const nomesEstatActualRef = useRef(opcions?.nomesEstatActual ?? false);
+  useEffect(() => {
+    nomesEstatActualRef.current = opcions?.nomesEstatActual ?? false;
+  }, [opcions?.nomesEstatActual]);
   const obteTokenRef = useRef(opcions?.obteToken ?? obteApsToken);
   useEffect(() => {
     obteTokenRef.current = opcions?.obteToken ?? obteApsToken;
@@ -738,10 +745,27 @@ export function useApsViewer(
                 .replace(/[_\s-]+/g, " ")
                 .trim();
             const vistes3d = totes.filter((v) => v.rol === "3d");
-            const vistaInicial =
+            const estatActual =
               vistes3d.find((v) => normNom(v.nom) === "estat actual") ??
-              vistes3d.find((v) => normNom(v.nom).includes("estat actual")) ??
-              totes[0];
+              vistes3d.find((v) => normNom(v.nom).includes("estat actual"));
+            if (nomesEstatActualRef.current) {
+              if (!estatActual) {
+                rej(
+                  new Error(
+                    "Aquest model no té la vista «Estat actual», per això no es pot mostrar.",
+                  ),
+                );
+                return;
+              }
+              viewer.loadDocumentNode(doc, estatActual.node);
+              setVistes([estatActual]);
+              setVistaActual(0);
+              reintentAutoRef.current = false;
+              setEstat("ok");
+              res();
+              return;
+            }
+            const vistaInicial = estatActual ?? totes[0];
             const primerNode =
               vistaInicial?.node ??
               root.getDefaultGeometry(true) ??

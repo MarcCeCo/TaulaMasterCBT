@@ -3,16 +3,13 @@
 // Pàgina PÚBLICA del Visor 3D (/public/visor/<token>): mostra en només lectura el
 // model MASTER d'una instal·lació a persones externes, sense iniciar sessió.
 // No carrega cap dada interna de la plataforma (ni TAGs, ni jerarquia, ni equips):
-// només el visor 3D i el selector de vistes.
+// només el visor 3D, amb la vista «Estat actual».
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import "@/styles.css";
 import { Button } from "@/components/ui/button";
-import {
-  SelectorVistes,
-  useApsViewer,
-} from "@/components/cbt/Visualitzador3DPage";
+import { useApsViewer } from "@/components/cbt/Visualitzador3DPage";
 import {
   carregaVisorPublic,
   creaProveidorTokenPublic,
@@ -54,15 +51,10 @@ function VisorPublicInner({
     [token, dades],
   );
 
-  const {
-    estat,
-    error,
-    reintentar,
-    vistes,
-    vistaActual,
-    carregaVista,
-    canviantVista,
-  } = useApsViewer(containerRef, installacio, { obteToken });
+  const { estat, error, reintentar } = useApsViewer(containerRef, installacio, {
+    obteToken,
+    nomesEstatActual: true,
+  });
   const carregant = estat !== "ok" && estat !== "error";
 
   return (
@@ -85,15 +77,6 @@ function VisorPublicInner({
             )}
           </p>
         </div>
-        {estat === "ok" && (
-          <SelectorVistes
-            vistes={vistes}
-            vistaActual={vistaActual}
-            canviantVista={canviantVista}
-            onSeleccionar={carregaVista}
-            sistemaColor={COLOR}
-          />
-        )}
       </header>
 
       <div className="relative min-h-0 flex-1 bg-slate-900">

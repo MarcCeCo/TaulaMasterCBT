@@ -1,10 +1,10 @@
 // api/public-links/index.ts
 //
 // ADMIN (sessió d'un usuari amb role = 'admin'):
-//   GET  /api/public-links?installacioId=…   → { enllacos: [...] }  (sense el token)
+//   GET  /api/public-links?installacioId=…   → { enllacos: [...] }  (amb el token, per mostrar la URL)
 //   POST /api/public-links  Body { installacioId, etiqueta?, dies? }
 //                                            → { id, token, expires_at }
-//        (el token només es mostra ara; a la BD només es desa el seu hash)
+//        (la BD desa el hash per a la validació i el token per tornar a mostrar la URL)
 // La revocació és a api/public-links/revoke.ts.
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -45,9 +45,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { data, error } = await supabase
         .from("visor_public_links")
         .select(
-          "id, etiqueta, created_by_email, created_at, expires_at, revoked_at, last_access_at, access_count",
+          "id, token, etiqueta, created_by_email, created_at, expires_at, revoked_at, last_access_at, access_count",
         )
         .eq("installacio_id", installacioId)
+        .is("revoked_at", null) // els enllaços revocats abans d'aquest canvi s'amaguen
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw new Error(error.message);
@@ -104,6 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .insert({
         installacio_id: installacioId,
         token_hash: sha256(token),
+        token, // perquè l'admin pugui tornar a veure la URL (vegeu docs/ENLLACOS_PUBLICS.md)
         etiqueta,
         created_by: auth.userId,
         created_by_email: auth.email,

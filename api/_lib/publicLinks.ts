@@ -2,8 +2,9 @@
 // Constants i helpers compartits pels endpoints d'enllaços públics del Visor 3D.
 //
 // Seguretat (igual que a l'antic token-service):
-//   · El token de l'enllaç és aleatori (256 bits). A la BD només es guarda el seu
-//     SHA-256: ni amb accés a la taula es pot reconstruir cap enllaç.
+//   · El token de l'enllaç és aleatori (256 bits). La validació es fa pel seu
+//     SHA-256; el token també es desa (columna `token`) perquè un admin pugui
+//     tornar a veure la URL. Només s'hi arriba amb la service role.
 //   · La taula visor_public_links té RLS sense polítiques: només s'hi arriba amb
 //     la service role d'aquestes funcions.
 //   · A l'extern NOMÉS se li dona un token APS d'abast `viewables:read` (mai el

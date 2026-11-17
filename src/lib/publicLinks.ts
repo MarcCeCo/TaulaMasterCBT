@@ -13,6 +13,8 @@ import { apiUrl } from "@/lib/apiBase";
 
 export interface EnllacPublic {
   id: string;
+  /** null als enllaços creats abans de poder desar-lo: no se'n pot mostrar la URL */
+  token: string | null;
   etiqueta: string;
   created_by_email: string | null;
   created_at: string;
