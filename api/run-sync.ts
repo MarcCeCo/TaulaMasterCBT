@@ -95,11 +95,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Detall NOMÉS als logs del servidor: no es filtra cap pista a l'usuari
     const detall = await resp.text().catch(() => "");
     console.error(`❌ GitHub dispatch ${resp.status}: ${detall.slice(0, 500)}`);
+    // Només l'executen administradors: mostrem el codi de GitHub per poder
+    // diagnosticar-ho sense haver d'anar als logs de Vercel.
     return json(res, 502, {
       error:
         resp.status === 401 || resp.status === 403 || resp.status === 404
-          ? "GitHub ha rebutjat la petició. L'administrador ha de revisar el token i el nom del repositori."
-          : "No s'ha pogut llançar la sincronització a GitHub. Torna-ho a provar.",
+          ? `GitHub ha rebutjat la petició (${resp.status}). L'administrador ha de revisar el token i el nom del repositori (${repo}).`
+          : resp.status === 422
+            ? `GitHub no troba el workflow «${workflow}» a la branca «${ref}» (o no té workflow_dispatch). Comprova que existeix en aquesta branca.`
+            : `No s'ha pogut llançar la sincronització a GitHub (${resp.status}). Torna-ho a provar.`,
       code: "GITHUB_ERROR",
     });
   } catch (err) {
