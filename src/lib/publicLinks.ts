@@ -1,14 +1,15 @@
 // src/lib/publicLinks.ts
 //
-// Client dels enllaços públics del Visor 3D (token-service, vegeu publicLinks.ts
-// a agents-independents/token-service/src).
+// Client dels enllaços públics del Visor 3D (funcions de Vercel: api/public/visor.ts,
+// api/public-links/index.ts i api/public-links/revoke.ts).
 //
 //  · Admin (amb sessió): crea, llista i revoca enllaços.
 //  · Extern (sense sessió): carrega el model i renova el token d'Autodesk a
 //    partir del token de l'enllaç.
 
 import { supabase } from "@/lib/supabase";
-import { tokenServiceUrl, type ApsToken } from "@/lib/apsToken";
+import { type ApsToken } from "@/lib/apsToken";
+import { apiUrl } from "@/lib/apiBase";
 
 export interface EnllacPublic {
   id: string;
@@ -41,20 +42,8 @@ export class PublicLinkError extends Error {
   }
 }
 
-function baseUrl(): string {
-  const base = tokenServiceUrl();
-  if (!base) {
-    throw new PublicLinkError(
-      "El servei de models 3D no està configurat (falta VITE_TOKEN_SERVICE_URL).",
-      "CONFIG",
-      500,
-    );
-  }
-  return base;
-}
-
-// Render gratuït pot trigar ~50 s a despertar-se
-const TIMEOUT_MS = 60_000;
+// La funció serverless respon en fraccions de segon
+const TIMEOUT_MS = 15_000;
 
 async function crida<T>(
   ruta: string,
@@ -63,14 +52,14 @@ async function crida<T>(
 ): Promise<T> {
   let resp: Response;
   try {
-    resp = await fetch(`${baseUrl()}${ruta}`, {
+    resp = await fetch(apiUrl(ruta), {
       ...init,
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
     if (e instanceof PublicLinkError) throw e;
     throw new PublicLinkError(
-      "No s'ha pogut contactar amb el servei (pot estar arrencant). Torna-ho a provar d'aquí a un minut.",
+      "No s'ha pogut contactar amb el servei. Comprova la connexió i torna-ho a provar.",
       "NETWORK",
       0,
     );

@@ -423,7 +423,7 @@ function InstallacioFormDialog({
 // Carrega el Viewer SDK via CDN i renderitza el model MASTER de la instal·lació.
 // Flux:
 //   1. Injecta CSS + JS del Viewer SDK
-//   2. Demana el token APS al token-service (/api/aps-token, amb la sessió de Supabase)
+//   2. Demana el token APS a la funció de Vercel /api/aps-token (amb la sessió de Supabase)
 //   3. Inicialitza Autodesk.Viewing.Initializer
 //   4. Crea GuiViewer3D i carrega el document (URN MASTER)
 
@@ -659,7 +659,7 @@ export function useApsViewer(
       if (!mountedRef.current) return;
 
       setEstat("carregant-token");
-      // Envia la sessió de l'usuari al token-service. Si falla, el missatge
+      // Envia la sessió de l'usuari a /api/aps-token. Si falla, el missatge
       // llançat és el real del servidor (p. ex. "La connexió amb Autodesk ha caducat…").
       const fresh = forcaTokenRef.current;
       forcaTokenRef.current = false;

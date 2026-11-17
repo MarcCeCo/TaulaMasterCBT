@@ -42,7 +42,7 @@ src/
 │   ├── auth.ts             # Tipus, rols i helpers d'autenticació
 │   ├── supabase.ts         # Client Supabase (auth i realtime)
 │   ├── supaFetch.ts        # fetch directe a REST API (amb deduplicació GET)
-│   ├── apsToken.ts         # Token APS per al visor 3D (envia la sessió de Supabase al token-service)
+│   ├── apsToken.ts         # Token APS per al visor 3D (envia la sessió de Supabase a /api/aps-token)
 │   ├── exportRosmiman.ts   # Exportació xlsx per a Rosmiman
 │   ├── fields.ts           # Tipus FieldMeta + helpers de classificació
 │   ├── storage.ts          # localStorage debounced + uid()
@@ -56,7 +56,8 @@ src/
 
 api/                   # Funcions serverless Vercel (gestió d'usuaris: create/list/update/delete-user)
 public/                # Assets públics (favicon.png, docs, families Revit)
-agents-independents/   # Microserveis Node.js a Render: token-service (token APS) i visor3d (sync ACC → Supabase). Vegeu el seu README
+api/                   # Funcions serverless de Vercel: token APS (bot), enllaços públics, execució manual de la sync, gestió d'usuaris
+agents-independents/   # Codi compartit del bot/sync (GitHub Actions) i agents bim-sync / crear-masters. Vegeu el seu README
 ```
 
 ---
@@ -606,7 +607,7 @@ Missatges d'error: en català, descriptius, amb el format correcte si cal.
 ```env
 VITE_SUPABASE_URL=https://xxx.supabase.co
 VITE_SUPABASE_ANON_KEY=eyJ...
-VITE_AGENT_URL=https://agent.example.com   # opcional, per APS/Autodesk
+# (cap URL d'agents: l'API és a /api, al mateix domini)
 ```
 
 ---
