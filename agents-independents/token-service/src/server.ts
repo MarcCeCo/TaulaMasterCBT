@@ -15,6 +15,7 @@
 //   GET /wake           → keep-alive (evita hibernació a Render)
 //   GET /auth/login     → inicia flux OAuth APS 3-legged
 //   GET /auth/callback  → callback OAuth APS
+//   POST /api/public/visor, /api/public-links… → enllaços públics (publicLinks.ts)
 //   GET /api/aps-token  → retorna access_token. REQUEREIX autenticació:
 //                           · Bearer <sessió Supabase d'un usuari de la plataforma> (frontend)
 //                           · Bearer <TOKEN_SERVICE_SECRET> (serveis interns: Visor 3D…)
@@ -34,6 +35,7 @@ import {
   configSSA,
   ApsReauthError,
 } from "../../shared/agent";
+import { gestionaEnllacosPublics } from "./publicLinks";
 import {
   setCors,
   htmlPagina,
@@ -604,6 +606,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── Enllaços públics del Visor 3D (veure publicLinks.ts) ───────────────────
+  if (await gestionaEnllacosPublics(req, res, url, creaSupabase())) return;
+
   res.writeHead(404, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ error: "Ruta no trobada" }));
 });
@@ -615,7 +620,9 @@ server.listen(PORT, async () => {
   console.log(`   GET  /wake            → keep-alive`);
   console.log(`   GET  /auth/login      → inicia OAuth APS`);
   console.log(`   GET  /auth/callback   → callback OAuth APS`);
-  console.log(`   GET  /api/aps-token   → token APS [Bearer requerit]\n`);
+  console.log(`   GET  /api/aps-token   → token APS [Bearer requerit]`);
+  console.log(`   POST /api/public/visor → visor públic per enllaç (sense sessió)`);
+  console.log(`   *    /api/public-links → gestió d'enllaços [admin]\n`);
   if (!TOKEN_SERVICE_SECRET) {
     console.warn(
       "⚠️  TOKEN_SERVICE_SECRET no definit: els serveis interns (Visor 3D) no podran demanar el token.",

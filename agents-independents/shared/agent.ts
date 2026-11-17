@@ -319,20 +319,18 @@ export interface TokenSSA {
   expires_in: number;
 }
 
-let cacheSSA: {
-  access_token: string;
-  expiraA: number;
-  scopeKey: string;
-} | null = null;
-let ssaEnCurs: Promise<TokenSSA> | null = null;
+// Memòria cau PER SCOPE: el token de l'app (data:read…) i el de només lectura
+// dels enllaços públics (viewables:read) conviuen sense expulsar-se mutuament.
+const cacheSSA = new Map<string, { access_token: string; expiraA: number }>();
+const ssaEnCurs = new Map<string, Promise<TokenSSA>>();
 
 /**
- * Descarta el token SSA de la memòria cau perquè el proper `obteTokenSSA`
+ * Descarta els tokens SSA de la memòria cau perquè el proper `obteTokenSSA`
  * en demani un de nou a Autodesk (p. ex. si Autodesk el rebutja amb un 401
  * o s'han canviat els permisos del bot a ACC).
  */
 export function invalidaCacheSSA(): void {
-  cacheSSA = null;
+  cacheSSA.clear();
 }
 
 /**
@@ -346,22 +344,21 @@ export async function obteTokenSSA(
 ): Promise<TokenSSA> {
   const scopeKey = scope.join(" ");
   const ara = Date.now();
-  if (
-    cacheSSA &&
-    cacheSSA.scopeKey === scopeKey &&
-    cacheSSA.expiraA - 5 * 60_000 > ara
-  ) {
+  const cache = cacheSSA.get(scopeKey);
+  if (cache && cache.expiraA - 5 * 60_000 > ara) {
     return {
-      access_token: cacheSSA.access_token,
-      expires_in: Math.round((cacheSSA.expiraA - ara) / 1000),
+      access_token: cache.access_token,
+      expires_in: Math.round((cache.expiraA - ara) / 1000),
     };
   }
-  if (!ssaEnCurs) {
-    ssaEnCurs = _demanaTokenSSA(cfg, scope).finally(() => {
-      ssaEnCurs = null;
+  let enCurs = ssaEnCurs.get(scopeKey);
+  if (!enCurs) {
+    enCurs = _demanaTokenSSA(cfg, scope).finally(() => {
+      ssaEnCurs.delete(scopeKey);
     });
+    ssaEnCurs.set(scopeKey, enCurs);
   }
-  return ssaEnCurs;
+  return enCurs;
 }
 
 async function _demanaTokenSSA(
@@ -400,11 +397,10 @@ async function _demanaTokenSSA(
     access_token: string;
     expires_in: number;
   };
-  cacheSSA = {
+  cacheSSA.set(scope.join(" "), {
     access_token: data.access_token,
     expiraA: Date.now() + data.expires_in * 1000,
-    scopeKey: scope.join(" "),
-  };
+  });
   console.log(
     `✅ Token APS del bot obtingut (expira en ${Math.round(data.expires_in / 60)} min)`,
   );
