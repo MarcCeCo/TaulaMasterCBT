@@ -35,7 +35,7 @@ jobs:
       - name: Executar sincronització
         working-directory: agents-independents/visor3d
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.VITE_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           APS_CLIENT_ID: ${{ secrets.APS_CLIENT_ID }}
           APS_CLIENT_SECRET: ${{ secrets.APS_CLIENT_SECRET }}

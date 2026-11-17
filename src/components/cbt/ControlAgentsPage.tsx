@@ -2,7 +2,8 @@
 // Pàgina d'administració: Control d'Agents
 //
 // Agents:
-//   1. visor3d   — Sincronitza models Revit d'ACC → Supabase (remot, Render)
+//   1. visor3d   — Sincronitza models Revit d'ACC → Supabase (job de GitHub Actions;
+//                  el botó «Executar ara» el dispara via la funció de Vercel /api/run-sync)
 //   2. bimLocal  — Grup d'eines locals BIM (execució a l'ordinador de l'usuari):
 //                    · Crear Masters CBT   (script.py via pyRevit)
 //                    · BIM Sync USB        (bim_sync_usb.py via VS Code)
@@ -10,6 +11,7 @@
 
 import { useEffect, useState, useCallback, useRef, Fragment } from "react";
 import { supabase } from "@/lib/supabase";
+import { apiUrl } from "@/lib/apiBase";
 import { supaFetch as supa } from "@/lib/supaFetch";
 import { useAuth } from "@/lib/auth";
 import { useDataStore } from "@/lib/dataStore";
@@ -88,9 +90,9 @@ interface AgentConfig {
   icon: React.ReactNode;
   cronSchedule: string;
   logTable: string | null;
+  /** Funció de Vercel que dispara l'execució manual (null = no es pot executar des d'aquí) */
   syncEndpoint: string | null;
   tokenTable?: string;
-  agentUrlEnv: string;
 }
 
 const AGENTS_CONFIG: AgentConfig[] = [
@@ -102,9 +104,8 @@ const AGENTS_CONFIG: AgentConfig[] = [
     icon: <Bot className="h-4 w-4" />,
     cronSchedule: "0 6 1 * *",
     logTable: "visor3d_sync_log",
-    syncEndpoint: "/sync",
+    syncEndpoint: "/api/run-sync",
     tokenTable: "aps_tokens",
-    agentUrlEnv: "VITE_VISOR3D_URL",
   },
   {
     id: "bimLocal",
@@ -115,7 +116,6 @@ const AGENTS_CONFIG: AgentConfig[] = [
     cronSchedule: "",
     logTable: "bim_sync_log",
     syncEndpoint: null,
-    agentUrlEnv: "",
   },
   {
     id: "crearFamilies",
@@ -126,7 +126,6 @@ const AGENTS_CONFIG: AgentConfig[] = [
     cronSchedule: "",
     logTable: null,
     syncEndpoint: null,
-    agentUrlEnv: "",
   },
 ];
 
@@ -2303,17 +2302,7 @@ export function ControlAgentsPage() {
 
   async function executaAgentVisor3D() {
     const agent = AGENTS_CONFIG[0];
-    const agentUrl = (import.meta.env as Record<string, string | undefined>)[
-      agent.agentUrlEnv
-    ] as string | undefined;
-
-    if (!agentUrl) {
-      setTriggerMsg({
-        ok: false,
-        text: `${agent.agentUrlEnv} no està configurada.`,
-      });
-      return;
-    }
+    if (!agent.syncEndpoint) return;
     setTriggering("sync");
     setTriggerMsg(null);
     try {
@@ -2332,7 +2321,7 @@ export function ControlAgentsPage() {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       };
-      const res = await fetch(`${agentUrl}${agent.syncEndpoint}`, {
+      const res = await fetch(apiUrl(agent.syncEndpoint), {
         method: "POST",
         headers,
         body: JSON.stringify({}),
@@ -2350,7 +2339,7 @@ export function ControlAgentsPage() {
       if (res.ok) {
         setTriggerMsg({
           ok: true,
-          text: "Agent iniciat. Esperant el resultat en temps real…",
+          text: "Sincronització llançada a GitHub Actions. Pot trigar fins a un minut a començar; esperant el resultat…",
         });
         const lastKnownId = (logsRef.current[agent.id] ?? [])[0]?.id ?? "";
         if (pollRef.current) clearInterval(pollRef.current);

@@ -10,7 +10,8 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { obteApsToken } from "@/lib/apsToken";
+import { obteApsToken, type ApsToken } from "@/lib/apsToken";
+import { PublicLinksDialog } from "@/components/cbt/PublicLinksDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,7 @@ import {
   Loader2,
   RefreshCw,
   FileDown,
+  Link2,
   ListTree,
   Info,
 } from "lucide-react";
@@ -421,7 +423,7 @@ function InstallacioFormDialog({
 // Carrega el Viewer SDK via CDN i renderitza el model MASTER de la instal·lació.
 // Flux:
 //   1. Injecta CSS + JS del Viewer SDK
-//   2. Demana el token APS al token-service (/api/aps-token, amb la sessió de Supabase)
+//   2. Demana el token APS a la funció de Vercel /api/aps-token (amb la sessió de Supabase)
 //   3. Inicialitza Autodesk.Viewing.Initializer
 //   4. Crea GuiViewer3D i carrega el document (URN MASTER)
 
@@ -511,10 +513,19 @@ function urnMasterDe(inst?: Installacio): string {
 
 // ─── Hook useApsViewer ────────────────────────────────────────────────────────
 
-function useApsViewer(
+export function useApsViewer(
   containerRef: React.RefObject<HTMLDivElement | null>,
   installacio: Installacio | undefined,
+  opcions?: {
+    /** Proveïdor del token APS. Per defecte, el de la sessió de l'usuari; el visor
+     *  públic (enllaç compartit) hi passa el seu, basat en el token de l'enllaç. */
+    obteToken?: (o?: { fresh?: boolean }) => Promise<ApsToken>;
+  },
 ) {
+  const obteTokenRef = useRef(opcions?.obteToken ?? obteApsToken);
+  useEffect(() => {
+    obteTokenRef.current = opcions?.obteToken ?? obteApsToken;
+  }, [opcions?.obteToken]);
   const [estat, setEstat] = useState<ViewerEstat>("idle");
   const [error, setError] = useState<string | null>(null);
   const [vistes, setVistes] = useState<VistaModel[]>([]);
@@ -648,11 +659,11 @@ function useApsViewer(
       if (!mountedRef.current) return;
 
       setEstat("carregant-token");
-      // Envia la sessió de l'usuari al token-service. Si falla, el missatge
+      // Envia la sessió de l'usuari a /api/aps-token. Si falla, el missatge
       // llançat és el real del servidor (p. ex. "La connexió amb Autodesk ha caducat…").
       const fresh = forcaTokenRef.current;
       forcaTokenRef.current = false;
-      const { access_token } = await obteApsToken({ fresh });
+      const { access_token } = await obteTokenRef.current({ fresh });
       if (!mountedRef.current) return;
 
       setEstat("inicialitzant");
@@ -666,7 +677,8 @@ function useApsViewer(
             // El Viewer torna a cridar-ho quan el token està a punt d'expirar:
             // abans reutilitzava el mateix token caducat i el model deixava de carregar.
             getAccessToken: (cb: (t: string, e: number) => void) => {
-              obteApsToken()
+              obteTokenRef
+                .current()
                 .then((t) => cb(t.access_token, t.expires_in))
                 .catch((e) => {
                   console.error(
@@ -874,7 +886,7 @@ function useApsViewer(
 
 // ─── Selector de vistes ───────────────────────────────────────────────────────
 
-function SelectorVistes({
+export function SelectorVistes({
   vistes,
   vistaActual,
   canviantVista,
@@ -1804,6 +1816,8 @@ function Visor3DDialog({
   sistema: Sistema;
   onClose: () => void;
 }) {
+  const { isAdmin } = useAuth();
+  const [enllacPublicObert, setEnllacPublicObert] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const urnDisponible = !!urnMasterDe(installacio);
 
@@ -1892,6 +1906,19 @@ function Visor3DDialog({
             />
           )}
 
+          {/* Enllaç públic: només administradors i amb MASTER sincronitzat */}
+          {isAdmin && urnDisponible && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5 shrink-0 text-xs"
+              onClick={() => setEnllacPublicObert(true)}
+              title="Crea un enllaç perquè persones externes vegin el model sense iniciar sessió"
+            >
+              <Link2 className="h-3.5 w-3.5" /> Enllaç públic
+            </Button>
+          )}
+
           {/* Botó tancar propi — sense solapament amb el de Radix */}
           <button
             onClick={onClose}
@@ -1901,6 +1928,14 @@ function Visor3DDialog({
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {enllacPublicObert && (
+          <PublicLinksDialog
+            installacioId={installacio.id}
+            installacioNom={installacio.nom}
+            onClose={() => setEnllacPublicObert(false)}
+          />
+        )}
 
         <div className="flex w-full" style={{ height: "75vh" }}>
           <div className="relative min-w-0 flex-1 bg-slate-900">

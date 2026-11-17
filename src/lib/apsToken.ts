@@ -1,14 +1,16 @@
 // src/lib/apsToken.ts
 //
-// Obté el token APS del token-service enviant la sessió de Supabase de l'usuari
-// (Authorization: Bearer <access_token>). El token es guarda en memòria fins que
-// li queden pocs minuts de vida, així el Viewer SDK pot demanar-lo tantes
-// vegades com vulgui sense fer una petició cada cop.
+// Obté el token APS de la funció de Vercel /api/aps-token (que el genera amb el
+// bot de servei, sense cap servei a Render) enviant la sessió de Supabase de
+// l'usuari (Authorization: Bearer <access_token>). El token es guarda en memòria
+// fins que li queden pocs minuts de vida, així el Viewer SDK pot demanar-lo
+// tantes vegades com vulgui sense fer una petició cada cop.
 //
 // Quan falla, llança ApsTokenError amb el missatge REAL del servidor (en català,
 // pensat per a l'usuari) perquè la UI el mostri tal qual.
 
 import { supabase } from "@/lib/supabase";
+import { apiUrl } from "@/lib/apiBase";
 
 export interface ApsToken {
   access_token: string;
@@ -17,7 +19,7 @@ export interface ApsToken {
 }
 
 export class ApsTokenError extends Error {
-  /** Codi del servidor (APS_REAUTH_REQUIRED, UNAUTHORIZED…) o intern (NO_SESSION, NETWORK, CONFIG) */
+  /** Codi del servidor (APS_REAUTH_REQUIRED, UNAUTHORIZED…) o intern (NO_SESSION, NETWORK) */
   readonly code: string;
   readonly status?: number;
   constructor(message: string, code: string, status?: number) {
@@ -28,17 +30,9 @@ export class ApsTokenError extends Error {
   }
 }
 
-/** VITE_TOKEN_SERVICE_URL (preferent) o VITE_AGENT_URL (agent monolític antic). */
-export function tokenServiceUrl(): string | undefined {
-  const url = (
-    (import.meta.env.VITE_TOKEN_SERVICE_URL as string | undefined) ??
-    (import.meta.env.VITE_AGENT_URL as string | undefined)
-  )?.trim();
-  return url ? url.replace(/\/+$/, "") : undefined;
-}
-
-// Render gratuït pot trigar ~50 s a despertar-se: no tallem abans d'hora.
-const TIMEOUT_MS = 60_000;
+// La funció serverless respon en fraccions de segon; deixem marge per a la xarxa
+// i per a l'arrencada en fred.
+const TIMEOUT_MS = 15_000;
 // Es considera "a punt d'expirar" quan queden menys de 2 min
 const MARGE_MS = 2 * 60 * 1000;
 
@@ -83,14 +77,6 @@ async function demanaToken(
   sessionTokenParam?: string,
   fresh = false,
 ): Promise<ApsToken> {
-  const base = tokenServiceUrl();
-  if (!base) {
-    throw new ApsTokenError(
-      "El visor 3D no està configurat (falta VITE_TOKEN_SERVICE_URL). Avisa l'administrador.",
-      "CONFIG",
-    );
-  }
-
   const sessioToken =
     sessionTokenParam ??
     (await supabase.auth.getSession()).data.session?.access_token;
@@ -104,20 +90,20 @@ async function demanaToken(
 
   let resp: Response;
   try {
-    resp = await fetch(`${base}/api/aps-token${fresh ? "?fresh=1" : ""}`, {
+    resp = await fetch(apiUrl(`/api/aps-token${fresh ? "?fresh=1" : ""}`), {
       headers: { Authorization: `Bearer ${sessioToken}` },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch {
     throw new ApsTokenError(
-      "No s'ha pogut contactar amb el servei de models 3D (pot estar arrencant). Torna-ho a provar d'aquí a un minut.",
+      "No s'ha pogut contactar amb el servei de models 3D. Comprova la connexió i torna-ho a provar.",
       "NETWORK",
     );
   }
 
   if (!resp.ok) {
-    // El servei retorna { error, code } en català. Si la resposta no és JSON
-    // (p. ex. un "Bad Gateway" de Render), mostrem el codi HTTP.
+    // La funció retorna { error, code } en català. Si la resposta no és JSON
+    // (p. ex. un error de la plataforma), mostrem el codi HTTP.
     const cos = (await resp.json().catch(() => null)) as {
       error?: string;
       code?: string;

@@ -1,5 +1,5 @@
-// token-service/scripts/ssa-claus.mjs
-// Ajuda per al bot (Secure Service Account). S'executa EN LOCAL (Codespace), mai a Render.
+// agents-independents/scripts/ssa-claus.mjs
+// Ajuda per al bot (Secure Service Account). S'executa EN LOCAL (Codespace), mai a Vercel/GitHub.
 //
 //   Llistar els comptes de servei (per veure el Service ID de taulamaster_bot):
 //     APS_CLIENT_ID=... APS_CLIENT_SECRET=... node scripts/ssa-claus.mjs llista
@@ -8,7 +8,7 @@
 //     APS_CLIENT_ID=... APS_CLIENT_SECRET=... node scripts/ssa-claus.mjs clau <SERVICE_ID>
 //
 // NO desis mai la sortida al repositori (és públic): copia-la directament als
-// secrets de Render (APS_SSA_ID, APS_SSA_KEY_ID, APS_SSA_PRIVATE_KEY).
+// secrets de Vercel i de GitHub Actions (APS_SSA_ID, APS_SSA_KEY_ID, APS_SSA_PRIVATE_KEY).
 // Imprimeix la resposta d'Autodesk tal qual perquè no depenem de noms de camp.
 
 const BASE = "https://developer.api.autodesk.com/authentication/v2";

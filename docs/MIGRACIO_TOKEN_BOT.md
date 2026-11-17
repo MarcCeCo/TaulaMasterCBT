@@ -1,3 +1,5 @@
+> ⚠️ **Substituït per `docs/MIGRACIO_SENSE_RENDER.md`**: el `token-service` de Render ja no existeix; el bot s'usa des de Vercel i GitHub Actions. Es conserva com a històric.
+
 # Migració del token APS a taulamaster_bot (Secure Service Account)
 
 **Estat:** codi preparat; pendent de provar amb la clau real del bot (Preview/Render).

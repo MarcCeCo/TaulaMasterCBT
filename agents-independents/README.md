@@ -1,119 +1,58 @@
-# TaulaMaster CBT — Agents Independents
+# TaulaMaster CBT — Agents
 
-Cada agent és un servei Node.js independent amb el seu propi `package.json`, `Dockerfile` i variables d'entorn. Un error en un agent no afecta els altres.
+> **Ja no hi ha serveis a Render per al Visor 3D** (vegeu `docs/MIGRACIO_SENSE_RENDER.md`).
+> El token APS i els enllaços públics són funcions de Vercel (`/api`), i la sincronització
+> és un job de GitHub Actions. Aquesta carpeta conté el codi compartit i els agents restants.
 
 ## Estructura
 
 ```
 agents-independents/
-├── shared/                    ← lògica compartida (NO és un servei)
-│   ├── agent.ts               ← lògica Visor 3D + obteToken3Legged
+├── shared/
+│   ├── ssa.ts                 ← token del bot (SSA); sense dependències, usat per Vercel i GitHub
+│   ├── agent.ts               ← lògica de sincronització ACC → Supabase (executaAgent)
 │   ├── bim-sync-agent.ts      ← lògica BIM Sync
 │   ├── crear-masters-agent.ts ← lògica Crear Masters
-│   └── helpers.ts             ← CORS, auth, body, HTML
-│
-├── token-service/             ← 🔑 Token APS (sempre actiu, port 3001)
-├── visor3d/                   ← 🔄 Sync ACC→Supabase (port 3002)
-├── bim-sync/                  ← 🔁 BIM Sync USB (port 3003)
-└── crear-masters/             ← 🏗️  Crear MASTERs (port 3004, local)
+│   └── helpers.ts             ← CORS, auth, body, HTML (bim-sync / crear-masters)
+├── scripts/ssa-claus.mjs      ← utilitat LOCAL per llistar/crear claus del bot
+├── visor3d/src/run-sync.ts    ← script de sincronització (l'executa GitHub Actions)
+├── bim-sync/                  ← 🔁 BIM Sync USB (servei Node, port 3003)
+└── crear-masters/             ← 🏗️  Crear MASTERs (local, port 3004)
 ```
 
-## Endpoints per agent
+## Token APS (bot taulamaster_bot)
 
-| Agent           | Endpoints                                          |
-|-----------------|----------------------------------------------------|
-| token-service   | GET /health, /health/token, /wake, /auth/login, /auth/callback, /api/aps-token (Bearer) |
-| visor3d         | GET /health, /wake · POST /sync                    |
-| bim-sync        | GET /health, /wake · POST /bim-sync                |
-| crear-masters   | GET /health, /wake · POST /crear-masters           |
+El token es genera signant un JWT amb la clau privada del bot i intercanviant-lo per un token
+d'Autodesk: sense refresh token, sense `/auth/login` i sense servei que mantenir despert.
 
-## Token APS: qui el renova i qui el pot demanar
+- **Frontend** → `GET /api/aps-token` (Bearer = sessió de Supabase d'un usuari amb perfil).
+- **Enllaços públics** → `POST /api/public/visor`: token d'abast `viewables:read` (només lectura).
+- **Sincronització** → l'script genera el seu propi token amb el bot.
+- Errors (`{ error, code }`): `UNAUTHORIZED` 401 · `FORBIDDEN` 403 · `APS_REAUTH_REQUIRED` 503
+  (Autodesk rebutja el bot: revisar clau/permisos) · `APS_UPSTREAM_ERROR` 502 · `CONFIG_ERROR` 500.
 
-Els refresh tokens d'Autodesk són **d'un sol ús**: si dos serveis els renoven alhora, un invalida
-el de l'altre. Per això **només el `token-service` renova**.
+## Sincronització Visor 3D
 
-- **Frontend** → `GET /api/aps-token` amb `Authorization: Bearer <sessió de Supabase>`. El servei
-  valida la sessió i exigeix que l'usuari tingui fila a `user_profiles`.
-- **Visor 3D (sync)** → mateixa crida amb `Bearer <TOKEN_SERVICE_SECRET>`. Només cal definir
-  `TOKEN_SERVICE_URL` i `TOKEN_SERVICE_SECRET` (ja no calen `APS_CLIENT_ID/SECRET`).
-- Errors del servei (`{ error, code }`): `UNAUTHORIZED` 401 · `FORBIDDEN` 403 ·
-  `APS_REAUTH_REQUIRED` 503 (cal tornar a fer `/auth/login`) · `APS_UPSTREAM_ERROR` 502 · `CONFIG_ERROR` 500.
+`.github/workflows/sync-monthly.yml` executa `visor3d/src/run-sync.ts` el dia 1 de cada mes (06:00 UTC)
+i quan un admin prem «Executar ara» (`/api/run-sync` → `workflow_dispatch`).
 
-### Monitorització
-
-- `GET /health` → sempre 200; inclou `token_ok` i `token.estat`
-  (`ok`, `sense_token`, `reautenticacio_necessaria`, `error_renovacio`, `caducat`…).
-- `GET /health/token` → **503 si el token no és sa**. Monitor HTTP d'UptimeRobot sobre aquesta URL:
-  t'avisa quan cal tornar a fer `/auth/login`.
-
-## Variables d'entorn del frontend
-
-```env
-# .env.local del projecte Vercel
-VITE_TOKEN_SERVICE_URL=https://taulamaster-token.onrender.com
-VITE_VISOR3D_URL=https://taulamaster-visor3d.onrender.com
-VITE_BIM_SYNC_URL=https://taulamaster-bim-sync.onrender.com
-VITE_CREAR_MASTERS_URL=https://taulamaster-crear-masters.onrender.com
-```
-
-> El viewer 3D ha d'apuntar a `VITE_TOKEN_SERVICE_URL` (no a `VITE_AGENT_URL`).
-
-## Desplegament a Render
-
-Crea **4 serveis Web** separats a Render, cadascun apuntant a la seva carpeta:
-
-### token-service (prioritat màxima — sempre actiu)
-- **Root Directory:** `token-service`
-- **Build Command:** `npm install && npm run build`
-- **Start Command:** `npm start`
-- **Variables d'entorn:** veure `token-service/.env.example`
-- ⚠️ Activa "Always On" si tens pla pagat (evita hibernació)
-
-### visor3d
-- **Root Directory:** `visor3d`
-- **Variables d'entorn:** veure `visor3d/.env.example`
-
-### bim-sync
-- **Root Directory:** `bim-sync`
-- **Variables d'entorn:** veure `bim-sync/.env.example`
-
-### crear-masters ⚠️ LOCAL ONLY
-- **No desplegar a Render** — requereix Revit/pyRevit instal·lat localment
-- Executar amb: `cd crear-masters && npm run dev`
-
-## Execució local (tots els agents)
+Execució local (amb les variables de `visor3d/.env.example` carregades):
 
 ```bash
-# Terminal 1 — token-service
-cd token-service && cp .env.example .env && npm install && npm run dev
-
-# Terminal 2 — visor3d
-cd visor3d && cp .env.example .env && npm install && npm run dev
-
-# Terminal 3 — bim-sync
-cd bim-sync && cp .env.example .env && npm install && npm run dev
-
-# Terminal 4 — crear-masters (requereix Revit)
-cd crear-masters && cp .env.example .env && npm install && npm run dev
+cd agents-independents && npm install
+cd visor3d && npm run dev
 ```
 
-## Autenticació OAuth APS
+## bim-sync i crear-masters
 
-L'OAuth 3-legged **només cal fer-lo una vegada** i ara és responsabilitat exclusiva del `token-service`:
+Cada un és un servei Node amb el seu `package.json` i variables (`.env.example`).
+`crear-masters` és **només local** (requereix Revit/pyRevit). Si `bim-sync` continua a Render, vigila
+el límit d'hores gratuïtes (750 h/mes compartides per workspace).
 
-1. Obre `https://taulamaster-token.onrender.com/auth/login`
-2. Autoritza a Autodesk
-3. El token es desa a Supabase i es renova automàticament cada 50 min
-
-## Migració des de l'agent monolític
-
-El `server.ts` original (monolític) **es pot conservar** mentre no hi ha problemes. La migració recomanada:
-
-1. Desplega primer el `token-service` i actualitza `VITE_AGENT_URL` → `VITE_TOKEN_SERVICE_URL` al frontend
-2. Desplega `visor3d` i elimina el `/sync` de l'agent monolític
-3. Desplega `bim-sync` i `crear-masters` quan convingui
-4. Elimina l'agent monolític quan tots els serveis funcionin
-
+```bash
+cd bim-sync && cp .env.example .env && npm install && npm run dev
+cd crear-masters && cp .env.example .env && npm install && npm run dev
+```
 
 ## Seguretat i CORS
 

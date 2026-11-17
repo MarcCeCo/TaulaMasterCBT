@@ -9,8 +9,7 @@ Aquesta guia està pensada per treballar amb Claude o ChatGPT sense introduir ca
 - **Autenticació i base de dades:** Supabase.
 - **Visualització i integració BIM:** Autodesk Platform Services (APS).
 - **Serveis independents:** Node/TypeScript a `agents-independents/`.
-  - `token-service`: OAuth APS i renovació de tokens.
-  - `visor3d`: sincronització ACC cap a Supabase.
+  - (El token APS i els enllaços públics són a `api/`, i la sync ACC → Supabase és un job de GitHub Actions: vegeu `docs/MIGRACIO_SENSE_RENDER.md`.)
   - `bim-sync`: còpia/sincronització BIM.
   - `crear-masters`: agent local que requereix Revit/pyRevit.
 
@@ -21,7 +20,7 @@ Aquesta guia està pensada per treballar amb Claude o ChatGPT sense introduir ca
 3. No canviar rols ni polítiques RLS sense una migració SQL revisable i una prova amb usuaris reals de prova.
 4. No modificar ni eliminar famílies `.rfa`, scripts de Revit o fitxers BIM sense confirmar-ne l'ús.
 5. No fer una actualització massiva de dependències sense revisar canvis incompatibles.
-6. No introduir una segona via de renovació APS: el `token-service` és l'únic servei que ha de renovar el refresh token compartit.
+6. El token APS es genera sempre amb el bot (SSA, `agents-independents/shared/ssa.ts`). No reintroduir el flux 3-legged amb refresh token d'un sol ús.
 7. Qualsevol agent que executi accions ha de fallar de manera segura si falta el secret o la configuració.
 8. Les operacions de sincronització han de ser idempotents o tenir un mecanisme de lock distribuït.
 
@@ -54,6 +53,6 @@ Després d'un canvi:
 
 ## Variables d'entorn
 
-Els fitxers `.env.example` són plantilles. No hi posis valors reals. Desa els secrets a Vercel/Render/GitHub Secrets segons el servei que els necessiti.
+Els fitxers `.env.example` són plantilles. No hi posis valors reals. Desa els secrets a Vercel/GitHub Secrets segons el servei que els necessiti.
 
 Els serveis independents que reben peticions des del navegador necessiten `ALLOWED_ORIGINS`, amb els dominis exactes separats per comes. No incloguis una barra final.

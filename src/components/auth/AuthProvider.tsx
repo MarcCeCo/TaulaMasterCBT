@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import { obteApsToken, oblidaApsToken, tokenServiceUrl } from "@/lib/apsToken";
+import { obteApsToken, oblidaApsToken } from "@/lib/apsToken";
 import {
   AuthContext,
   isAdminRole,
@@ -22,13 +22,12 @@ import {
 } from "@/lib/auth";
 
 // ─── prefetchApsToken ────────────────────────────────────────────────────────
-// Crida silenciosa al token-service en segon pla quan un usuari inicia sessió:
-// desperta el servei (Render gratuït s'adorm) i deixa el token APS en memòria,
-// de manera que el visor 3D carregui més ràpid. No bloqueja el login ni mostra
-// cap error a l'usuari (si falla, el visor mostrarà el motiu quan s'obri).
+// Crida silenciosa a /api/aps-token en segon pla quan un usuari inicia sessió:
+// deixa el token APS en memòria (i la funció serverless "calenta"), de manera que
+// el visor 3D carregui més ràpid. No bloqueja el login ni mostra cap error a
+// l'usuari (si falla, el visor mostrarà el motiu quan s'obri).
 
 async function prefetchApsToken(sessionToken?: string): Promise<void> {
-  if (!tokenServiceUrl()) return; // servei no configurat → no fem res
   try {
     await obteApsToken({ sessionToken });
   } catch {

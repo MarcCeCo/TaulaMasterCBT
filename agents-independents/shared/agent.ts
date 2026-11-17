@@ -12,8 +12,17 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import WebSocket from "ws";
-import crypto from "crypto";
 import { type JsonAny, errorMessage } from "./tipus";
+import {
+  ApsReauthError,
+  configSSA,
+  obteTokenSSA,
+  invalidaCacheSSA,
+} from "./ssa";
+
+// Reexportats perquè els consumidors existents continuïn important-los d'aquí
+export { ApsReauthError, configSSA, obteTokenSSA, invalidaCacheSSA };
+export type { ConfigSSA, TokenSSA } from "./ssa";
 
 // Node.js < 22 no té WebSocket natiu — el client de Supabase el necessita
 Object.assign(globalThis, { WebSocket });
@@ -85,23 +94,9 @@ function parsejaNomCarpetaInstallacio(
 
 // ─── Autenticació APS 3-legged OAuth ─────────────────────────────────────────
 //
-// IMPORTANT: els refresh tokens d'Autodesk són d'UN SOL ÚS. Cada renovació en
-// retorna un de nou i invalida l'anterior. Per això NOMÉS el token-service ha
-// de renovar el token (via obteToken3Legged). Els altres serveis (Visor 3D…)
-// han de demanar-lo al token-service amb obteTokenViaServei().
-
-/**
- * Cal tornar a autenticar-se amb Autodesk (/auth/login del token-service):
- * no hi ha token, no hi ha refresh token o Autodesk l'ha invalidat/caducat.
- * Els consumidors la distingeixen dels errors transitoris (xarxa, 5xx…).
- */
-export class ApsReauthError extends Error {
-  readonly code = "APS_REAUTH_REQUIRED";
-  constructor(message: string) {
-    super(message);
-    this.name = "ApsReauthError";
-  }
-}
+// MODE ANTIC (sense bot). Es conserva només com a darrer recurs: amb el bot (SSA,
+// vegeu ssa.ts) no cal cap refresh token. Els refresh tokens d'Autodesk són
+// d'UN SOL ÚS: si s'usés aquest mode, només UN procés podria renovar-lo.
 
 let renovacioEnCurs: Promise<string> | null = null;
 
@@ -244,245 +239,6 @@ async function desaTokenAmbReintents(
   throw new ApsReauthError(
     `Autodesk ha renovat el token però no s'ha pogut desar a Supabase (${ultimMissatge}). Cal autenticar-se de nou a /auth/login.`,
   );
-}
-
-// ─── Token del bot (Secure Service Account, SSA) ─────────────────────────────
-//
-// Alternativa al flux 3-legged d'usuari: el bot (taulamaster_bot) signa un JWT
-// amb la seva clau privada RSA i l'intercanvia a Autodesk per un token 3-legged
-// "en nom del bot". No hi ha refresh token, ni /auth/login, ni persona humana
-// al mig: quan caduca (1 h) se'n demana un de nou.
-//
-// Variables d'entorn (només al token-service):
-//   APS_CLIENT_ID, APS_CLIENT_SECRET   de l'aplicació Server-to-Server
-//   APS_SSA_ID                         "Service ID" del bot
-//   APS_SSA_KEY_ID                     "Key ID" (kid) de la clau privada
-//   APS_SSA_PRIVATE_KEY                clau privada PEM (admet "\n" escapats)
-
-const APS_TOKEN_AUDIENCE = APS_AUTH_URL;
-
-export interface ConfigSSA {
-  clientId: string;
-  clientSecret: string;
-  serviceAccountId: string;
-  keyId: string;
-  privateKey: string;
-}
-
-/** Llegeix la configuració SSA de l'entorn. Retorna null si no està (tota) definida. */
-export function configSSA(): ConfigSSA | null {
-  const clientId = process.env.APS_CLIENT_ID?.trim();
-  const clientSecret = process.env.APS_CLIENT_SECRET?.trim();
-  const serviceAccountId = process.env.APS_SSA_ID?.trim();
-  const keyId = process.env.APS_SSA_KEY_ID?.trim();
-  const privateKey = process.env.APS_SSA_PRIVATE_KEY?.replace(
-    /\\n/g,
-    "\n",
-  ).trim();
-  if (!clientId || !clientSecret || !serviceAccountId || !keyId || !privateKey)
-    return null;
-  return { clientId, clientSecret, serviceAccountId, keyId, privateKey };
-}
-
-function base64url(input: Buffer | string): string {
-  return Buffer.from(input)
-    .toString("base64")
-    .replace(/=+$/, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
-}
-
-/** Genera i signa (RS256) l'assertion JWT que s'intercanvia pel token. */
-function generaAssertionSSA(cfg: ConfigSSA, scope: string[]): string {
-  const ara = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT", kid: cfg.keyId };
-  const claims = {
-    iss: cfg.clientId,
-    sub: cfg.serviceAccountId,
-    aud: APS_TOKEN_AUDIENCE,
-    iat: ara,
-    exp: ara + 5 * 60, // l'assertion només cal que visqui uns minuts
-    jti: crypto.randomUUID(),
-    scope,
-  };
-  const dadesPerSignar = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(claims))}`;
-  const signatura = crypto
-    .createSign("RSA-SHA256")
-    .update(dadesPerSignar)
-    .sign(cfg.privateKey);
-  return `${dadesPerSignar}.${base64url(signatura)}`;
-}
-
-export interface TokenSSA {
-  access_token: string;
-  /** Segons de vida restants */
-  expires_in: number;
-}
-
-let cacheSSA: {
-  access_token: string;
-  expiraA: number;
-  scopeKey: string;
-} | null = null;
-let ssaEnCurs: Promise<TokenSSA> | null = null;
-
-/**
- * Descarta el token SSA de la memòria cau perquè el proper `obteTokenSSA`
- * en demani un de nou a Autodesk (p. ex. si Autodesk el rebutja amb un 401
- * o s'han canviat els permisos del bot a ACC).
- */
-export function invalidaCacheSSA(): void {
-  cacheSSA = null;
-}
-
-/**
- * Obté un token 3-legged del bot. Es reutilitza fins que queden < 5 min de vida.
- * Errors 400/401 (assertion invàlida, clau revocada, bot eliminat…) llancen
- * ApsReauthError: cal intervenció humana (revisar clau/bot), no reintentar.
- */
-export async function obteTokenSSA(
-  cfg: ConfigSSA,
-  scope: string[] = ["data:read", "viewables:read", "account:read"],
-): Promise<TokenSSA> {
-  const scopeKey = scope.join(" ");
-  const ara = Date.now();
-  if (
-    cacheSSA &&
-    cacheSSA.scopeKey === scopeKey &&
-    cacheSSA.expiraA - 5 * 60_000 > ara
-  ) {
-    return {
-      access_token: cacheSSA.access_token,
-      expires_in: Math.round((cacheSSA.expiraA - ara) / 1000),
-    };
-  }
-  if (!ssaEnCurs) {
-    ssaEnCurs = _demanaTokenSSA(cfg, scope).finally(() => {
-      ssaEnCurs = null;
-    });
-  }
-  return ssaEnCurs;
-}
-
-async function _demanaTokenSSA(
-  cfg: ConfigSSA,
-  scope: string[],
-): Promise<TokenSSA> {
-  const credencials = Buffer.from(
-    `${cfg.clientId}:${cfg.clientSecret}`,
-  ).toString("base64");
-  const resp = await fetch(APS_AUTH_URL, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${credencials}`,
-    },
-    body: new URLSearchParams({
-      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
-      assertion: generaAssertionSSA(cfg, scope),
-      scope: scope.join(" "),
-    }).toString(),
-    signal: AbortSignal.timeout(20_000),
-  });
-
-  if (!resp.ok) {
-    const text = await resp.text();
-    if (resp.status === 400 || resp.status === 401 || resp.status === 403) {
-      throw new ApsReauthError(
-        `Autodesk ha rebutjat les credencials del bot (${resp.status}). Revisa APS_SSA_ID, APS_SSA_KEY_ID i la clau privada. Detall: ${text}`,
-      );
-    }
-    throw new Error(`Error obtenint token SSA: ${resp.status} ${text}`);
-  }
-
-  const data = (await resp.json()) as {
-    access_token: string;
-    expires_in: number;
-  };
-  cacheSSA = {
-    access_token: data.access_token,
-    expiraA: Date.now() + data.expires_in * 1000,
-    scopeKey: scope.join(" "),
-  };
-  console.log(
-    `✅ Token APS del bot obtingut (expira en ${Math.round(data.expires_in / 60)} min)`,
-  );
-  return { access_token: data.access_token, expires_in: data.expires_in };
-}
-
-// ─── Token 3-legged via token-service (per a serveis que NO han de renovar) ──
-//
-// Variables d'entorn:
-//   TOKEN_SERVICE_URL     URL base del token-service (p. ex. https://token-service-xxxx.onrender.com)
-//   TOKEN_SERVICE_SECRET  Secret compartit amb el token-service (Bearer)
-//
-// Render gratuït pot trobar-se adormit: fem fins a 3 intents amb timeout llarg
-// i només reintentem errors transitoris (xarxa, 5xx). Un error d'autenticació
-// o de reautenticació APS es propaga de seguida.
-
-export async function obteTokenViaServei(): Promise<string> {
-  const base = process.env.TOKEN_SERVICE_URL?.trim().replace(/\/+$/, "");
-  const secret = process.env.TOKEN_SERVICE_SECRET?.trim();
-  if (!base) throw new Error("Falta TOKEN_SERVICE_URL");
-  if (!secret) throw new Error("Falta TOKEN_SERVICE_SECRET");
-
-  const MAX_INTENTS = 3;
-  let ultimError: Error = new Error(
-    "Error desconegut obtenint el token via token-service",
-  );
-
-  for (let intent = 1; intent <= MAX_INTENTS; intent++) {
-    try {
-      const resp = await fetch(`${base}/api/aps-token`, {
-        headers: { Authorization: `Bearer ${secret}` },
-        signal: AbortSignal.timeout(90_000), // cobreix l'arrencada en fred de Render
-      });
-
-      if (resp.ok) {
-        const { access_token } = (await resp.json()) as {
-          access_token?: string;
-        };
-        if (!access_token)
-          throw new Error("Resposta del token-service sense access_token");
-        console.log("✅ Token APS obtingut via token-service");
-        return access_token;
-      }
-
-      const cos = (await resp.json().catch(() => null)) as {
-        error?: string;
-        code?: string;
-      } | null;
-      const detall = cos?.error ?? `HTTP ${resp.status}`;
-
-      if (cos?.code === "APS_REAUTH_REQUIRED") throw new ApsReauthError(detall);
-      if (resp.status >= 400 && resp.status < 500) {
-        // 401/403…: configuració (secret incorrecte). No té sentit reintentar.
-        throw Object.assign(
-          new Error(
-            `token-service ha rebutjat la petició (${resp.status}): ${detall}`,
-          ),
-          { noReintentar: true },
-        );
-      }
-      ultimError = new Error(`token-service ${resp.status}: ${detall}`);
-    } catch (err) {
-      if (
-        err instanceof ApsReauthError ||
-        (err as { noReintentar?: boolean })?.noReintentar
-      )
-        throw err;
-      ultimError = err instanceof Error ? err : new Error(String(err));
-    }
-
-    console.warn(
-      `⚠️  Intent ${intent}/${MAX_INTENTS} fallit obtenint token via token-service: ${ultimError.message}`,
-    );
-    if (intent < MAX_INTENTS)
-      await new Promise((r) => setTimeout(r, 5_000 * intent));
-  }
-
-  throw ultimError;
 }
 
 // ─── Autenticació 2-legged (per al Viewer SDK) ───────────────────────────────
@@ -1003,10 +759,13 @@ export async function executaAgent(): Promise<ResultatSync> {
 
   if (!supabaseUrl || !supabaseKey)
     throw new Error("Falten SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY");
-  const viaServei = !!process.env.TOKEN_SERVICE_URL?.trim();
-  // Amb token-service, aquest servei ja no necessita les credencials APS.
-  if (!viaServei && (!apsClientId || !apsClientSecret))
-    throw new Error("Falten APS_CLIENT_ID o APS_CLIENT_SECRET");
+  // Mode bot (SSA): el token es genera en el mateix procés amb la clau privada
+  // del bot, sense cap servei intermedi ni refresh token.
+  const cfgBot = configSSA();
+  if (!cfgBot && (!apsClientId || !apsClientSecret))
+    throw new Error(
+      "Falta la configuració del bot (APS_SSA_ID, APS_SSA_KEY_ID, APS_SSA_PRIVATE_KEY + APS_CLIENT_ID/SECRET) o, en mode antic, APS_CLIENT_ID i APS_CLIENT_SECRET.",
+    );
   if (!apsHubId || !apsProjectId)
     throw new Error("Falten APS_HUB_ID o APS_PROJECT_ID");
 
@@ -1020,11 +779,12 @@ export async function executaAgent(): Promise<ResultatSync> {
   });
 
   try {
-    // Si hi ha TOKEN_SERVICE_URL, el token el gestiona (i renova) el token-service.
-    // Sense ell (mode antic), es llegeix/renova directament a Supabase.
-    const token = viaServei
-      ? await obteTokenViaServei()
+    const token = cfgBot
+      ? (await obteTokenSSA(cfgBot)).access_token
       : await obteToken3Legged(supabase, apsClientId!, apsClientSecret!);
+    console.log(
+      `🔐 Mode d'autenticació: ${cfgBot ? "bot (SSA)" : "usuari 3-legged (antic)"}`,
+    );
     const sistemesTobrats = await extrauSistemes(apsHubId, apsProjectId, token);
 
     console.log(`\n📊 Resum extracció de Forma:`);
