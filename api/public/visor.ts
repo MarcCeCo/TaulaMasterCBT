@@ -8,11 +8,7 @@
 // token-service de Render. Vegeu api/_lib/publicLinks.ts per a la seguretat.
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import {
-  ApsReauthError,
-  configSSA,
-  obteTokenSSA,
-} from "../_lib/ssa.js";
+import { ApsReauthError, configSSA, obteTokenSSA } from "../_lib/ssa.js";
 import { aplicaCors, ipDe, json, superaLimit } from "../_lib/http.js";
 import { creaSupabaseAdmin } from "../_lib/supabase.js";
 import {
