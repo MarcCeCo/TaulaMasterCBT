@@ -12,7 +12,7 @@ import {
   ApsReauthError,
   configSSA,
   obteTokenSSA,
-} from "../../agents-independents/shared/ssa.js";
+} from "../_lib/ssa.js";
 import { aplicaCors, ipDe, json, superaLimit } from "../_lib/http.js";
 import { creaSupabaseAdmin } from "../_lib/supabase.js";
 import {

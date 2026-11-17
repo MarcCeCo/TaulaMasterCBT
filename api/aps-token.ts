@@ -26,7 +26,7 @@ import {
   configSSA,
   invalidaCacheSSA,
   obteTokenSSA,
-} from "../agents-independents/shared/ssa.js";
+} from "./_lib/ssa.js";
 import { aplicaCors, json } from "./_lib/http.js";
 import { creaSupabaseAdmin } from "./_lib/supabase.js";
 import { autoritza } from "./_lib/auth.js";
